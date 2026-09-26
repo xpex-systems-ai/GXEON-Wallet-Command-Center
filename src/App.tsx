@@ -173,8 +173,11 @@ export function App() {
     }
   };
 
-  // Auth Gate check: If Firebase is configured and user is unauthenticated and not bypassed
-  if (isConfigured && !currentUser && !bypassLocalMode) {
+  // Auth Gate check: If Firebase is configured and user is unauthenticated
+  const isDevMode = Boolean(import.meta.env.DEV);
+  const isBypassedInDev = isDevMode && bypassLocalMode;
+
+  if (isConfigured && !currentUser && !isBypassedInDev) {
     if (!authChecked) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-[#0B1220] text-slate-400 font-mono text-xs">
@@ -185,7 +188,7 @@ export function App() {
     return (
       <AuthGate
         onAuthenticated={() => {}}
-        onBypassLocal={() => setBypassLocalMode(true)}
+        onBypassLocal={isDevMode ? () => setBypassLocalMode(true) : undefined}
       />
     );
   }

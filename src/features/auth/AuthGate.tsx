@@ -16,6 +16,12 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, onBypassLoc
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // CRITICAL SECURITY REQUIREMENT:
+  // In production hosting (import.meta.env.DEV !== true), Auth Gate MUST be strictly enforced.
+  // Local Mode bypass is strictly prohibited in production.
+  const isDevMode = Boolean(import.meta.env.DEV);
+  const showDevBypass = isDevMode && Boolean(onBypassLocal);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -176,13 +182,14 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, onBypassLoc
             {isRegister ? 'Already have an operator account? Login' : 'Need a new operator account? Register'}
           </button>
 
-          {onBypassLocal && (
+          {showDevBypass && (
             <button
               type="button"
+              data-testid="dev-bypass-btn"
               onClick={onBypassLocal}
               className="text-slate-500 hover:text-slate-300 text-[11px]"
             >
-              Skip Cloud Auth &rarr; Continue in Offline Local Mode
+              [DEV ONLY] Skip Cloud Auth &rarr; Offline Local Mode
             </button>
           )}
         </div>

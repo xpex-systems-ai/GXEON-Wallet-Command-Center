@@ -126,3 +126,38 @@ export interface MultiAssetEarningsStats {
   totalCount: number;
   fiatValue: null; // Explicitly null / UNAVAILABLE in V1 (no unverified currency mixing)
 }
+
+/**
+ * ============================================================
+ * GXEON QUANTUM MODE FOUNDATION — EVENT TAXONOMY ARCHITECTURE
+ * ============================================================
+ * Standardized typed event contracts for event-driven, multi-agent mesh,
+ * proof of antiquity, mining attestations, and verifiable treasury ops.
+ * (Architecture only — zero simulated/synthetic records)
+ */
+
+export type QuantumEventType =
+  | 'WALLET_CONNECTED'
+  | 'BALANCE_SYNC_REQUESTED'
+  | 'BALANCE_SYNC_CONFIRMED'
+  | 'BOUNTY_SUBMITTED'
+  | 'BOUNTY_ACCEPTED'
+  | 'PAYOUT_DETECTED'
+  | 'PAYOUT_CONFIRMED'
+  | 'MINER_ATTESTED'
+  | 'EPOCH_REWARD_DETECTED';
+
+export interface QuantumEventPayload {
+  eventType: QuantumEventType;
+  version: '1.0';
+  timestamp: string;
+  source: 'control_plane' | 'signing_bridge' | 'mining_mesh' | 'payout_agent';
+  correlationId: string;
+  data: Record<string, unknown>;
+  attestation?: {
+    scheme: string;
+    signature?: string;
+    publicKey?: string;
+    epoch?: number;
+  };
+}
