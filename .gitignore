@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+*.key
+*.pem
+*.seed
+wallet-secrets/
+secrets/
+local-state/
