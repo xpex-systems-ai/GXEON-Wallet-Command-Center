@@ -54,7 +54,9 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, onBypassLoc
       onAuthenticated();
     } catch (err: unknown) {
       const fbErr = err as { code?: string; message?: string };
-      if (fbErr.code === 'auth/invalid-credential' || fbErr.code === 'auth/wrong-password' || fbErr.code === 'auth/user-not-found') {
+      if (fbErr.code === 'auth/configuration-not-found') {
+        setError('Firebase Auth is not enabled in project. Enable Email/Password provider in Firebase Console under Authentication > Sign-in method.');
+      } else if (fbErr.code === 'auth/invalid-credential' || fbErr.code === 'auth/wrong-password' || fbErr.code === 'auth/user-not-found') {
         setError('Invalid email or password.');
       } else if (fbErr.code === 'auth/email-already-in-use') {
         setError('This email is already registered. Please login.');
