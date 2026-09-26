@@ -117,11 +117,15 @@ export function App() {
     addToast('success', 'Bounty Registered', `Tracked "${created.title}"`);
   };
 
-  const handleUpdateBountyStatus = (id: string, status: BountyStatus, txHash?: string) => {
-    bountyService.updateBountyStatus(id, status, txHash);
-    setBounties(bountyService.getBounties());
-    setAuditEvents(auditService.getEvents());
-    addToast('info', 'Bounty Updated', `Status changed to ${status}`);
+  const handleUpdateBountyStatus = (id: string, status: BountyStatus) => {
+    const result = bountyService.updateBountyStatus(id, status);
+    if (result.success) {
+      setBounties(bountyService.getBounties());
+      setAuditEvents(auditService.getEvents());
+      addToast('info', 'Bounty Updated', `Status changed to ${status}`);
+    } else {
+      addToast('warning', 'Transition Blocked', result.error || 'Invalid transition');
+    }
   };
 
   const bountyStats = bountyService.getStats();

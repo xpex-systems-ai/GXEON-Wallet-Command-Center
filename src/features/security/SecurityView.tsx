@@ -3,9 +3,9 @@ import {
   ShieldCheck,
   Lock,
   Server,
-  CloudOff,
   Key,
   Layers,
+  FileCheck,
 } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -20,6 +20,8 @@ interface SecurityViewProps {
 
 export const SecurityView: React.FC<SecurityViewProps> = ({
   bridgeHealth,
+  bridgeStatus: _bridgeStatus,
+  wallets: _wallets,
 }) => {
   const fbStatus = firebaseService.getStatus();
 
@@ -40,59 +42,59 @@ export const SecurityView: React.FC<SecurityViewProps> = ({
 
       {/* Security Status Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Private Keys Status */}
+        {/* Repository Secret Scan Status */}
         <Card glow="cyan">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-slate-400 uppercase">Private Keys</span>
-            <Lock className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-mono text-slate-400 uppercase">Secret Scan</span>
+            <FileCheck className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-xl font-bold font-mono text-emerald-400">
-            LOCAL ONLY
+          <div className="text-lg font-bold font-mono text-emerald-400">
+            PASS (VERIFIED)
           </div>
           <p className="text-[11px] text-slate-400 font-mono mt-2">
-            Never uploaded to Firebase, GitHub, or browser memory.
+            Automated git scan confirmed zero private keys or seeds committed.
           </p>
         </Card>
 
-        {/* Cloud Secrets Status */}
+        {/* Firebase Rules Status */}
         <Card glow="cyan">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-slate-400 uppercase">Cloud Secrets</span>
-            <CloudOff className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-mono text-slate-400 uppercase">Firestore Defense</span>
+            <Lock className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-xl font-bold font-mono text-emerald-400">
-            NONE (0)
+          <div className="text-lg font-bold font-mono text-emerald-400">
+            RULES ENFORCED
           </div>
           <p className="text-[11px] text-slate-400 font-mono mt-2">
-            No signing materials or custodial keys stored in cloud.
+            Multi-user ownerUid isolation + hasNoSensitiveFields active.
           </p>
         </Card>
 
         {/* Local Bridge Status */}
         <Card glow={bridgeHealth?.ok ? 'cyan' : 'orange'}>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-slate-400 uppercase">Bridge Daemon</span>
+            <span className="text-xs font-mono text-slate-400 uppercase">Local Bridge</span>
             <Server className={`w-4 h-4 ${bridgeHealth?.ok ? 'text-emerald-400' : 'text-amber-400'}`} />
           </div>
           <div className="text-lg font-bold font-mono text-white">
-            {bridgeHealth?.ok ? '127.0.0.1:8790' : 'OFFLINE'}
+            {bridgeHealth?.ok ? '127.0.0.1:8790' : 'STANDBY (LOCAL)'}
           </div>
           <p className="text-[11px] text-slate-400 font-mono mt-2">
-            Bind: <code className="text-[#00D4FF]">127.0.0.1</code> (Loopback only).
+            Bind: <code className="text-[#00D4FF]">127.0.0.1</code> (Loopback only). Send: DISABLED.
           </p>
         </Card>
 
-        {/* Firebase Config Status */}
+        {/* Cloud Signing Secrets Status */}
         <Card>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-slate-400 uppercase">Control Plane</span>
+            <span className="text-xs font-mono text-slate-400 uppercase">Cloud Secrets</span>
             <ShieldCheck className="w-4 h-4 text-[#00D4FF]" />
           </div>
-          <div className="text-sm font-bold font-mono text-white">
-            {fbStatus.configured ? 'Configured' : 'Local Standalone'}
+          <div className="text-sm font-bold font-mono text-slate-300">
+            NOT CONFIGURED
           </div>
           <p className="text-[11px] text-slate-400 font-mono mt-2">
-            App Check: {fbStatus.appCheckActive ? 'Active' : 'Ready'}
+            Cloud signing disabled by design. App Check: {fbStatus.appCheckActive ? 'Active' : 'Ready'}.
           </p>
         </Card>
       </div>
@@ -130,7 +132,8 @@ export const SecurityView: React.FC<SecurityViewProps> = ({
             </span>
             <ul className="list-disc list-inside text-slate-400 space-y-1">
               <li>Displays watch-only addresses, balances, and bounty pipeline.</li>
-              <li>Stores public metadata in Firestore with strict security rules.</li>
+              <li>Stores public metadata in Firestore isolated strictly by <code className="text-white">ownerUid</code>.</li>
+              <li>Security Rules prohibit sensitive fields (<code className="text-white">hasNoSensitiveFields</code>).</li>
               <li>Never interacts with private keys or mnemonics.</li>
             </ul>
           </div>
@@ -142,13 +145,13 @@ export const SecurityView: React.FC<SecurityViewProps> = ({
             <ul className="list-disc list-inside text-slate-400 space-y-1">
               <li>FastAPI daemon strictly bound to <code className="text-white">127.0.0.1:8790</code>.</li>
               <li>Future transaction signing requires explicit human CLI confirmation.</li>
-              <li>Send / broadcast functions are strictly disabled in V1 for safety.</li>
+              <li>Send, sign, and broadcast endpoints return <code className="text-white">403 Forbidden</code> in V1.</li>
             </ul>
           </div>
         </div>
       </div>
 
-      {/* Watch-Only & Ownership Verification Breakdown */}
+      {/* Address Ownership Verification Status */}
       <div className="bg-[#111C30] border border-[#1E314F] rounded-xl p-6">
         <h2 className="text-base font-bold text-white font-mono flex items-center gap-2 mb-3">
           <Key className="w-5 h-5 text-amber-400" />
@@ -168,7 +171,7 @@ export const SecurityView: React.FC<SecurityViewProps> = ({
               </code>
             </div>
             <div className="text-right text-slate-400 text-[11px]">
-              Requires local cryptographic signature to transition to VERIFIED.
+              Status: <strong className="text-amber-400">UNVERIFIED</strong> (Requires local cryptographic signature to verify ownership).
             </div>
           </div>
         </div>

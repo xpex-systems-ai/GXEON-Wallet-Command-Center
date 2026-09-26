@@ -2,6 +2,33 @@ import { AuditEvent } from '../types';
 
 const AUDIT_STORAGE_KEY = 'gxeon_audit_log_v1';
 
+/**
+ * Sanitizes audit messages to prevent any accidental leakage of private keys,
+ * seed phrases, tokens, or credentials.
+ */
+export function sanitizeAuditDetail(detail: string): string {
+  if (!detail) return '';
+
+  let sanitized = detail;
+
+  // 1. Redact 64-char hex strings (private keys) and key assignments
+  sanitized = sanitized.replace(/(private_key|privateKey|secret|signingKey|signing_key|seed|key)([\s:=]+)[a-fA-F0-9]{32,64}/gi, '$1$2[REDACTED_SECRET_KEY]');
+  sanitized = sanitized.replace(/0x[a-fA-F0-9]{64}/g, '[REDACTED_32B_HEX]');
+  sanitized = sanitized.replace(/\b[a-fA-F0-9]{64}\b/g, '[REDACTED_64_HEX]');
+
+  // 2. Redact potential seed phrases (sequences of dictionary words)
+  sanitized = sanitized.replace(/(seed|mnemonic|recoveryPhrase|recovery_phrase|seedPhrase|seed_phrase)([\s:=]+)[a-zA-Z\s]{15,}/gi, '$1$2[REDACTED_MNEMONIC_PHRASE]');
+
+  // 3. Redact Bearer / JWT / Auth tokens
+  sanitized = sanitized.replace(/Bearer\s+[a-zA-Z0-9_\-\.]+/gi, 'Bearer [REDACTED_TOKEN]');
+  sanitized = sanitized.replace(/eyJ[a-zA-Z0-9_\-]{10,}\.eyJ[a-zA-Z0-9_\-]{10,}\.[a-zA-Z0-9_\-]+/g, '[REDACTED_JWT_TOKEN]');
+
+  // 4. Redact password assignments
+  sanitized = sanitized.replace(/(?:password|pass)[\s:=]+([^\s]+)/gi, 'password: [REDACTED_PASSWORD]');
+
+  return sanitized;
+}
+
 export class AuditService {
   private events: AuditEvent[] = [];
 
@@ -50,14 +77,7 @@ export class AuditService {
     severity: 'info' | 'warning' | 'error' | 'critical' = 'info',
     actor: string = 'operator'
   ): void {
-    // Strict sanitization: ensure no accidental private keys or tokens get into audit logs
-    const sanitizedDetail = detail
-      .replace(/0x[a-fA-F0-9]{64}/g, '[REDACTED_32B_HEX]')
-      .replace(/[a-zA-Z0-9_-]{40,}/g, (match) => {
-        // preserve known public address formats
-        if (match.startsWith('RTC') || match.startsWith('0x')) return match;
-        return '[REDACTED_SECRET]';
-      });
+    const sanitizedDetail = sanitizeAuditDetail(detail);
 
     const newEvent: AuditEvent = {
       id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,

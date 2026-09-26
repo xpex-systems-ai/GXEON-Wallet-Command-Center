@@ -156,7 +156,9 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
                     {adapter.name}
                   </span>
                   {adapter.status === 'ACTIVE' && <Badge variant="green">ACTIVE</Badge>}
-                  {adapter.status === 'READY' && <Badge variant="cyan">READY</Badge>}
+                  {(adapter.status === 'PARTIAL' || adapter.status === 'READY_FOR_PROVIDER') && (
+                    <Badge variant="orange">WATCH ONLY</Badge>
+                  )}
                   {adapter.status === 'COMING_SOON' && (
                     <Badge variant="purple">COMING SOON</Badge>
                   )}

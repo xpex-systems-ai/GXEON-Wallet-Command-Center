@@ -11,20 +11,15 @@ import {
 } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
-import { WalletItem, BridgeHealthResponse, BridgeStatusResponse } from '../../types';
+import { WalletItem, BridgeHealthResponse, BridgeStatusResponse, MultiAssetEarningsStats } from '../../types';
 import { NavTab } from '../../components/layout/Sidebar';
+import { walletRegistry } from '../../wallets/registry';
 
 interface DashboardViewProps {
   wallets: WalletItem[];
   bridgeHealth: BridgeHealthResponse | null;
   bridgeStatus: BridgeStatusResponse | null;
-  bountyStats: {
-    confirmedPaidTotal: number;
-    pendingPipelineTotal: number;
-    submittedCount: number;
-    paidCount: number;
-    totalCount: number;
-  };
+  bountyStats: MultiAssetEarningsStats;
   onNavigate: (tab: NavTab) => void;
 }
 
@@ -35,13 +30,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   bountyStats,
   onNavigate,
 }) => {
-  // Check if there is any verified liquid balance
-  const hasLiveVerifiedBalance = wallets.some(
-    (w) => w.ownershipStatus === 'VERIFIED' && w.balance !== null && w.balance !== undefined
-  );
-
   const watchOnlyCount = wallets.filter((w) => w.mode === 'watch_only').length;
   const unverifiedCount = wallets.filter((w) => w.ownershipStatus === 'UNVERIFIED').length;
+  const networkCounts = walletRegistry.getNetworkCounts();
+
+  // Multi-asset pending list
+  const pendingAssets = Object.entries(bountyStats.pendingByAsset);
+  const confirmedAssets = Object.entries(bountyStats.confirmedByAsset);
 
   return (
     <div className="space-y-6">
@@ -90,23 +85,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <Card glow="orange" className="relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">
-              Total Portfolio
+              Total Portfolio (Fiat)
             </span>
             <Badge variant="orange" dot>MONITORING</Badge>
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-bold font-mono text-white">
-              {hasLiveVerifiedBalance ? '$0.00' : '--'}
+            <div className="text-2xl font-bold font-mono text-slate-300">
+              UNAVAILABLE
             </div>
             <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
               <Eye className="w-3.5 h-3.5 text-amber-400" />
               <span>
-                {watchOnlyCount} Watch-Only address ({unverifiedCount} Unverified)
+                {watchOnlyCount} Watch-Only ({unverifiedCount} Unverified)
               </span>
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-[#1E314F] text-[11px] text-slate-400 font-mono">
-            * No fake figures fabricated. Requires local RPC node sync.
+            * Price oracle & live balance RPC not configured. No synthetic $0 values shown.
           </div>
         </Card>
 
@@ -140,21 +135,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <Card>
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">
-              Supported Networks
+              Network Adapters
             </span>
             <Globe className="w-4 h-4 text-purple-400" />
           </div>
           <div className="mt-3">
             <div className="text-3xl font-bold font-mono text-white">
-              4
+              {networkCounts.total}
             </div>
             <div className="text-xs text-slate-400 mt-1">
-              RustChain, Ethereum/EVM, Base, Solana
+              {networkCounts.active} Active • {networkCounts.partial} Partial • {networkCounts.comingSoon} Coming Soon
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-[#1E314F] text-[11px] text-slate-400 font-mono flex items-center gap-2">
-            <Badge variant="green">RustChain Active</Badge>
-            <Badge variant="cyan">EVM Active</Badge>
+          <div className="mt-4 pt-3 border-t border-[#1E314F] text-[11px] text-slate-400 font-mono flex items-center gap-1.5 flex-wrap">
+            <Badge variant="cyan">{networkCounts.active} Live Provider</Badge>
+            <Badge variant="orange">{networkCounts.partial} Watch-Only</Badge>
           </div>
         </Card>
 
@@ -162,22 +157,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <Card glow="cyan">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">
-              Pending Payouts
+              Pending Payout Pipeline
             </span>
             <Coins className="w-4 h-4 text-[#00D4FF]" />
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-bold font-mono text-[#00D4FF]">
-              {bountyStats.pendingPipelineTotal > 0
-                ? `${bountyStats.pendingPipelineTotal.toLocaleString()} USD/RTC equiv.`
-                : '0.00'}
-            </div>
+            {pendingAssets.length > 0 ? (
+              <div className="space-y-1">
+                {pendingAssets.map(([asset, amount]) => (
+                  <div key={asset} className="text-lg font-bold font-mono text-[#00D4FF]">
+                    {amount} {asset}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-2xl font-bold font-mono text-slate-400">
+                0 (Empty)
+              </div>
+            )}
             <div className="text-xs text-slate-400 mt-1">
-              {bountyStats.submittedCount} submissions under review / pending
+              {bountyStats.submittedCount} submissions in pipeline
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-[#1E314F] text-[11px] text-amber-400/90 font-mono">
-            ⚠️ SUBMITTED ≠ PAID (Not counted as liquid assets)
+            ⚠️ SUBMITTED ≠ PAID (Multi-asset breakdown; never summed)
           </div>
         </Card>
 
@@ -190,17 +193,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="mt-3">
-            <div className="text-3xl font-bold font-mono text-emerald-400">
-              {bountyStats.confirmedPaidTotal > 0
-                ? `${bountyStats.confirmedPaidTotal.toLocaleString()} USD`
-                : '0.00'}
-            </div>
+            {confirmedAssets.length > 0 ? (
+              <div className="space-y-1">
+                {confirmedAssets.map(([asset, amount]) => (
+                  <div key={asset} className="text-lg font-bold font-mono text-emerald-400">
+                    {amount} {asset}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-2xl font-bold font-mono text-slate-400">
+                0 (Empty)
+              </div>
+            )}
             <div className="text-xs text-slate-400 mt-1">
-              {bountyStats.paidCount} verified paid bounty payouts
+              {bountyStats.paidCount} verified paid payouts
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-[#1E314F] text-[11px] text-slate-400 font-mono">
-            Verified on-chain transactions only
+            Requires cryptographic TX verification
           </div>
         </Card>
 
@@ -222,7 +233,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               ) : (
                 <>
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-                  OFFLINE (Standby)
+                  STANDBY / LOCAL MODE
                 </>
               )}
             </div>
@@ -257,8 +268,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269
               </code>
             </p>
-            <p className="text-xs text-slate-400">
-              This address is monitored for bounty payouts. In accordance with GXEON security rules, owning a public address does NOT grant operational control until cryptographic proof is verified by the local signing plane.
+            <p className="text-xs text-slate-400 leading-relaxed">
+              This address is monitored for bounty payouts. In accordance with GXEON security rules, possessing a public address does NOT grant operational control until cryptographic proof is verified by the local signing plane.
             </p>
           </div>
         </div>
