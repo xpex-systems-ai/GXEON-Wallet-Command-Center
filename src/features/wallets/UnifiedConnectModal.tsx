@@ -13,7 +13,6 @@ import {
 import { WalletItem } from '../../types';
 import { Badge } from '../../components/common/Badge';
 import { evmAdapter } from '../../wallets/adapters/evm';
-import { coinbaseAdapter } from '../../wallets/adapters/coinbase';
 import { ConnectCliModal } from './ConnectCliModal';
 import { AddWalletModal } from './AddWalletModal';
 
@@ -51,7 +50,7 @@ export const UnifiedConnectModal: React.FC<UnifiedConnectModalProps> = ({
           42161: { network: 'arbitrum', symbol: 'ETH' },
           10: { network: 'optimism', symbol: 'ETH' },
         };
-        const chain = chainNames[result.chainId || 0];
+        const chain = chainNames[Number(result.chainId || 0)];
         onConnected({
           name: 'MetaMask EVM Connected',
           network: chain?.network || 'evm',
@@ -75,33 +74,7 @@ export const UnifiedConnectModal: React.FC<UnifiedConnectModalProps> = ({
     }
   };
 
-  const handleConnectCoinbase = async () => {
-    setIsConnectingBrowser(true);
-    setErrorMessage(null);
-    try {
-      const result = await coinbaseAdapter.connect();
-      if (result.success && result.publicAddress) {
-        onConnected({
-          name: 'Coinbase Wallet Extension',
-          network: 'evm',
-          symbol: 'ETH',
-          publicAddress: result.publicAddress,
-          connectionType: 'BROWSER_PROVIDER',
-          mode: 'connected_provider',
-          ownershipStatus: 'VERIFIED',
-          purpose: 'Self-Custodial Provider',
-          notes: 'Connected via Coinbase Wallet extension',
-        });
-        onClose();
-      } else {
-        setErrorMessage(result.error || 'Coinbase Wallet extension not detected.');
-      }
-    } catch {
-      setErrorMessage('Could not connect to Coinbase Wallet.');
-    } finally {
-      setIsConnectingBrowser(false);
-    }
-  };
+
 
   return (
     <>
