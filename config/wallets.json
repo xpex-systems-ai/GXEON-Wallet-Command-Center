@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "wallets": [
+    {
+      "id": "rustchain-main",
+      "name": "GXEON RustChain RTC",
+      "network": "rustchain",
+      "symbol": "RTC",
+      "address": "RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269",
+      "mode": "watch_only",
+      "ownership_verified": false,
+      "purpose": "bounties",
+      "notes": "Public address used in RustChain bounty submissions. Verify local key ownership before any payout is considered operationally controlled."
+    }
+  ]
+}
