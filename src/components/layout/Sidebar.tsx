@@ -2,6 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard,
   Wallet,
+  Cpu,
   Coins,
   History,
   ShieldAlert,
@@ -11,6 +12,7 @@ import {
 export type NavTab =
   | 'dashboard'
   | 'wallets'
+  | 'mining'
   | 'earnings'
   | 'transactions'
   | 'security'
@@ -41,6 +43,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Wallets & Adapters',
       icon: Wallet,
       badge: walletsCount > 0 ? walletsCount.toString() : null,
+      badgeColor: 'bg-[#FF7A00]/20 text-[#FF7A00]',
+    },
+    {
+      id: 'mining' as NavTab,
+      label: 'ClawRTC & Mining',
+      icon: Cpu,
+      badge: 'PoA',
       badgeColor: 'bg-[#FF7A00]/20 text-[#FF7A00]',
     },
     {

@@ -1,5 +1,6 @@
 import { BountyItem, BountyStatus, PayoutVerification, MultiAssetEarningsStats } from '../types';
 import { auditService } from './auditService';
+import { payoutVerifier } from './payoutVerifier';
 import {
   fetchBountiesFromFirestore,
   saveBountyToFirestore,
@@ -27,7 +28,8 @@ export const ALLOWED_TRANSITIONS: Record<BountyStatus, BountyStatus[]> = {
 export function canTransitionBountyStatus(
   current: BountyStatus,
   target: BountyStatus,
-  verification?: PayoutVerification
+  verification?: PayoutVerification,
+  bounty?: BountyItem
 ): { allowed: boolean; reason?: string } {
   if (current === target) {
     return { allowed: true };
@@ -41,7 +43,7 @@ export function canTransitionBountyStatus(
     };
   }
 
-  // Strict check: transition to PAID requires confirmed on-chain verification
+  // Strict check: transition to PAID requires authentic confirmed on-chain verification
   if (target === 'PAID') {
     if (!verification) {
       return {
@@ -49,16 +51,11 @@ export function canTransitionBountyStatus(
         reason: 'Transition to PAID requires a valid PayoutVerification proof.',
       };
     }
-    if (verification.verificationStatus !== 'CONFIRMED') {
+    if (!payoutVerifier.isValidVerifiedReceipt(verification, bounty)) {
       return {
         allowed: false,
-        reason: `Transition to PAID requires verificationStatus=CONFIRMED, received ${verification.verificationStatus}.`,
-      };
-    }
-    if (!verification.txHash || verification.txHash.trim() === '') {
-      return {
-        allowed: false,
-        reason: 'Transition to PAID requires a confirmed transaction hash.',
+        reason:
+          'Transition to PAID requires an authentic, verified PayoutVerification issued by PayoutVerifier.verifyPayout(). Forged, legacy, or unverified proofs are strictly rejected.',
       };
     }
   }
@@ -165,7 +162,7 @@ export class BountyService {
       return { success: false, error: 'Bounty not found' };
     }
 
-    const check = canTransitionBountyStatus(bounty.status, newStatus, verification);
+    const check = canTransitionBountyStatus(bounty.status, newStatus, verification, bounty);
     if (!check.allowed) {
       auditService.recordEvent(
         'bounty_status_rejected',

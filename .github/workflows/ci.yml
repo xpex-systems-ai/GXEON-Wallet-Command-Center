@@ -1,0 +1,58 @@
+name: GXEON CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/gxeon-quantum-integration-v1-2
+      - feat/gxeon-local-companion-v1
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Vitest
+        run: npm test -- --run
+
+      - name: Production build
+        run: npm run build
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Pytest
+        run: python -m pytest
+
+      - name: Secret-pattern guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -nEi '(BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|mnemonic[[:space:]]*=[[:space:]]*["'\''"][^"'\'']+|seed_phrase[[:space:]]*=|private_key[[:space:]]*=[[:space:]]*["'\''"][^"'\'']+)' -- . ':!package-lock.json' ':!docs/**'; then
+            echo "Potential secret material detected."
+            exit 1
+          fi
+          echo "No obvious private-key/seed patterns detected."

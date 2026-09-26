@@ -37,7 +37,7 @@ def test_health_endpoint():
     assert data["ok"] is True
     assert data["bind"] == "127.0.0.1"
     assert data["security_mode"] == "local_only"
-    assert data["version"] == "1.1.0"
+    assert data["version"] == "1.2.0"
     # Ensure active session count is NOT leaked in health response
     assert "active_sessions" not in data
 

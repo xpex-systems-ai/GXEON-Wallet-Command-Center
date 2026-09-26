@@ -52,8 +52,13 @@ python gxeon_wallet.py status
 python gxeon_wallet.py pair
 python gxeon_wallet.py detect
 python gxeon_wallet.py wallets
-python gxeon_wallet.py balance rustchain-cli-default
-python gxeon_wallet.py transactions rustchain-cli-default
+python gxeon_wallet.py mining status
+python gxeon_wallet.py mining start
+python gxeon_wallet.py mining stop
+python gxeon_wallet.py mining configure <miner_id> [--destination <addr>]
+python gxeon_wallet.py rustchain status
+python gxeon_wallet.py rustchain balance
+python gxeon_wallet.py rustchain history
 ```
 
 ### 2. Frontend Command Center (Node 18+)
@@ -76,6 +81,12 @@ npm run build
 
 ## Architecture & Documentation
 
+- [Quantum Core V1.2 Overview](docs/QUANTUM_CORE.md)
+- [ClawRTC Integration Guide](docs/CLAWRTC_INTEGRATION.md)
+- [RTC Mining & Operation](docs/RTC_MINING.md)
+- [Proof of Antiquity Specification](docs/PROOF_OF_ANTIQUITY.md)
+- [Quantum Event Bus Architecture](docs/QUANTUM_EVENTS.md)
+- [Payout Verification Engine](docs/PAYOUT_VERIFICATION.md)
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [Local Companion & Operation](docs/LOCAL_COMPANION.md)
 - [Pairing Protocol Handshake](docs/PAIRING_PROTOCOL.md)

@@ -6,6 +6,7 @@ import { Footer } from './components/layout/Footer';
 import { ToastContainer, ToastMessage } from './components/common/Toast';
 import { DashboardView } from './features/dashboard/DashboardView';
 import { WalletGridView } from './features/wallets/WalletGridView';
+import { MiningDashboardView } from './features/mining/MiningDashboardView';
 import { EarningsView } from './features/earnings/EarningsView';
 import { TransactionsView } from './features/transactions/TransactionsView';
 import { SecurityView } from './features/security/SecurityView';
@@ -27,6 +28,7 @@ import { subscribeToAuthState, logoutUser } from './firebase/auth';
 import { bridgeService } from './services/bridgeService';
 import { walletService } from './services/walletService';
 import { bountyService } from './services/bountyService';
+import { payoutVerifier } from './services/payoutVerifier';
 import { transactionService } from './services/transactionService';
 import { auditService } from './services/auditService';
 
@@ -173,6 +175,71 @@ export function App() {
     }
   };
 
+  const handleVerifyBountyPayout = async (id: string, txHash: string) => {
+    const bounty = bountyService.getBounties().find((item) => item.id === id);
+    if (!bounty) {
+      addToast('error', 'Verification Failed', 'Bounty not found.');
+      return;
+    }
+    const wallet = wallets.find(
+      (w) => w.publicAddress.toLowerCase() === bounty.destinationWalletAddress.toLowerCase()
+    );
+    if (!wallet) {
+      addToast('warning', 'Wallet Required', 'Register/connect the destination wallet before verification.');
+      return;
+    }
+
+    const chainToNetwork: Record<string, string> = {
+      '1': 'ethereum',
+      '8453': 'base',
+      '137': 'polygon',
+      '42161': 'arbitrum',
+      '10': 'optimism',
+    };
+    const network =
+      wallet.network === 'evm'
+        ? chainToNetwork[String(wallet.chainId || '')]
+        : wallet.network;
+
+    if (!network) {
+      addToast('warning', 'Network Unknown', 'Destination wallet network/chainId is not known.');
+      return;
+    }
+
+    const verification = await payoutVerifier.verifyPayout({
+      bountyId: bounty.id,
+      network,
+      asset: bounty.asset || bounty.currency,
+      destinationWallet: bounty.destinationWalletAddress,
+      expectedAmount: bounty.expectedReward,
+      txHash,
+    });
+
+    if (verification.verificationStatus !== 'CONFIRMED') {
+      addToast(
+        'warning',
+        'Payment Not Confirmed',
+        `${verification.verificationStatus} via ${verification.verificationSource}`
+      );
+      return;
+    }
+
+    const result = await bountyService.updateBountyStatus(
+      bounty.id,
+      'PAID',
+      verification,
+      currentUser?.uid
+    );
+
+    if (result.success) {
+      setBounties(bountyService.getBounties());
+      setAuditEvents(auditService.getEvents());
+      addToast('success', 'Payment Confirmed', `${bounty.expectedReward} ${bounty.currency} verified on-chain.`);
+    } else {
+      addToast('warning', 'Paid Transition Blocked', result.error || 'Verification rejected.');
+    }
+  };
+
   // Auth Gate check: If Firebase is configured and user is unauthenticated
   const isDevMode = Boolean(import.meta.env.DEV);
   const isBypassedInDev = isDevMode && bypassLocalMode;
@@ -235,7 +302,12 @@ export function App() {
               onAddWallet={handleAddWallet}
               onSyncWallet={handleSyncWallet}
               isSyncing={isSyncing}
+              onNavigateToMining={() => setCurrentTab('mining')}
             />
+          )}
+
+          {currentTab === 'mining' && (
+            <MiningDashboardView onAddToast={addToast} />
           )}
 
           {currentTab === 'earnings' && (
@@ -244,6 +316,7 @@ export function App() {
               wallets={wallets}
               onAddBounty={handleAddBounty}
               onUpdateStatus={handleUpdateBountyStatus}
+              onVerifyPayout={handleVerifyBountyPayout}
             />
           )}
 
