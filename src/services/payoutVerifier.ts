@@ -103,7 +103,7 @@ const VERIFIED_RECEIPTS_STORE = new Map<string, PayoutVerification>();
  */
 export function parseTokenAmountToUnits(amount: string, decimals: number): bigint {
   const clean = (amount || '').trim();
-  if (!clean || isNaN(Number(clean))) return 0n;
+  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(clean)) return 0n;
   const parts = clean.split('.');
   const whole = parts[0] || '0';
   let frac = parts[1] || '';
@@ -475,49 +475,46 @@ export class PayoutVerifier {
           (typeof k === 'string' ? k : k.pubkey) === req.destinationWallet
         );
 
-        if (destIndex !== -1) {
-          const assetUpper = req.asset.toUpperCase();
+        const assetUpper = req.asset.toUpperCase();
 
-          // 2.1 Native SOL Verification (Lamports balance delta)
-          if (assetUpper === 'SOL' || assetUpper === 'NATIVE') {
-            const preBalances = solanaTxInfo.meta?.preBalances || [];
-            const postBalances = solanaTxInfo.meta?.postBalances || [];
-            const pre = BigInt(preBalances[destIndex] ?? 0);
-            const post = BigInt(postBalances[destIndex] ?? 0);
-            const delta = post - pre;
-            const expectedLamports = parseTokenAmountToUnits(req.expectedAmount, 9);
+        // 2.1 Native SOL verification requires the wallet itself in accountKeys.
+        if (assetUpper === 'SOL' && destIndex !== -1) {
+          const preBalances = solanaTxInfo.meta?.preBalances || [];
+          const postBalances = solanaTxInfo.meta?.postBalances || [];
+          const pre = BigInt(preBalances[destIndex] ?? 0);
+          const post = BigInt(postBalances[destIndex] ?? 0);
+          const delta = post - pre;
+          const expectedLamports = parseTokenAmountToUnits(req.expectedAmount, 9);
 
-            if (delta === expectedLamports && delta > 0n) {
+          if (delta === expectedLamports && delta > 0n) {
+            onchainConfirmed = true;
+            liveSource = 'solana_rpc_verified_transfer';
+            trustedProviderId = 'trusted_solana_rpc';
+          }
+        } else {
+          // 2.2 SPL token verification uses token-balance ownership; the wallet need not
+          // appear directly in accountKeys because the message may only contain its ATA.
+          const splConfig = VERIFIED_SOLANA_MINTS[assetUpper];
+          if (splConfig) {
+            const preTokenBalances = solanaTxInfo.meta?.preTokenBalances || [];
+            const postTokenBalances = solanaTxInfo.meta?.postTokenBalances || [];
+
+            const findBalance = (list: any[]) => {
+              const item = list.find(
+                (b: any) => b.owner === req.destinationWallet && b.mint === splConfig.mint
+              );
+              return item ? BigInt(item.uiTokenAmount?.amount || '0') : 0n;
+            };
+
+            const preToken = findBalance(preTokenBalances);
+            const postToken = findBalance(postTokenBalances);
+            const tokenDelta = postToken - preToken;
+            const expectedTokenUnits = parseTokenAmountToUnits(req.expectedAmount, splConfig.decimals);
+
+            if (tokenDelta === expectedTokenUnits && tokenDelta > 0n) {
               onchainConfirmed = true;
               liveSource = 'solana_rpc_verified_transfer';
               trustedProviderId = 'trusted_solana_rpc';
-            }
-          } else {
-            // 2.2 SPL Token Verification (e.g. USDC on Solana)
-            const splConfig = VERIFIED_SOLANA_MINTS[assetUpper];
-            if (splConfig) {
-              const preTokenBalances = solanaTxInfo.meta?.preTokenBalances || [];
-              const postTokenBalances = solanaTxInfo.meta?.postTokenBalances || [];
-
-              const findBalance = (list: any[]) => {
-                const item = list.find(
-                  (b: any) =>
-                    (b.owner === req.destinationWallet || accountKeys[b.accountIndex]?.pubkey === req.destinationWallet) &&
-                    b.mint === splConfig.mint
-                );
-                return item ? BigInt(item.uiTokenAmount?.amount || '0') : 0n;
-              };
-
-              const preToken = findBalance(preTokenBalances);
-              const postToken = findBalance(postTokenBalances);
-              const tokenDelta = postToken - preToken;
-              const expectedTokenUnits = parseTokenAmountToUnits(req.expectedAmount, splConfig.decimals);
-
-              if (tokenDelta === expectedTokenUnits && tokenDelta > 0n) {
-                onchainConfirmed = true;
-                liveSource = 'solana_rpc_verified_transfer';
-                trustedProviderId = 'trusted_solana_rpc';
-              }
             }
           }
         }
