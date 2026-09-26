@@ -6,6 +6,7 @@ import { Footer } from './components/layout/Footer';
 import { ToastContainer, ToastMessage } from './components/common/Toast';
 import { DashboardView } from './features/dashboard/DashboardView';
 import { WalletGridView } from './features/wallets/WalletGridView';
+import { MiningDashboardView } from './features/mining/MiningDashboardView';
 import { EarningsView } from './features/earnings/EarningsView';
 import { TransactionsView } from './features/transactions/TransactionsView';
 import { SecurityView } from './features/security/SecurityView';
@@ -235,7 +236,12 @@ export function App() {
               onAddWallet={handleAddWallet}
               onSyncWallet={handleSyncWallet}
               isSyncing={isSyncing}
+              onNavigateToMining={() => setCurrentTab('mining')}
             />
+          )}
+
+          {currentTab === 'mining' && (
+            <MiningDashboardView onAddToast={addToast} />
           )}
 
           {currentTab === 'earnings' && (
