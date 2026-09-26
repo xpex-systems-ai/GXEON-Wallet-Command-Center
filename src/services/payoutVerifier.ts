@@ -14,13 +14,30 @@ export interface PayoutVerificationRequest {
 
 /**
  * EXACT IMPLEMENTED AND CONFIRMED ON-CHAIN VERIFICATION SOURCES ONLY.
- * Legacy/unimplemented sources (evm_eip1193_rpc_receipt, rustchain_*) are strictly removed.
+ * Legacy/unimplemented sources are strictly excluded.
  */
 export const LIVE_ONCHAIN_SOURCES = [
   'evm_rpc_native_transfer',
   'evm_rpc_erc20_transfer',
   'solana_rpc_verified_transfer',
 ];
+
+/**
+ * STATIC TRUSTED ON-CHAIN RPC REGISTRY.
+ * Financial confirmation queries are strictly limited to allowlisted trusted endpoints or verified injected providers.
+ * Caller-supplied customRpcEndpoint is strictly diagnostic only and can NEVER issue CONFIRMED proof.
+ */
+export const TRUSTED_RPC_REGISTRY: Record<string, string[]> = {
+  ethereum: ['https://cloudflare-eth.com', 'https://eth.llamarpc.com'],
+  mainnet: ['https://cloudflare-eth.com', 'https://eth.llamarpc.com'],
+  eth: ['https://cloudflare-eth.com', 'https://eth.llamarpc.com'],
+  base: ['https://mainnet.base.org'],
+  polygon: ['https://polygon-rpc.com'],
+  matic: ['https://polygon-rpc.com'],
+  arbitrum: ['https://arb1.arbitrum.io/rpc'],
+  optimism: ['https://mainnet.optimism.io'],
+  solana: ['https://api.mainnet-beta.solana.com'],
+};
 
 export const EVM_CHAIN_IDS: Record<string, number> = {
   ethereum: 1,
@@ -139,17 +156,15 @@ export class PayoutVerifier {
 
   /**
    * Verifies on-chain proof of payment for bounties or miner rewards.
-   * STRICT MONEY TRUTH INVARIANTS:
+   * STRICT TRUSTED MONEY SOURCE INVARIANTS:
    * 1. Valid hash syntax only yields 'FORMAT_VALID', NEVER 'CONFIRMED'.
-   * 2. 'CONFIRMED' requires on-chain proof that:
-   *    - The transaction succeeded (status == 1 / 0x1)
-   *    - The chain ID matches req.network
-   *    - The recipient matches destinationWallet (case-insensitive for EVM)
-   *    - The transferred amount matches expectedAmount
-   *    - For ERC-20, the contract is allowlisted and verified
-   * 3. Solana requires confirmed signature AND balance delta matching expectedAmount.
-   * 4. RustChain stays UNVERIFIED / FORMAT_VALID until official RPC verifier exists.
-   * 5. Confirmed proofs are stamped with internal verificationId.
+   * 2. Caller-supplied customRpcEndpoint is diagnostic only (CUSTOM_RPC_RESULT != FINANCIAL_PROOF).
+   * 3. Financial confirmation requires queries strictly through:
+   *    - Injected EIP-1193 MetaMask provider with matching active chainId
+   *    - Allowlisted TRUSTED_RPC_REGISTRY endpoints
+   * 4. Verifies receipt status, chain ID, recipient, amount, and token contract.
+   * 5. Solana requires verified balance delta via trusted RPC.
+   * 6. Confirmed proofs are stamped with verificationId and rpcProviderId.
    */
   async verifyPayout(req: PayoutVerificationRequest): Promise<PayoutVerification> {
     const timestamp = new Date().toISOString();
@@ -187,14 +202,17 @@ export class PayoutVerifier {
 
     let onchainConfirmed = false;
     let liveSource = 'none';
+    let trustedProviderId = 'none';
+    let verifiedChainId: number | undefined;
 
     // ============================================================
-    // 1. EVM ON-CHAIN VERIFICATION (Native & ERC-20)
+    // 1. EVM ON-CHAIN VERIFICATION VIA TRUSTED PROVIDERS ONLY
     // ============================================================
     if (isEVM) {
       let receipt: any = null;
       let tx: any = null;
       let chainId: number | null = null;
+      let providerSourceId = 'none';
 
       // 1.1 Injected Browser Provider (window.ethereum)
       if (typeof window !== 'undefined' && (window as any).ethereum) {
@@ -210,51 +228,77 @@ export class PayoutVerifier {
             const parsedC = typeof c === 'string' ? parseInt(c, 16) : Number(c);
             if (!isNaN(parsedC)) chainId = parsedC;
           }
+          if (receipt && tx) {
+            providerSourceId = 'injected_eip1193_provider';
+          }
         } catch {
           // Provider query failed
         }
       }
 
-      // 1.2 Custom RPC Endpoint query
-      if ((!receipt || !tx) && req.customRpcEndpoint) {
-        try {
-          const [receiptRes, txRes, chainRes] = await Promise.all([
-            fetch(req.customRpcEndpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getTransactionReceipt', params: [cleanTx] }),
-            }),
-            fetch(req.customRpcEndpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'eth_getTransactionByHash', params: [cleanTx] }),
-            }),
-            fetch(req.customRpcEndpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'eth_chainId', params: [] }),
-            }),
-          ]);
+      // 1.2 Query Allowlisted Trusted RPC Registry (Never untrusted caller endpoint)
+      if (!receipt || !tx) {
+        const trustedEndpoints = TRUSTED_RPC_REGISTRY[req.network.toLowerCase()] || [];
+        for (const endpoint of trustedEndpoints) {
+          try {
+            const [receiptRes, txRes, chainRes] = await Promise.all([
+              fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getTransactionReceipt', params: [cleanTx] }),
+              }),
+              fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'eth_getTransactionByHash', params: [cleanTx] }),
+              }),
+              fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'eth_chainId', params: [] }),
+              }),
+            ]);
 
-          if (receiptRes.ok) {
-            const data = await receiptRes.json();
-            if (data && data.result) receipt = data.result;
-          }
-          if (txRes.ok) {
-            const data = await txRes.json();
-            if (data && data.result) tx = data.result;
-          }
-          if (chainRes.ok) {
-            const data = await chainRes.json();
-            if (data && data.result) {
-              const resVal = data.result;
-              const parsedC = typeof resVal === 'string' ? parseInt(resVal, 16) : Number(resVal);
-              if (!isNaN(parsedC)) chainId = parsedC;
+            if (receiptRes.ok) {
+              const data = await receiptRes.json();
+              if (data && data.result) receipt = data.result;
             }
+            if (txRes.ok) {
+              const data = await txRes.json();
+              if (data && data.result) tx = data.result;
+            }
+            if (chainRes.ok) {
+              const data = await chainRes.json();
+              if (data && data.result) {
+                const resVal = data.result;
+                const parsedC = typeof resVal === 'string' ? parseInt(resVal, 16) : Number(resVal);
+                if (!isNaN(parsedC)) chainId = parsedC;
+              }
+            }
+
+            if (receipt && tx) {
+              providerSourceId = 'trusted_network_rpc';
+              break;
+            }
+          } catch {
+            // Next trusted endpoint
           }
-        } catch {
-          // RPC offline
         }
+      }
+
+      // 1.3 If caller supplied untrusted customRpcEndpoint: Diagnostic query ONLY
+      // Strictly forbidden from granting onchainConfirmed
+      if ((!receipt || !tx) && req.customRpcEndpoint) {
+        // Custom endpoint is diagnostic only. No financial confirmation.
+        return {
+          network: req.network,
+          asset: req.asset,
+          destinationWallet: req.destinationWallet,
+          txHash: cleanTx,
+          verifiedAt: timestamp,
+          verificationSource: 'diagnostic_custom_rpc_untrusted',
+          verificationStatus: 'FORMAT_VALID',
+        };
       }
 
       if (receipt && receipt.status !== undefined && receipt.status !== null) {
@@ -272,18 +316,21 @@ export class PayoutVerifier {
           };
         }
 
-        // Network Verification: Chain ID must match expected network if returned
+        // Network Verification: Chain ID must match expected network
         const expectedChainId = EVM_CHAIN_IDS[req.network.toLowerCase()];
-        if (chainId !== null && !isNaN(chainId) && expectedChainId !== undefined && chainId !== expectedChainId) {
-          return {
-            network: req.network,
-            asset: req.asset,
-            destinationWallet: req.destinationWallet,
-            txHash: cleanTx,
-            verifiedAt: timestamp,
-            verificationSource: 'evm_network_mismatch',
-            verificationStatus: 'FAILED',
-          };
+        if (chainId !== null && !isNaN(chainId)) {
+          if (expectedChainId !== undefined && chainId !== expectedChainId) {
+            return {
+              network: req.network,
+              asset: req.asset,
+              destinationWallet: req.destinationWallet,
+              txHash: cleanTx,
+              verifiedAt: timestamp,
+              verificationSource: 'evm_network_mismatch',
+              verificationStatus: 'FAILED',
+            };
+          }
+          verifiedChainId = chainId;
         }
 
         const expectedDest = (req.destinationWallet || '').trim().toLowerCase();
@@ -297,6 +344,7 @@ export class PayoutVerifier {
             if (actualWei === expectedWei && actualWei > 0n) {
               onchainConfirmed = true;
               liveSource = 'evm_rpc_native_transfer';
+              trustedProviderId = providerSourceId;
             }
           }
         }
@@ -325,6 +373,7 @@ export class PayoutVerifier {
                 if (logRecipient === expectedDest && logAmount === expectedUnits && logAmount > 0n) {
                   onchainConfirmed = true;
                   liveSource = 'evm_rpc_erc20_transfer';
+                  trustedProviderId = providerSourceId;
                   break;
                 }
               }
@@ -335,80 +384,91 @@ export class PayoutVerifier {
     }
 
     // ============================================================
-    // 2. SOLANA ON-CHAIN VERIFICATION (Native SOL & SPL Tokens)
+    // 2. SOLANA ON-CHAIN VERIFICATION VIA TRUSTED RPC ONLY
     // ============================================================
-    if (isSolana && req.customRpcEndpoint) {
-      try {
-        const res = await fetch(req.customRpcEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'getTransaction',
-            params: [
-              cleanTx,
-              { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
-            ],
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const txInfo = data?.result;
-          if (txInfo && !txInfo.meta?.err) {
-            const accountKeys = txInfo.transaction?.message?.accountKeys || [];
-            const destIndex = accountKeys.findIndex((k: any) =>
-              (typeof k === 'string' ? k : k.pubkey) === req.destinationWallet
-            );
+    if (isSolana) {
+      const trustedSolanaEndpoints = TRUSTED_RPC_REGISTRY.solana || [];
+      let solanaTxInfo: any = null;
 
-            if (destIndex !== -1) {
-              const assetUpper = req.asset.toUpperCase();
+      for (const endpoint of trustedSolanaEndpoints) {
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'getTransaction',
+              params: [
+                cleanTx,
+                { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
+              ],
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.result) {
+              solanaTxInfo = data.result;
+              break;
+            }
+          }
+        } catch {
+          // Next trusted endpoint
+        }
+      }
 
-              // 2.1 Native SOL Verification (Lamports balance delta)
-              if (assetUpper === 'SOL' || assetUpper === 'NATIVE') {
-                const preBalances = txInfo.meta?.preBalances || [];
-                const postBalances = txInfo.meta?.postBalances || [];
-                const pre = BigInt(preBalances[destIndex] || 0);
-                const post = BigInt(postBalances[destIndex] || 0);
-                const delta = post - pre;
-                const expectedLamports = parseTokenAmountToUnits(req.expectedAmount, 9);
+      if (solanaTxInfo && !solanaTxInfo.meta?.err) {
+        const accountKeys = solanaTxInfo.transaction?.message?.accountKeys || [];
+        const destIndex = accountKeys.findIndex((k: any) =>
+          (typeof k === 'string' ? k : k.pubkey) === req.destinationWallet
+        );
 
-                if (delta === expectedLamports && delta > 0n) {
-                  onchainConfirmed = true;
-                  liveSource = 'solana_rpc_verified_transfer';
-                }
-              } else {
-                // 2.2 SPL Token Verification (e.g. USDC on Solana)
-                const splConfig = VERIFIED_SOLANA_MINTS[assetUpper];
-                if (splConfig) {
-                  const preTokenBalances = txInfo.meta?.preTokenBalances || [];
-                  const postTokenBalances = txInfo.meta?.postTokenBalances || [];
+        if (destIndex !== -1) {
+          const assetUpper = req.asset.toUpperCase();
 
-                  const findBalance = (list: any[]) => {
-                    const item = list.find(
-                      (b: any) =>
-                        (b.owner === req.destinationWallet || accountKeys[b.accountIndex]?.pubkey === req.destinationWallet) &&
-                        b.mint === splConfig.mint
-                    );
-                    return item ? BigInt(item.uiTokenAmount?.amount || '0') : 0n;
-                  };
+          // 2.1 Native SOL Verification (Lamports balance delta)
+          if (assetUpper === 'SOL' || assetUpper === 'NATIVE') {
+            const preBalances = solanaTxInfo.meta?.preBalances || [];
+            const postBalances = solanaTxInfo.meta?.postBalances || [];
+            const pre = BigInt(preBalances[destIndex] ?? 0);
+            const post = BigInt(postBalances[destIndex] ?? 0);
+            const delta = post - pre;
+            const expectedLamports = parseTokenAmountToUnits(req.expectedAmount, 9);
 
-                  const preToken = findBalance(preTokenBalances);
-                  const postToken = findBalance(postTokenBalances);
-                  const tokenDelta = postToken - preToken;
-                  const expectedTokenUnits = parseTokenAmountToUnits(req.expectedAmount, splConfig.decimals);
+            if (delta === expectedLamports && delta > 0n) {
+              onchainConfirmed = true;
+              liveSource = 'solana_rpc_verified_transfer';
+              trustedProviderId = 'trusted_solana_rpc';
+            }
+          } else {
+            // 2.2 SPL Token Verification (e.g. USDC on Solana)
+            const splConfig = VERIFIED_SOLANA_MINTS[assetUpper];
+            if (splConfig) {
+              const preTokenBalances = solanaTxInfo.meta?.preTokenBalances || [];
+              const postTokenBalances = solanaTxInfo.meta?.postTokenBalances || [];
 
-                  if (tokenDelta === expectedTokenUnits && tokenDelta > 0n) {
-                    onchainConfirmed = true;
-                    liveSource = 'solana_rpc_verified_transfer';
-                  }
-                }
+              const findBalance = (list: any[]) => {
+                const item = list.find(
+                  (b: any) =>
+                    (b.owner === req.destinationWallet || accountKeys[b.accountIndex]?.pubkey === req.destinationWallet) &&
+                    b.mint === splConfig.mint
+                );
+                return item ? BigInt(item.uiTokenAmount?.amount || '0') : 0n;
+              };
+
+              const preToken = findBalance(preTokenBalances);
+              const postToken = findBalance(postTokenBalances);
+              const tokenDelta = postToken - preToken;
+              const expectedTokenUnits = parseTokenAmountToUnits(req.expectedAmount, splConfig.decimals);
+
+              if (tokenDelta === expectedTokenUnits && tokenDelta > 0n) {
+                onchainConfirmed = true;
+                liveSource = 'solana_rpc_verified_transfer';
+                trustedProviderId = 'trusted_solana_rpc';
               }
             }
           }
         }
-      } catch {
-        // RPC offline
       }
     }
 
@@ -423,12 +483,15 @@ export class PayoutVerifier {
         verificationId,
         proofVersion: 'v1.2',
         network: req.network,
+        chainId: verifiedChainId,
         asset: req.asset,
+        amount: req.expectedAmount,
         destinationWallet: req.destinationWallet,
         txHash: cleanTx,
         verifiedAt: timestamp,
         verificationSource: liveSource,
         verificationStatus: 'CONFIRMED',
+        rpcProviderId: trustedProviderId,
       };
 
       // Store in authentic receipts registry
@@ -439,11 +502,14 @@ export class PayoutVerifier {
         subjectId: req.bountyId || req.minerRewardId,
         metadataSafe: {
           verificationId,
+          network: req.network,
+          chainId: verifiedChainId,
           asset: req.asset,
           amount: req.expectedAmount,
           destinationWallet: req.destinationWallet,
           txHash: cleanTx,
           source: liveSource,
+          rpcProviderId: trustedProviderId,
         },
       });
 

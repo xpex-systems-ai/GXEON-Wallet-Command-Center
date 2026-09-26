@@ -52,7 +52,9 @@ export interface PayoutVerification {
   verificationId?: string;
   proofVersion?: string;
   network: string;
+  chainId?: number | string;
   asset: string;
+  amount?: string;
   destinationWallet: string;
   txHash: string;
   blockHeight?: number | string;
@@ -60,6 +62,7 @@ export interface PayoutVerification {
   verifiedAt: string;
   verificationSource: string;
   verificationStatus: VerificationStatus;
+  rpcProviderId?: string;
 }
 
 export interface BountyItem {
