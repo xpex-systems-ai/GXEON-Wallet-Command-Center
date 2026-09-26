@@ -1,0 +1,116 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Authentication & Owner-Isolation Helpers
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && resource != null && request.auth.uid == resource.data.ownerUid;
+    }
+
+    function isCreatingAsOwner() {
+      return isAuthenticated() &&
+             request.resource.data.ownerUid is string &&
+             request.auth.uid == request.resource.data.ownerUid;
+    }
+
+    function isOwnerPreserved() {
+      return request.resource.data.ownerUid == resource.data.ownerUid;
+    }
+
+    // Absolute security rule: NO private keys, seeds, mnemonics, passwords, or tokens in Firestore
+    function hasNoSensitiveFields(data) {
+      return !('privateKey' in data) &&
+             !('private_key' in data) &&
+             !('seed' in data) &&
+             !('seedPhrase' in data) &&
+             !('seed_phrase' in data) &&
+             !('mnemonic' in data) &&
+             !('recoveryPhrase' in data) &&
+             !('recovery_phrase' in data) &&
+             !('password' in data) &&
+             !('secret' in data) &&
+             !('rawToken' in data) &&
+             !('accessToken' in data) &&
+             !('refreshToken' in data) &&
+             !('signingKey' in data) &&
+             !('signing_key' in data);
+    }
+
+    // Users collection (isolated to matching user ID)
+    match /users/{userId} {
+      allow read, write: if isOwner(userId) && hasNoSensitiveFields(request.resource.data);
+    }
+
+    // Wallets collection (Owner-isolated Control Plane metadata & public addresses only)
+    match /wallets/{walletId} {
+      allow read: if isDocOwner();
+      allow create: if isCreatingAsOwner() &&
+                       hasNoSensitiveFields(request.resource.data) &&
+                       request.resource.data.publicAddress is string &&
+                       request.resource.data.name is string &&
+                       request.resource.data.network is string;
+      allow update: if isDocOwner() &&
+                       isOwnerPreserved() &&
+                       hasNoSensitiveFields(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    // Wallet connections (Owner-isolated EVM / Provider connections)
+    match /wallet_connections/{connectionId} {
+      allow read: if isDocOwner();
+      allow create: if isCreatingAsOwner() && hasNoSensitiveFields(request.resource.data);
+      allow update: if isDocOwner() && isOwnerPreserved() && hasNoSensitiveFields(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    // Networks & Supported Chains (Public read-only catalog; no client writes)
+    match /networks/{networkId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Assets registry (Public read-only catalog; no client writes)
+    match /assets/{assetId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Transactions log (Owner-isolated, strictly append-only, immutable)
+    match /transactions/{txId} {
+      allow read: if isDocOwner();
+      allow create: if isCreatingAsOwner() && hasNoSensitiveFields(request.resource.data);
+      allow update, delete: if false; // Immutable transaction history
+    }
+
+    // Bounties & Earnings pipeline (Owner-isolated)
+    match /bounties/{bountyId} {
+      allow read: if isDocOwner();
+      allow create: if isCreatingAsOwner() && hasNoSensitiveFields(request.resource.data);
+      allow update: if isDocOwner() && isOwnerPreserved() && hasNoSensitiveFields(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    // Payouts registry (Owner-isolated, immutable)
+    match /payouts/{payoutId} {
+      allow read: if isDocOwner();
+      allow create: if isCreatingAsOwner() && hasNoSensitiveFields(request.resource.data);
+      allow update: if isDocOwner() && isOwnerPreserved() && hasNoSensitiveFields(request.resource.data);
+      allow delete: if false;
+    }
+
+    // Audit Events (Owner-isolated, append-only security log, strictly immutable)
+    match /audit_events/{eventId} {
+      allow read: if isDocOwner();
+      allow create: if isCreatingAsOwner() && hasNoSensitiveFields(request.resource.data);
+      allow update, delete: if false; // Strictly append-only
+    }
+  }
+}
