@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Absolute security rule: NO private keys, seeds, mnemonics, or sensitive secrets in Firestore
+    function hasNoSensitiveFields(data) {
+      return !('privateKey' in data) &&
+             !('private_key' in data) &&
+             !('seed' in data) &&
+             !('seedPhrase' in data) &&
+             !('mnemonic' in data) &&
+             !('password' in data) &&
+             !('secret' in data) &&
+             !('rawToken' in data);
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read, write: if isOwner(userId) && hasNoSensitiveFields(request.resource.data);
+    }
+
+    // Wallets collection (Control Plane metadata & public addresses only)
+    match /wallets/{walletId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() &&
+                              hasNoSensitiveFields(request.resource.data) &&
+                              request.resource.data.publicAddress is string &&
+                              request.resource.data.name is string &&
+                              request.resource.data.network is string;
+      allow delete: if isAuthenticated();
+    }
+
+    // Wallet connections (EVM / Provider connections)
+    match /wallet_connections/{connectionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && hasNoSensitiveFields(request.resource.data);
+    }
+
+    // Networks & Supported Chains
+    match /networks/{networkId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Assets registry
+    match /assets/{assetId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Transactions log (Public TX tracking)
+    match /transactions/{txId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && hasNoSensitiveFields(request.resource.data);
+      allow delete: if false; // Immutable transaction history
+    }
+
+    // Bounties & Earnings pipeline
+    match /bounties/{bountyId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && hasNoSensitiveFields(request.resource.data);
+    }
+
+    // Payouts registry
+    match /payouts/{payoutId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && hasNoSensitiveFields(request.resource.data);
+    }
+
+    // Audit Events (Append-only security log, strictly immutable)
+    match /audit_events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && hasNoSensitiveFields(request.resource.data);
+      allow update, delete: if false; // Strictly append-only
+    }
+  }
+}
