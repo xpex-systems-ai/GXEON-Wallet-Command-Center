@@ -3,6 +3,7 @@ import {
   Plus,
   ExternalLink,
   AlertCircle,
+  ShieldAlert,
 } from 'lucide-react';
 import { BountyItem, BountyStatus, WalletItem } from '../../types';
 import { Badge } from '../../components/common/Badge';
@@ -12,7 +13,7 @@ interface EarningsViewProps {
   bounties: BountyItem[];
   wallets: WalletItem[];
   onAddBounty: (bounty: Omit<BountyItem, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  onUpdateStatus: (id: string, status: BountyStatus, txHash?: string) => void;
+  onUpdateStatus: (id: string, status: BountyStatus) => void;
 }
 
 export const EarningsView: React.FC<EarningsViewProps> = ({
@@ -67,7 +68,7 @@ export const EarningsView: React.FC<EarningsViewProps> = ({
             <h1 className="text-2xl font-bold text-white font-mono">
               Bounties & Earnings Center
             </h1>
-            <Badge variant="cyan">{bounties.length} SUBMISSIONS</Badge>
+            <Badge variant="cyan">{bounties.length} RECORDED</Badge>
           </div>
           <p className="text-xs text-slate-400 font-mono mt-1">
             Track Web3 grant submissions, bounties, review lifecycles, and confirmed payouts.
@@ -91,7 +92,7 @@ export const EarningsView: React.FC<EarningsViewProps> = ({
             GXEON ACCOUNTING INVARIANT: SUBMITTED ≠ PAID
           </span>
           <p className="text-slate-400 leading-relaxed">
-            Bounties in <em>SUBMITTED</em>, <em>UNDER_REVIEW</em>, or <em>PAYOUT_PENDING</em> status represent pipeline value and are <strong>never</strong> added to confirmed liquid balances until cryptographically verified on-chain.
+            Bounties in <em>SUBMITTED</em>, <em>UNDER_REVIEW</em>, or <em>PAYOUT_PENDING</em> status represent pipeline value and are <strong>never</strong> added to confirmed liquid balances. <strong>PAID is a protected state</strong> requiring verified on-chain cryptographic proof and cannot be manually forced.
           </p>
         </div>
       </div>
@@ -126,7 +127,7 @@ export const EarningsView: React.FC<EarningsViewProps> = ({
                 <th className="p-3.5">Expected Reward</th>
                 <th className="p-3.5">Destination</th>
                 <th className="p-3.5">Status</th>
-                <th className="p-3.5 text-right">Actions</th>
+                <th className="p-3.5 text-right">Pipeline Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1E314F]/60">
@@ -162,23 +163,41 @@ export const EarningsView: React.FC<EarningsViewProps> = ({
                     <Badge variant={getStatusBadgeVariant(b.status)}>{b.status}</Badge>
                   </td>
                   <td className="p-3.5 text-right">
-                    <div className="inline-flex items-center gap-1">
-                      {b.status !== 'PAID' && (
-                        <button
-                          onClick={() => onUpdateStatus(b.id, 'PAID')}
-                          className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[11px] transition-colors"
-                          title="Mark as Paid"
-                        >
-                          Mark Paid
-                        </button>
-                      )}
+                    <div className="inline-flex items-center gap-1.5">
+                      {/* State transitions adhering to state machine */}
                       {b.status === 'SUBMITTED' && (
                         <button
                           onClick={() => onUpdateStatus(b.id, 'UNDER_REVIEW')}
-                          className="px-2 py-1 bg-[#152238] hover:bg-[#1E314F] text-slate-300 rounded text-[11px] transition-colors"
+                          className="px-2.5 py-1 bg-[#152238] hover:bg-[#1E314F] text-slate-200 border border-[#1E314F] rounded text-[11px] transition-colors"
                         >
-                          Reviewing
+                          → Under Review
                         </button>
+                      )}
+                      {b.status === 'UNDER_REVIEW' && (
+                        <button
+                          onClick={() => onUpdateStatus(b.id, 'ACCEPTED')}
+                          className="px-2.5 py-1 bg-[#152238] hover:bg-[#1E314F] text-slate-200 border border-[#1E314F] rounded text-[11px] transition-colors"
+                        >
+                          → Accept
+                        </button>
+                      )}
+                      {b.status === 'ACCEPTED' && (
+                        <button
+                          onClick={() => onUpdateStatus(b.id, 'PAYOUT_PENDING')}
+                          className="px-2.5 py-1 bg-[#152238] hover:bg-[#1E314F] text-slate-200 border border-[#1E314F] rounded text-[11px] transition-colors"
+                        >
+                          → Payout Pending
+                        </button>
+                      )}
+                      {b.status === 'PAYOUT_PENDING' && (
+                        <span className="text-[10px] font-mono text-amber-400 flex items-center gap-1">
+                          <ShieldAlert className="w-3 h-3" /> Awaiting TX Proof
+                        </span>
+                      )}
+                      {b.status === 'PAID' && (
+                        <span className="text-[10px] font-mono text-emerald-400">
+                          ✓ Verified On-Chain
+                        </span>
                       )}
                     </div>
                   </td>
@@ -187,8 +206,11 @@ export const EarningsView: React.FC<EarningsViewProps> = ({
 
               {filteredBounties.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400">
-                    No bounties found matching the selected filter.
+                  <td colSpan={6} className="p-12 text-center text-slate-400">
+                    <div className="font-semibold text-slate-300">No verified bounty records yet.</div>
+                    <div className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
+                      All synthetic demo data has been removed. Register your actual grant and bounty submissions using the button above.
+                    </div>
                   </td>
                 </tr>
               )}

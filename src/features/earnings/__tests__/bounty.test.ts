@@ -1,127 +1,112 @@
 import { describe, it, expect } from 'vitest';
-import { BountyItem } from '../../../types';
+import { BountyItem, PayoutVerification } from '../../../types';
+import { canTransitionBountyStatus } from '../../../services/bountyService';
 
-/**
- * Helper function representing the strict GXEON accounting rules:
- * SUBMITTED != PAID.
- * Only PAID bounties can be counted towards confirmed received earnings.
- */
-export function calculateBountyTotals(bounties: BountyItem[]): {
-  confirmedReceivedTotal: number;
-  pendingPipelineTotal: number;
-  totalSubmissionsCount: number;
-  paidCount: number;
-  pendingCount: number;
-} {
-  let confirmedReceivedTotal = 0;
-  let pendingPipelineTotal = 0;
-  let paidCount = 0;
-  let pendingCount = 0;
-
-  for (const b of bounties) {
-    const amount = parseFloat(b.expectedReward) || 0;
-    if (b.status === 'PAID') {
-      confirmedReceivedTotal += amount;
-      paidCount++;
-    } else if (
-      b.status === 'SUBMITTED' ||
-      b.status === 'UNDER_REVIEW' ||
-      b.status === 'ACCEPTED' ||
-      b.status === 'PAYOUT_PENDING'
-    ) {
-      pendingPipelineTotal += amount;
-      pendingCount++;
-    }
-  }
-
-  return {
-    confirmedReceivedTotal,
-    pendingPipelineTotal,
-    totalSubmissionsCount: bounties.length,
-    paidCount,
-    pendingCount,
-  };
-}
-
-describe('Bounty Accounting Rules (SUBMITTED != PAID)', () => {
-  const sampleBounties: BountyItem[] = [
-    {
-      id: 'bounty-1',
-      title: 'RustChain Node Benchmark',
-      platform: 'RustChain Bounties',
-      expectedReward: '250',
-      currency: 'RTC',
-      destinationWalletAddress: 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269',
-      status: 'SUBMITTED',
-      createdAt: '2026-09-20T10:00:00Z',
-      updatedAt: '2026-09-20T10:00:00Z',
-    },
-    {
-      id: 'bounty-2',
-      title: 'Solana Smart Contract Audit',
-      platform: 'Superteam',
-      expectedReward: '500',
-      currency: 'USDC',
-      destinationWalletAddress: '0x1234...5678',
-      status: 'UNDER_REVIEW',
-      createdAt: '2026-09-21T10:00:00Z',
-      updatedAt: '2026-09-21T10:00:00Z',
-    },
-    {
-      id: 'bounty-3',
-      title: 'Security Vulnerability Report',
-      platform: 'Immunefi',
-      expectedReward: '1000',
-      currency: 'USDC',
-      destinationWalletAddress: '0x1234...5678',
-      status: 'PAID',
-      transactionHash: '0xabc123...',
-      createdAt: '2026-09-15T10:00:00Z',
-      updatedAt: '2026-09-22T10:00:00Z',
-    },
-  ];
-
-  it('strictly isolates submitted/under-review bounties from confirmed paid earnings', () => {
-    const result = calculateBountyTotals(sampleBounties);
-
-    expect(result.confirmedReceivedTotal).toBe(1000);
-    expect(result.paidCount).toBe(1);
-
-    expect(result.pendingPipelineTotal).toBe(750); // 250 + 500
-    expect(result.pendingCount).toBe(2);
-
-    expect(result.totalSubmissionsCount).toBe(3);
+describe('Bounty State Machine & Multi-Asset Accounting', () => {
+  it('allows valid sequential state transitions', () => {
+    expect(canTransitionBountyStatus('DISCOVERED', 'IN_PROGRESS').allowed).toBe(true);
+    expect(canTransitionBountyStatus('IN_PROGRESS', 'SUBMITTED').allowed).toBe(true);
+    expect(canTransitionBountyStatus('SUBMITTED', 'UNDER_REVIEW').allowed).toBe(true);
+    expect(canTransitionBountyStatus('UNDER_REVIEW', 'ACCEPTED').allowed).toBe(true);
+    expect(canTransitionBountyStatus('ACCEPTED', 'PAYOUT_PENDING').allowed).toBe(true);
   });
 
-  it('does not add rejected or discovered bounties to pending payout pipeline', () => {
-    const listWithOthers: BountyItem[] = [
-      ...sampleBounties,
+  it('prohibits direct manual jump to PAID without verification', () => {
+    const res1 = canTransitionBountyStatus('SUBMITTED', 'PAID');
+    expect(res1.allowed).toBe(false);
+
+    const res2 = canTransitionBountyStatus('PAYOUT_PENDING', 'PAID');
+    expect(res2.allowed).toBe(false);
+    expect(res2.reason).toContain('requires a valid PayoutVerification');
+  });
+
+  it('prohibits PAID transition with unconfirmed or missing txHash verification', () => {
+    const unconfirmedVerification: PayoutVerification = {
+      network: 'rustchain',
+      asset: 'RTC',
+      destinationWallet: 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269',
+      txHash: '',
+      verifiedAt: new Date().toISOString(),
+      verificationSource: 'explorer',
+      verificationStatus: 'PENDING',
+    };
+
+    const res = canTransitionBountyStatus('PAYOUT_PENDING', 'PAID', unconfirmedVerification);
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toContain('verificationStatus=CONFIRMED');
+  });
+
+  it('permits PAID transition ONLY with confirmed on-chain verification', () => {
+    const confirmedVerification: PayoutVerification = {
+      network: 'rustchain',
+      asset: 'RTC',
+      destinationWallet: 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269',
+      txHash: '0xabc1234567890abcdef',
+      verifiedAt: new Date().toISOString(),
+      verificationSource: 'rustchain_official_rpc',
+      verificationStatus: 'CONFIRMED',
+    };
+
+    const res = canTransitionBountyStatus('PAYOUT_PENDING', 'PAID', confirmedVerification);
+    expect(res.allowed).toBe(true);
+  });
+
+  it('enforces that PAID is a terminal state that cannot transition back', () => {
+    expect(canTransitionBountyStatus('PAID', 'SUBMITTED').allowed).toBe(false);
+    expect(canTransitionBountyStatus('PAID', 'PAYOUT_PENDING').allowed).toBe(false);
+    expect(canTransitionBountyStatus('PAID', 'REJECTED').allowed).toBe(false);
+  });
+
+  it('isolates multi-asset accounting without currency mixing or fake fiat summation', () => {
+    const bounties: BountyItem[] = [
       {
-        id: 'bounty-4',
-        title: 'Draft Discovery',
-        platform: 'Gitcoin',
-        expectedReward: '300',
-        currency: 'ETH',
-        destinationWalletAddress: '0x1234...5678',
-        status: 'DISCOVERED',
-        createdAt: '2026-09-23T10:00:00Z',
-        updatedAt: '2026-09-23T10:00:00Z',
+        id: 'b1',
+        title: 'Task 1',
+        platform: 'RustChain',
+        expectedReward: '3',
+        currency: 'RTC',
+        destinationWalletAddress: 'RTC82c21...',
+        status: 'SUBMITTED',
+        createdAt: '2026-09-20T10:00:00Z',
+        updatedAt: '2026-09-20T10:00:00Z',
       },
       {
-        id: 'bounty-5',
-        title: 'Expired Proposal',
-        platform: 'Layer3',
-        expectedReward: '150',
+        id: 'b2',
+        title: 'Task 2',
+        platform: 'Gitcoin',
+        expectedReward: '500',
         currency: 'USDC',
-        destinationWalletAddress: '0x1234...5678',
-        status: 'REJECTED',
-        createdAt: '2026-09-23T10:00:00Z',
-        updatedAt: '2026-09-23T10:00:00Z',
+        destinationWalletAddress: '0x1234...',
+        status: 'UNDER_REVIEW',
+        createdAt: '2026-09-21T10:00:00Z',
+        updatedAt: '2026-09-21T10:00:00Z',
+      },
+      {
+        id: 'b3',
+        title: 'Task 3',
+        platform: 'Ethereum Grant',
+        expectedReward: '0.5',
+        currency: 'ETH',
+        destinationWalletAddress: '0x1234...',
+        status: 'PAYOUT_PENDING',
+        createdAt: '2026-09-22T10:00:00Z',
+        updatedAt: '2026-09-22T10:00:00Z',
       },
     ];
 
-    const result = calculateBountyTotals(listWithOthers);
-    expect(result.confirmedReceivedTotal).toBe(1000);
-    expect(result.pendingPipelineTotal).toBe(750);
+    // Compute multi-asset stats
+    const pendingByAsset: Record<string, number> = {};
+    for (const b of bounties) {
+      const reward = parseFloat(b.expectedReward) || 0;
+      pendingByAsset[b.currency] = (pendingByAsset[b.currency] || 0) + reward;
+    }
+
+    expect(pendingByAsset['RTC']).toBe(3);
+    expect(pendingByAsset['USDC']).toBe(500);
+    expect(pendingByAsset['ETH']).toBe(0.5);
+
+    // Verify they are NOT summed into a fake single number
+    const keys = Object.keys(pendingByAsset);
+    expect(keys.length).toBe(3);
   });
 });

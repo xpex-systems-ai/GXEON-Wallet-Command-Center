@@ -1,39 +1,64 @@
-import { BountyItem, BountyStatus } from '../types';
+import { BountyItem, BountyStatus, PayoutVerification, MultiAssetEarningsStats } from '../types';
 import { auditService } from './auditService';
 
 const BOUNTY_STORAGE_KEY = 'gxeon_bounties_v1';
 
-export const INITIAL_BOUNTIES: BountyItem[] = [
-  {
-    id: 'bounty-rtc-01',
-    title: 'RustChain Core CLI Benchmark & Security Verification',
-    platform: 'RustChain Grants & Bounties',
-    submissionDate: '2026-09-20',
-    expectedReward: '250',
-    currency: 'RTC',
-    destinationWalletAddress: 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269',
-    destinationWalletId: 'rustchain-main',
-    status: 'SUBMITTED',
-    evidenceUrl: 'https://github.com/rustchain/bounties/issues/142',
-    notes: 'Submitted verification report. Awaiting grant reviewer audit.',
-    createdAt: '2026-09-20T14:30:00Z',
-    updatedAt: '2026-09-20T14:30:00Z',
-  },
-  {
-    id: 'bounty-evm-02',
-    title: 'Arbitrum Rollup Contract Analysis & Gas Optimizations',
-    platform: 'Gitcoin Passport / Grant Round',
-    submissionDate: '2026-09-22',
-    expectedReward: '500',
-    currency: 'USDC',
-    destinationWalletAddress: '0x71C...3a9',
-    status: 'UNDER_REVIEW',
-    evidenceUrl: 'https://gitcoin.co/grants/gxeon-arbitrum',
-    notes: 'Under review by platform judges.',
-    createdAt: '2026-09-22T09:00:00Z',
-    updatedAt: '2026-09-22T09:00:00Z',
-  },
-];
+/**
+ * Valid state transitions for the GXEON Bounty & Earnings State Machine.
+ * Transition to PAID strictly requires a confirmed PayoutVerification.
+ */
+export const ALLOWED_TRANSITIONS: Record<BountyStatus, BountyStatus[]> = {
+  DISCOVERED: ['IN_PROGRESS', 'REJECTED'],
+  IN_PROGRESS: ['SUBMITTED', 'DISCOVERED', 'REJECTED'],
+  SUBMITTED: ['UNDER_REVIEW', 'REJECTED'],
+  UNDER_REVIEW: ['ACCEPTED', 'SUBMITTED', 'REJECTED'],
+  ACCEPTED: ['PAYOUT_PENDING', 'REJECTED'],
+  PAYOUT_PENDING: ['PAID', 'REJECTED'],
+  PAID: [], // Terminal state
+  REJECTED: ['DISCOVERED'],
+};
+
+export function canTransitionBountyStatus(
+  current: BountyStatus,
+  target: BountyStatus,
+  verification?: PayoutVerification
+): { allowed: boolean; reason?: string } {
+  if (current === target) {
+    return { allowed: true };
+  }
+
+  const allowedNext = ALLOWED_TRANSITIONS[current] || [];
+  if (!allowedNext.includes(target)) {
+    return {
+      allowed: false,
+      reason: `Invalid transition from ${current} to ${target}. Valid next states: [${allowedNext.join(', ')}]`,
+    };
+  }
+
+  // Strict check: transition to PAID requires confirmed on-chain verification
+  if (target === 'PAID') {
+    if (!verification) {
+      return {
+        allowed: false,
+        reason: 'Transition to PAID requires a valid PayoutVerification proof.',
+      };
+    }
+    if (verification.verificationStatus !== 'CONFIRMED') {
+      return {
+        allowed: false,
+        reason: `Transition to PAID requires verificationStatus=CONFIRMED, received ${verification.verificationStatus}.`,
+      };
+    }
+    if (!verification.txHash || verification.txHash.trim() === '') {
+      return {
+        allowed: false,
+        reason: 'Transition to PAID requires a confirmed transaction hash.',
+      };
+    }
+  }
+
+  return { allowed: true };
+}
 
 export class BountyService {
   private bounties: BountyItem[] = [];
@@ -48,11 +73,12 @@ export class BountyService {
       if (stored) {
         this.bounties = JSON.parse(stored);
       } else {
-        this.bounties = [...INITIAL_BOUNTIES];
+        // Strict invariant: initial state MUST be empty. Zero synthetic records.
+        this.bounties = [];
         this.saveToStorage();
       }
     } catch {
-      this.bounties = [...INITIAL_BOUNTIES];
+      this.bounties = [];
     }
   }
 
@@ -69,8 +95,12 @@ export class BountyService {
   }
 
   addBounty(bounty: Omit<BountyItem, 'id' | 'createdAt' | 'updatedAt'>): BountyItem {
+    // Initial status can never be initialized directly to PAID without verification
+    const safeStatus: BountyStatus = bounty.status === 'PAID' ? 'SUBMITTED' : bounty.status;
+
     const newBounty: BountyItem = {
       ...bounty,
+      status: safeStatus,
       id: `bounty-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -87,38 +117,64 @@ export class BountyService {
     return newBounty;
   }
 
-  updateBountyStatus(id: string, status: BountyStatus, txHash?: string): boolean {
-    let updated = false;
+  updateBountyStatus(
+    id: string,
+    newStatus: BountyStatus,
+    verification?: PayoutVerification
+  ): { success: boolean; error?: string } {
+    const bounty = this.bounties.find((b) => b.id === id);
+    if (!bounty) {
+      return { success: false, error: 'Bounty not found' };
+    }
+
+    const check = canTransitionBountyStatus(bounty.status, newStatus, verification);
+    if (!check.allowed) {
+      auditService.recordEvent(
+        'bounty_status_rejected',
+        `Blocked invalid status change for bounty ${id}: ${check.reason}`,
+        'warning'
+      );
+      return { success: false, error: check.reason };
+    }
+
     this.bounties = this.bounties.map((b) => {
       if (b.id === id) {
-        updated = true;
         return {
           ...b,
-          status,
-          transactionHash: txHash || b.transactionHash,
+          status: newStatus,
+          payoutVerification: verification || b.payoutVerification,
           updatedAt: new Date().toISOString(),
         };
       }
       return b;
     });
 
-    if (updated) {
-      this.saveToStorage();
-      auditService.recordEvent('bounty_status_updated', `Bounty ${id} status updated to ${status}`);
-    }
-    return updated;
+    this.saveToStorage();
+    auditService.recordEvent(
+      'bounty_status_changed',
+      `Bounty ${id} transitioned from ${bounty.status} to ${newStatus}`
+    );
+
+    return { success: true };
   }
 
-  getStats() {
-    let confirmedPaidTotal = 0;
-    let pendingPipelineTotal = 0;
+  /**
+   * Multi-Asset Statistics:
+   * Strictly isolates assets (RTC, USDC, ETH, SOL) without summing them together.
+   * Fiat value is explicitly null (UNAVAILABLE) because price oracle is not connected in V1.
+   */
+  getStats(): MultiAssetEarningsStats {
+    const pendingByAsset: Record<string, number> = {};
+    const confirmedByAsset: Record<string, number> = {};
     let submittedCount = 0;
     let paidCount = 0;
 
     for (const b of this.bounties) {
       const reward = parseFloat(b.expectedReward) || 0;
+      const currency = b.currency.toUpperCase();
+
       if (b.status === 'PAID') {
-        confirmedPaidTotal += reward;
+        confirmedByAsset[currency] = (confirmedByAsset[currency] || 0) + reward;
         paidCount++;
       } else if (
         b.status === 'SUBMITTED' ||
@@ -126,17 +182,18 @@ export class BountyService {
         b.status === 'ACCEPTED' ||
         b.status === 'PAYOUT_PENDING'
       ) {
-        pendingPipelineTotal += reward;
+        pendingByAsset[currency] = (pendingByAsset[currency] || 0) + reward;
         submittedCount++;
       }
     }
 
     return {
-      confirmedPaidTotal,
-      pendingPipelineTotal,
+      pendingByAsset,
+      confirmedByAsset,
       submittedCount,
       paidCount,
       totalCount: this.bounties.length,
+      fiatValue: null,
     };
   }
 }

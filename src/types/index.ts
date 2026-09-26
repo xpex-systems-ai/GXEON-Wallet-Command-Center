@@ -6,6 +6,7 @@ export type WalletMode = 'watch_only' | 'local_signing' | 'connected_provider';
 
 export interface WalletItem {
   id: string;
+  ownerUid?: string;
   name: string;
   network: string;
   chainId?: number | string;
@@ -14,7 +15,7 @@ export interface WalletItem {
   connectionType: ConnectionType;
   ownershipStatus: OwnershipStatus;
   mode: WalletMode;
-  balance?: string | null; // e.g. null or "--" when unavailable, never fabricated
+  balance?: string | null; // null or '--' when unavailable, never fabricated
   isOnline?: boolean;
   purpose?: string;
   notes?: string;
@@ -32,8 +33,23 @@ export type BountyStatus =
   | 'PAID'
   | 'REJECTED';
 
+export type VerificationStatus = 'UNVERIFIED' | 'PENDING' | 'CONFIRMED' | 'FAILED';
+
+export interface PayoutVerification {
+  network: string;
+  asset: string;
+  destinationWallet: string;
+  txHash: string;
+  blockHeight?: number | string;
+  confirmationReference?: string;
+  verifiedAt: string;
+  verificationSource: string;
+  verificationStatus: VerificationStatus;
+}
+
 export interface BountyItem {
   id: string;
+  ownerUid?: string;
   title: string;
   platform: string;
   submissionDate?: string;
@@ -43,7 +59,7 @@ export interface BountyItem {
   destinationWalletId?: string;
   status: BountyStatus;
   evidenceUrl?: string;
-  transactionHash?: string;
+  payoutVerification?: PayoutVerification;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -54,6 +70,7 @@ export type TransactionType = 'INCOMING_PAYOUT' | 'BOUNTY_REWARD' | 'TRANSFER' |
 
 export interface TransactionItem {
   id: string;
+  ownerUid?: string;
   date: string;
   network: string;
   walletId: string;
@@ -70,6 +87,7 @@ export interface TransactionItem {
 
 export interface AuditEvent {
   id: string;
+  ownerUid?: string;
   timestamp: string;
   event: string;
   detail: string;
@@ -98,4 +116,13 @@ export interface BridgeStatusResponse {
   registered_wallets_count: number;
   active_adapters: number;
   uptime: string;
+}
+
+export interface MultiAssetEarningsStats {
+  pendingByAsset: Record<string, number>;
+  confirmedByAsset: Record<string, number>;
+  submittedCount: number;
+  paidCount: number;
+  totalCount: number;
+  fiatValue: null; // Explicitly null / UNAVAILABLE in V1 (no unverified currency mixing)
 }
