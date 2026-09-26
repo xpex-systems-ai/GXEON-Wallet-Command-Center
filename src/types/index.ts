@@ -51,6 +51,7 @@ export type VerificationStatus = 'UNVERIFIED' | 'FORMAT_VALID' | 'QUERYING' | 'P
 export interface PayoutVerification {
   verificationId?: string;
   proofVersion?: string;
+  subjectId?: string;
   network: string;
   chainId?: number | string;
   asset: string;
@@ -216,7 +217,7 @@ export interface BridgeDetectionResult {
  * ============================================================
  */
 
-export type MiningStatus = 'NOT_INSTALLED' | 'INSTALLED' | 'CONFIGURED' | 'MINING' | 'STOPPED' | 'ERROR';
+export type MiningStatus = 'NOT_INSTALLED' | 'NOT_CONFIGURED' | 'INSTALLED' | 'CONFIGURED' | 'MINING' | 'STOPPED' | 'ERROR';
 export type AttestationState = 'UNATTESTED' | 'PENDING' | 'ATTESTED' | 'EXPIRED' | 'FAILED';
 
 export interface HardwareMetadata {
