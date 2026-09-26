@@ -316,22 +316,45 @@ export class PayoutVerifier {
           };
         }
 
-        // Network Verification: Chain ID must match expected network
+        // EVM CHAIN ID ABSOLUTE GATE: CONFIRMED requires valid, matching chain ID and trusted provider
         const expectedChainId = EVM_CHAIN_IDS[req.network.toLowerCase()];
-        if (chainId !== null && !isNaN(chainId)) {
-          if (expectedChainId !== undefined && chainId !== expectedChainId) {
-            return {
-              network: req.network,
-              asset: req.asset,
-              destinationWallet: req.destinationWallet,
-              txHash: cleanTx,
-              verifiedAt: timestamp,
-              verificationSource: 'evm_network_mismatch',
-              verificationStatus: 'FAILED',
-            };
-          }
-          verifiedChainId = chainId;
+        if (expectedChainId === undefined) {
+          return {
+            network: req.network,
+            asset: req.asset,
+            destinationWallet: req.destinationWallet,
+            txHash: cleanTx,
+            verifiedAt: timestamp,
+            verificationSource: 'evm_unsupported_network',
+            verificationStatus: 'UNVERIFIED',
+          };
         }
+
+        if (chainId === null || Number.isNaN(chainId)) {
+          return {
+            network: req.network,
+            asset: req.asset,
+            destinationWallet: req.destinationWallet,
+            txHash: cleanTx,
+            verifiedAt: timestamp,
+            verificationSource: 'evm_chain_id_unavailable',
+            verificationStatus: 'UNVERIFIED',
+          };
+        }
+
+        if (chainId !== expectedChainId) {
+          return {
+            network: req.network,
+            asset: req.asset,
+            destinationWallet: req.destinationWallet,
+            txHash: cleanTx,
+            verifiedAt: timestamp,
+            verificationSource: 'evm_network_mismatch',
+            verificationStatus: 'FAILED',
+          };
+        }
+
+        verifiedChainId = chainId;
 
         const expectedDest = (req.destinationWallet || '').trim().toLowerCase();
         const assetNormalized = req.asset.toUpperCase();
@@ -477,7 +500,7 @@ export class PayoutVerifier {
     // ============================================================
     // Strict Invariant: RTC remains UNVERIFIED / FORMAT_VALID until official RPC verifier exists.
 
-    if (onchainConfirmed) {
+    if (onchainConfirmed && trustedProviderId !== 'none') {
       const verificationId = `vproof_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
       const verification: PayoutVerification = {
         verificationId,

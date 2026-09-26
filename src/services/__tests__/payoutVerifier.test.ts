@@ -162,7 +162,121 @@ describe('Payout Verification Engine — Trusted Money Source & Financial Gate',
     expect(result.verificationId).toBeDefined();
   });
 
-  it('injected provider with wrong chainId FAILS verification', async () => {
+  it('correct USDC contract + Base chain (8453) + recipient + amount confirms payout', async () => {
+    (global as any).window = {
+      ethereum: {
+        request: vi.fn().mockImplementation(async ({ method }) => {
+          if (method === 'eth_chainId') return '0x2105'; // Base (8453)
+          if (method === 'eth_getTransactionReceipt') {
+            return {
+              status: '0x1',
+              logs: [
+                {
+                  address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Real Base USDC
+                  topics: [
+                    '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+                    '0x0000000000000000000000001111111111111111111111111111111111111111',
+                    '0x00000000000000000000000071c8407c27dab54e627b0a726715f33346e0176b',
+                  ],
+                  data: '0x0000000000000000000000000000000000000000000000000000000005f5e100', // 100 USDC (100 * 10^6)
+                },
+              ],
+            };
+          }
+          if (method === 'eth_getTransactionByHash') {
+            return {
+              to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+              value: '0x0',
+            };
+          }
+          return null;
+        }),
+      },
+    };
+
+    const result = await payoutVerifier.verifyPayout({
+      bountyId: 'b-base-usdc',
+      network: 'base',
+      asset: 'USDC',
+      destinationWallet: '0x71c8407c27dab54e627b0a726715f33346e0176b',
+      expectedAmount: '100',
+      txHash: '0x3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b',
+    });
+
+    expect(result.verificationStatus).toBe('CONFIRMED');
+    expect(result.verificationSource).toBe('evm_rpc_erc20_transfer');
+    expect(result.rpcProviderId).toBe('injected_eip1193_provider');
+    expect(result.chainId).toBe(8453);
+    expect(result.amount).toBe('100');
+    expect(result.verificationId).toBeDefined();
+  });
+
+  it('receipt+tx valid but chainId missing is NOT CONFIRMED (UNVERIFIED with evm_chain_id_unavailable)', async () => {
+    (global as any).window = {
+      ethereum: {
+        request: vi.fn().mockImplementation(async ({ method }) => {
+          if (method === 'eth_chainId') return null; // Chain ID missing / null
+          if (method === 'eth_getTransactionReceipt') {
+            return {
+              status: '0x1',
+              blockNumber: '0x1000',
+              logs: [],
+            };
+          }
+          if (method === 'eth_getTransactionByHash') {
+            return {
+              to: '0x71c8407c27dab54e627b0a726715f33346e0176b',
+              value: '0x6f05b59d3b20000', // 0.5 ETH in wei
+            };
+          }
+          return null;
+        }),
+      },
+    };
+
+    const result = await payoutVerifier.verifyPayout({
+      bountyId: 'b-chain-missing',
+      network: 'ethereum',
+      asset: 'ETH',
+      destinationWallet: '0x71c8407c27dab54e627b0a726715f33346e0176b',
+      expectedAmount: '0.5',
+      txHash: '0x3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b',
+    });
+
+    expect(result.verificationStatus).toBe('UNVERIFIED');
+    expect(result.verificationSource).toBe('evm_chain_id_unavailable');
+    expect(result.verificationId).toBeUndefined();
+  });
+
+  it('unsupported EVM network is NOT CONFIRMED (UNVERIFIED with evm_unsupported_network)', async () => {
+    (global as any).window = {
+      ethereum: {
+        request: vi.fn().mockImplementation(async ({ method }) => {
+          if (method === 'eth_chainId') return '0x13881'; // 80001 (Mumbai testnet / unlisted)
+          if (method === 'eth_getTransactionReceipt') return { status: '0x1' };
+          if (method === 'eth_getTransactionByHash') {
+            return { to: '0x71c8407c27dab54e627b0a726715f33346e0176b', value: '0x6f05b59d3b20000' };
+          }
+          return null;
+        }),
+      },
+    };
+
+    const result = await payoutVerifier.verifyPayout({
+      bountyId: 'b-unsupported-net',
+      network: 'unsupported_testnet',
+      asset: 'ETH',
+      destinationWallet: '0x71c8407c27dab54e627b0a726715f33346e0176b',
+      expectedAmount: '0.5',
+      txHash: '0x3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b',
+    });
+
+    expect(result.verificationStatus).toBe('UNVERIFIED');
+    expect(result.verificationSource).toBe('evm_unsupported_network');
+    expect(result.verificationId).toBeUndefined();
+  });
+
+  it('injected provider with wrong chainId FAILS verification (FAILED with evm_network_mismatch)', async () => {
     (global as any).window = {
       ethereum: {
         request: vi.fn().mockImplementation(async ({ method }) => {
