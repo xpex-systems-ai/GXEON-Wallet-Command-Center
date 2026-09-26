@@ -42,7 +42,7 @@ GXEON_QUICK_FIX_SPEC = {
 
 class StripeDirectSalesEngine:
     def __init__(self, webhook_secret=None):
-        self.webhook_secret = webhook_secret or os.getenv("STRIPE_WEBHOOK_SECRET", "whsec_mock_dev_secret")
+        self.webhook_secret = webhook_secret or os.getenv("STRIPE_WEBHOOK_SECRET")
         self.processed_event_ids = set()
         self.orders = {}
         self.jobs = {}
@@ -98,6 +98,13 @@ class StripeDirectSalesEngine:
 
     def process_webhook(self, payload_bytes, signature_header):
         """Processes Stripe webhook with signature verification and idempotency."""
+        if not self.webhook_secret:
+            return {
+                "status": "UNVERIFIED_SIGNATURE",
+                "processed": False,
+                "error": "STRIPE_WEBHOOK_SECRET is not configured"
+            }
+
         # 1. Signature Verification
         if not signature_header or not self.verify_signature(payload_bytes, signature_header):
             return {
@@ -194,8 +201,8 @@ class StripeDirectSalesEngine:
 
     def verify_signature(self, payload_bytes, signature_header):
         """HMAC-SHA256 signature verification matching Stripe standard."""
-        if signature_header == "mock_valid_sig":
-            return True
+        if not self.webhook_secret:
+            return False
         try:
             # Parse timestamp and signature: t=...,v1=...
             parts = dict(item.split("=") for item in signature_header.split(","))

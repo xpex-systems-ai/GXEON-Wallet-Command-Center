@@ -1,43 +1,78 @@
 import React, { useState } from 'react';
 import { GXEON_QUICK_FIX_SERVICE, CustomerOrder } from './types';
+import { salesClientService } from '../../services/salesClientService';
 
 interface QuickFixServiceCardProps {
-  stripePaymentLinkUrl?: string;
   onOrderCreated?: (order: CustomerOrder) => void;
+  onCheckoutRequested?: (input: {
+    customerName: string;
+    customerEmail: string;
+    problemSummary: string;
+    repoOrCodeUrl?: string;
+  }) => Promise<{ checkoutUrl: string; orderId: string }>;
 }
 
 export const QuickFixServiceCard: React.FC<QuickFixServiceCardProps> = ({
-  stripePaymentLinkUrl = 'https://buy.stripe.com/gxeon_quick_fix_preview',
-  onOrderCreated
+  onOrderCreated,
+  onCheckoutRequested
 }) => {
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [problemSummary, setProblemSummary] = useState('');
   const [repoOrCodeUrl, setRepoOrCodeUrl] = useState('');
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [activeOrder, setActiveOrder] = useState<CustomerOrder | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [checkoutResult, setCheckoutResult] = useState<{ checkoutUrl: string; orderId: string } | null>(null);
 
-  const handleSubmitIntake = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerEmail || !problemSummary) return;
 
-    const newOrder: CustomerOrder = {
-      id: `ord_${Date.now()}`,
+    setIsLoading(true);
+    setErrorMsg(null);
+
+    const intakePayload = {
       customerName,
       customerEmail,
-      serviceId: GXEON_QUICK_FIX_SERVICE.id,
-      amountBrl: GXEON_QUICK_FIX_SERVICE.priceBrl,
-      state: 'CHECKOUT_CREATED',
       problemSummary,
-      repoOrCodeUrl,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      repoOrCodeUrl
     };
 
-    setActiveOrder(newOrder);
-    setIsSubmitted(true);
-    if (onOrderCreated) {
-      onOrderCreated(newOrder);
+    try {
+      let result: { checkoutUrl: string; orderId: string };
+      if (onCheckoutRequested) {
+        result = await onCheckoutRequested(intakePayload);
+      } else {
+        result = await salesClientService.requestCheckout(intakePayload);
+      }
+
+      setCheckoutResult(result);
+
+      const newOrder: CustomerOrder = {
+        id: result.orderId,
+        customerName,
+        customerEmail,
+        serviceId: GXEON_QUICK_FIX_SERVICE.id,
+        amountBrl: GXEON_QUICK_FIX_SERVICE.priceBrl,
+        state: 'CHECKOUT_CREATED',
+        problemSummary,
+        repoOrCodeUrl,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      if (onOrderCreated) {
+        onOrderCreated(newOrder);
+      }
+
+      // Automatically redirect to verified Stripe Checkout session URL
+      if (result.checkoutUrl && result.checkoutUrl.startsWith('https://')) {
+        window.location.href = result.checkoutUrl;
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erro ao criar sessão de pagamento no servidor.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -60,7 +95,7 @@ export const QuickFixServiceCard: React.FC<QuickFixServiceCardProps> = ({
           <span className="text-3xl font-extrabold text-emerald-400">
             R$ {GXEON_QUICK_FIX_SERVICE.priceBrl.toFixed(2)}
           </span>
-          <span className="text-xs text-slate-500 block">via Stripe Checkout</span>
+          <span className="text-xs text-slate-500 block">via Stripe Hosted Checkout</span>
         </div>
       </div>
 
@@ -100,8 +135,14 @@ export const QuickFixServiceCard: React.FC<QuickFixServiceCardProps> = ({
         </div>
       </div>
 
-      {!isSubmitted ? (
-        <form onSubmit={handleSubmitIntake} className="bg-slate-950 p-5 rounded-lg border border-slate-800 space-y-4">
+      {errorMsg && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-xs">
+          {errorMsg}
+        </div>
+      )}
+
+      {!checkoutResult ? (
+        <form onSubmit={handleSubmit} className="bg-slate-950 p-5 rounded-lg border border-slate-800 space-y-4">
           <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
             1. Descreva o problema para iniciar
           </h3>
@@ -151,9 +192,10 @@ export const QuickFixServiceCard: React.FC<QuickFixServiceCardProps> = ({
           </div>
           <button
             type="submit"
-            className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2 text-sm shadow-lg shadow-emerald-900/30"
+            disabled={isLoading}
+            className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2 text-sm shadow-lg shadow-emerald-900/30 disabled:opacity-50"
           >
-            Prosseguir para Pagamento (R$ 49,00) →
+            {isLoading ? 'Conectando ao Stripe Server...' : 'Prosseguir para Pagamento (R$ 49,00) →'}
           </button>
         </form>
       ) : (
@@ -161,28 +203,26 @@ export const QuickFixServiceCard: React.FC<QuickFixServiceCardProps> = ({
           <div className="w-12 h-12 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-xl border border-emerald-500/20">
             ✓
           </div>
-          <h3 className="text-lg font-bold text-white">Solicitação Registrada: #{activeOrder?.id}</h3>
+          <h3 className="text-lg font-bold text-white">Sessão Criada: #{checkoutResult.orderId}</h3>
           <p className="text-sm text-slate-300 max-w-md mx-auto">
-            Para iniciar o diagnóstico e a correção imediata, conclua o pagamento seguro de <strong>R$ 49,00</strong> via Stripe Checkout.
+            Redirecionando para o Stripe Checkout oficial para pagamento de <strong>R$ 49,00</strong>.
           </p>
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
             <a
-              href={stripePaymentLinkUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={checkoutResult.checkoutUrl}
               className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors text-sm flex items-center justify-center gap-2"
             >
-              💳 Pagar R$ 49,00 no Stripe Checkout
+              💳 Ir para o Stripe Checkout
             </a>
             <button
-              onClick={() => setIsSubmitted(false)}
+              onClick={() => setCheckoutResult(null)}
               className="w-full sm:w-auto px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors text-sm"
             >
-              Editar Detalhes
+              Novo Pedido
             </button>
           </div>
           <div className="text-xs text-slate-500 mt-2">
-            Status do Pagamento: <span className="text-amber-400 font-mono font-bold">{activeOrder?.state}</span> (Aguardando confirmação do webhook do Stripe)
+            Status: <span className="text-amber-400 font-mono font-bold">CHECKOUT_CREATED</span> (Aguardando confirmação exclusiva do webhook)
           </div>
         </div>
       )}
