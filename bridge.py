@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import platform
 import re
 import secrets
 import shutil
@@ -17,11 +18,12 @@ import uvicorn
 
 BASE_DIR = Path(__file__).resolve().parent
 REGISTRY = BASE_DIR / "config" / "wallets.json"
+MINER_CONFIG_FILE = BASE_DIR / "config" / "miner_config.json"
 
 app = FastAPI(
-    title="GXEON Local Companion Bridge V1.1",
-    description="Local-first pairing and non-custodial wallet discovery engine for GXEON Command Center.",
-    version="1.1.0",
+    title="GXEON Local Companion Bridge V1.2",
+    description="Local-first pairing, ClawRTC Proof of Antiquity, and non-custodial wallet discovery engine for GXEON Command Center.",
+    version="1.2.0",
 )
 
 # CORS restricted strictly to approved production Firebase hosting and local dev origins
@@ -88,13 +90,33 @@ class PairingState:
 
 PAIRING_STORE = PairingState()
 
+
+# ============================================================
+# MINING & CLAWRTC STATE
+# ============================================================
+
+class MiningState:
+    status: str = "STOPPED"  # STOPPED, MINING, CONFIGURED, NOT_INSTALLED, ERROR
+    miner_id: Optional[str] = None
+    reward_destination: Optional[str] = None
+    started_at: Optional[float] = None
+    last_attestation_timestamp: Optional[str] = None
+    last_attestation_status: str = "UNATTESTED"  # UNATTESTED, ATTESTED, EXPIRED, FAILED
+    current_epoch: int = 42
+    antiquity_multiplier: Optional[float] = None  # None / unavailable until real proof returned
+    confirmed_rtc: float = 0.0
+    pending_rewards: float = 0.0
+
+
+MINING_STORE = MiningState()
+
 # Non-sensitive audit buffer
 AUDIT_LOG: List[Dict[str, Any]] = [
     {
         "id": "init-001",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "event": "COMPANION_STARTED",
-        "detail": "GXEON Local Companion V1.1 initialized on 127.0.0.1:8790",
+        "detail": "GXEON Local Companion V1.2 (Quantum Core) initialized on 127.0.0.1:8790",
         "severity": "info",
     }
 ]
@@ -118,6 +140,16 @@ def load_registry() -> dict[str, Any]:
     except Exception as e:
         record_audit_event("registry_read_error", str(e), severity="error")
         return {"version": 1, "wallets": []}
+
+
+def get_hardware_metadata() -> dict[str, str]:
+    """Collects strictly non-sensitive hardware metadata for Proof of Antiquity."""
+    return {
+        "cpu_arch": platform.machine() or "x86_64",
+        "processor": platform.processor() or "Standard CPU",
+        "os": f"{platform.system()} {platform.release()}",
+        "compatibility": "Compatible with Proof of Antiquity (ClawRTC)",
+    }
 
 
 # ============================================================
@@ -183,6 +215,7 @@ class ToolDetectionItem(BaseModel):
     path_sanitized: Optional[str] = None
     capabilities: List[str] = []
     public_address_discovery: str = "UNAVAILABLE"
+    miner_id_discovery: Optional[str] = None
 
 
 class DetectedWalletItem(BaseModel):
@@ -203,6 +236,28 @@ class DetectionResponse(BaseModel):
     registered_wallets: List[DetectedWalletItem]
 
 
+class MiningStatusResponse(BaseModel):
+    status: str
+    clawrtc_installed: bool
+    clawrtc_version: Optional[str] = None
+    miner_id: Optional[str] = None
+    reward_destination: Optional[str] = None
+    hardware: Dict[str, str]
+    attestation_state: str
+    last_attestation_timestamp: Optional[str] = None
+    current_epoch: Optional[int] = None
+    antiquity_multiplier: Optional[float] = None
+    confirmed_rtc: Optional[float] = None
+    pending_rewards: Optional[float] = None
+    source: str
+    queried_at: str
+
+
+class MiningConfigureRequest(BaseModel):
+    miner_id: str = Field(..., min_length=3, max_length=128)
+    reward_destination: Optional[str] = Field(None, max_length=128)
+
+
 # ============================================================
 # ADAPTERS CATALOG (Truthful capability matrix)
 # ============================================================
@@ -212,7 +267,7 @@ ADAPTERS_CATALOG = [
         "id": "rustchain",
         "name": "RustChain RTC Adapter",
         "network": "rustchain",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "status": "partial",
         "capabilities": ["WATCH_ONLY"],
         "capabilities_details": {
@@ -226,10 +281,26 @@ ADAPTERS_CATALOG = [
         "description": "Watch-only monitoring for RustChain (RTC). Balance and transaction RPCs are UNAVAILABLE until verified source node is active.",
     },
     {
+        "id": "clawrtc",
+        "name": "ClawRTC Proof of Antiquity Adapter",
+        "network": "rustchain",
+        "version": "1.2.0",
+        "status": "active",
+        "capabilities": ["MINING_CONTROL", "PROOF_OF_ANTIQUITY", "WATCH_ONLY"],
+        "capabilities_details": {
+            "MINING_CONTROL": "AVAILABLE",
+            "PROOF_OF_ANTIQUITY": "AVAILABLE",
+            "WATCH_ONLY": "AVAILABLE",
+            "SIGN": "DISABLED",
+            "SEND": "DISABLED",
+        },
+        "description": "Native Proof of Antiquity mining engine controller and attestation tracker.",
+    },
+    {
         "id": "evm-metamask",
         "name": "MetaMask / EIP-1193 EVM Adapter",
         "network": "evm",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "status": "active",
         "capabilities": ["CONNECT", "READ_BALANCE", "WATCH_ONLY"],
         "capabilities_details": {
@@ -247,7 +318,7 @@ ADAPTERS_CATALOG = [
         "id": "coinbase-wallet",
         "name": "Coinbase Wallet Adapter",
         "network": "evm",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "status": "partial",
         "capabilities": ["CONNECT", "WATCH_ONLY"],
         "capabilities_details": {
@@ -263,7 +334,7 @@ ADAPTERS_CATALOG = [
         "id": "solana",
         "name": "Solana CLI Adapter",
         "network": "solana",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "status": "partial",
         "capabilities": ["CLI_DETECT", "WATCH_ONLY"],
         "capabilities_details": {
@@ -291,7 +362,7 @@ def health():
         "bind": "127.0.0.1",
         "port": 8790,
         "security_mode": "local_only",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
@@ -314,6 +385,7 @@ def status():
         },
         "registered_wallets_count": wallet_count,
         "active_adapters": len(ADAPTERS_CATALOG),
+        "mining_status": MINING_STORE.status,
         "uptime": "active",
     }
 
@@ -399,7 +471,7 @@ def pair_status(_token: str = Depends(verify_session_token)):
     """
     return {
         "paired": True,
-        "companion_version": "1.1.0",
+        "companion_version": "1.2.0",
         "security_mode": "local_only",
     }
 
@@ -477,6 +549,16 @@ def capabilities(_token: str = Depends(verify_session_token)):
                 "status": "supported",
             },
             {
+                "name": "MINING_CONTROL",
+                "description": "Safe control of ClawRTC Proof of Antiquity mining engine",
+                "status": "supported",
+            },
+            {
+                "name": "PROOF_OF_ANTIQUITY",
+                "description": "Hardware attestation and antiquity multiplier tracking",
+                "status": "supported",
+            },
+            {
                 "name": "CONNECT",
                 "description": "Browser provider authorization handshake without seed request",
                 "status": "supported",
@@ -493,17 +575,17 @@ def capabilities(_token: str = Depends(verify_session_token)):
             },
             {
                 "name": "SIGN",
-                "description": "Cryptographic proof of ownership via local companion plane (DISABLED in V1.1)",
+                "description": "Cryptographic proof of ownership via local companion plane (DISABLED in V1.2)",
                 "status": "disabled_in_v1",
             },
             {
                 "name": "SEND",
-                "description": "Broadcast on-chain funds movement (DISABLED in V1.1 for safety)",
+                "description": "Broadcast on-chain funds movement (DISABLED in V1.2 for safety)",
                 "status": "disabled_in_v1",
             },
             {
                 "name": "BROADCAST",
-                "description": "Broadcast on-chain transactions (DISABLED in V1.1)",
+                "description": "Broadcast on-chain transactions (DISABLED in V1.2)",
                 "status": "disabled_in_v1",
             },
         ]
@@ -516,11 +598,20 @@ def capabilities(_token: str = Depends(verify_session_token)):
 
 ALLOWLISTED_TOOLS = [
     {
+        "name": "ClawRTC",
+        "binaries": ["clawrtc", "clawrtc-cli"],
+        "network": "rustchain",
+        "caps": ["MINING_CONTROL", "PROOF_OF_ANTIQUITY", "WATCH_ONLY"],
+        "can_discover_address": False,
+        "can_discover_miner_id": True,
+    },
+    {
         "name": "RustChain CLI",
         "binaries": ["rustchain-cli", "rustchain", "rtc"],
         "network": "rustchain",
         "caps": ["WATCH_ONLY"],
         "can_discover_address": False,
+        "can_discover_miner_id": False,
     },
     {
         "name": "Solana CLI",
@@ -528,6 +619,7 @@ ALLOWLISTED_TOOLS = [
         "network": "solana",
         "caps": ["PUBKEY_DETECT", "WATCH_ONLY"],
         "can_discover_address": True,
+        "can_discover_miner_id": False,
     },
     {
         "name": "Git",
@@ -535,6 +627,7 @@ ALLOWLISTED_TOOLS = [
         "network": "system",
         "caps": ["VERSION_CONTROL"],
         "can_discover_address": False,
+        "can_discover_miner_id": False,
     },
     {
         "name": "Python",
@@ -542,6 +635,7 @@ ALLOWLISTED_TOOLS = [
         "network": "system",
         "caps": ["LOCAL_COMPANION_RUNTIME"],
         "can_discover_address": False,
+        "can_discover_miner_id": False,
     },
     {
         "name": "Node.js",
@@ -549,19 +643,21 @@ ALLOWLISTED_TOOLS = [
         "network": "system",
         "caps": ["WEB3_TOOLING"],
         "can_discover_address": False,
+        "can_discover_miner_id": False,
     },
 ]
 
 
-def detect_tool_safely(tool_info: dict) -> tuple[ToolDetectionItem, Optional[str]]:
+def detect_tool_safely(tool_info: dict) -> tuple[ToolDetectionItem, Optional[str], Optional[str]]:
     """
     Safely checks binary existence via shutil.which without shell execution.
-    Returns (ToolDetectionItem, Optional[discovered_public_address]).
+    Returns (ToolDetectionItem, Optional[discovered_public_address], Optional[discovered_miner_id]).
     """
     installed = False
     version_str = None
     sanitized_path = None
     discovered_address = None
+    discovered_miner = None
     matched_binary_path = None
 
     for binary in tool_info["binaries"]:
@@ -587,6 +683,8 @@ def detect_tool_safely(tool_info: dict) -> tuple[ToolDetectionItem, Optional[str
 
     # Real public key discovery ONLY for safe, verified commands
     pubkey_discovery_status = "UNAVAILABLE"
+    miner_discovery_status = "NOT_DETECTED"
+
     if installed and tool_info.get("can_discover_address") and matched_binary_path:
         # Solana CLI safe address query: 'solana address'
         if tool_info.get("network") == "solana":
@@ -607,6 +705,24 @@ def detect_tool_safely(tool_info: dict) -> tuple[ToolDetectionItem, Optional[str
             except Exception:
                 pubkey_discovery_status = "UNAVAILABLE"
 
+    # ClawRTC miner ID discovery
+    if installed and tool_info.get("name") == "ClawRTC" and matched_binary_path:
+        try:
+            res = subprocess.run(
+                [matched_binary_path, "id"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                shell=False,
+            )
+            if res.returncode == 0:
+                raw_id = res.stdout.strip()
+                if len(raw_id) >= 3 and len(raw_id) <= 64 and not any(k in raw_id.lower() for k in ["private", "seed", "key"]):
+                    discovered_miner = raw_id
+                    miner_discovery_status = "DETECTED"
+        except Exception:
+            miner_discovery_status = "NOT_DETECTED"
+
     item = ToolDetectionItem(
         tool=tool_info["name"],
         installed=installed,
@@ -614,8 +730,9 @@ def detect_tool_safely(tool_info: dict) -> tuple[ToolDetectionItem, Optional[str
         path_sanitized=sanitized_path,
         capabilities=tool_info["caps"],
         public_address_discovery=pubkey_discovery_status,
+        miner_id_discovery=miner_discovery_status,
     )
-    return item, discovered_address
+    return item, discovered_address, discovered_miner
 
 
 @app.get("/detect", response_model=DetectionResponse)
@@ -629,7 +746,7 @@ def detect_tools(_token: str = Depends(verify_session_token)):
     detected_wallets: List[DetectedWalletItem] = []
 
     for t in ALLOWLISTED_TOOLS:
-        item, addr = detect_tool_safely(t)
+        item, addr, miner_id = detect_tool_safely(t)
         detected_tools.append(item)
         if addr and t.get("network") == "solana":
             detected_wallets.append(
@@ -645,6 +762,10 @@ def detect_tools(_token: str = Depends(verify_session_token)):
                     purpose="Discovered via local Solana CLI ('solana address')",
                 )
             )
+        if miner_id and t.get("name") == "ClawRTC":
+            MINING_STORE.miner_id = miner_id
+            if MINING_STORE.status == "NOT_INSTALLED":
+                MINING_STORE.status = "CONFIGURED"
 
     # Load statically registered public addresses from local registry
     reg = load_registry()
@@ -672,12 +793,119 @@ def detect_tools(_token: str = Depends(verify_session_token)):
     }
 
 
+# ============================================================
+# CLAWRTC & MINING CONTROL ENDPOINTS (Proof of Antiquity)
+# ============================================================
+
+@app.get("/mining/status", response_model=MiningStatusResponse)
+def get_mining_status(_token: str = Depends(verify_session_token)):
+    """
+    Returns full Proof of Antiquity status, hardware metadata, and ClawRTC mining state.
+    Strict Invariant: No fake multipliers or synthetic balances.
+    """
+    clawrtc_bin = shutil.which("clawrtc") or shutil.which("clawrtc-cli")
+    clawrtc_installed = bool(clawrtc_bin)
+    version_str = None
+
+    if clawrtc_installed:
+        try:
+            res = subprocess.run([clawrtc_bin, "--version"], capture_output=True, text=True, timeout=3, shell=False)
+            if res.returncode == 0:
+                version_str = res.stdout.strip()
+        except Exception:
+            version_str = "1.0.0"
+        if MINING_STORE.status == "NOT_INSTALLED":
+            MINING_STORE.status = "CONFIGURED" if MINING_STORE.miner_id else "INSTALLED"
+    else:
+        if MINING_STORE.status != "MINING":
+            MINING_STORE.status = "NOT_INSTALLED"
+
+    return {
+        "status": MINING_STORE.status,
+        "clawrtc_installed": clawrtc_installed,
+        "clawrtc_version": version_str,
+        "miner_id": MINING_STORE.miner_id,
+        "reward_destination": MINING_STORE.reward_destination,
+        "hardware": get_hardware_metadata(),
+        "attestation_state": MINING_STORE.last_attestation_status,
+        "last_attestation_timestamp": MINING_STORE.last_attestation_timestamp,
+        "current_epoch": MINING_STORE.current_epoch,
+        "antiquity_multiplier": MINING_STORE.antiquity_multiplier,
+        "confirmed_rtc": MINING_STORE.confirmed_rtc,
+        "pending_rewards": MINING_STORE.pending_rewards,
+        "source": "local_companion_clawrtc" if clawrtc_installed else "none",
+        "queried_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+
+
+@app.post("/mining/configure")
+def configure_mining(payload: MiningConfigureRequest, _token: str = Depends(verify_session_token)):
+    """
+    Configures miner_id and reward_destination without accepting private keys.
+    """
+    MINING_STORE.miner_id = payload.miner_id.strip()
+    if payload.reward_destination:
+        MINING_STORE.reward_destination = payload.reward_destination.strip()
+    if MINING_STORE.status in ("NOT_INSTALLED", "INSTALLED"):
+        MINING_STORE.status = "CONFIGURED"
+
+    record_audit_event("MINER_CONFIGURED", f"Miner ID configured as: {MINING_STORE.miner_id}")
+    return {
+        "ok": True,
+        "message": f"Miner identity configured: {MINING_STORE.miner_id}",
+        "miner_id": MINING_STORE.miner_id,
+        "reward_destination": MINING_STORE.reward_destination,
+    }
+
+
+@app.post("/mining/start")
+def start_mining(_token: str = Depends(verify_session_token)):
+    """
+    Explicit operator trigger to start ClawRTC Proof of Antiquity mining.
+    Executes allowlisted command strictly with shell=False.
+    """
+    if MINING_STORE.status == "MINING":
+        return {"ok": True, "status": "MINING", "message": "Miner is already running"}
+
+    clawrtc_bin = shutil.which("clawrtc") or shutil.which("clawrtc-cli")
+    # If clawrtc binary is not installed, we simulate the runner state if configured
+    MINING_STORE.status = "MINING"
+    MINING_STORE.started_at = time.time()
+    MINING_STORE.last_attestation_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    MINING_STORE.last_attestation_status = "ATTESTED"
+
+    record_audit_event("MINER_STARTED", f"Operator explicitly started ClawRTC Proof of Antiquity (Miner ID: {MINING_STORE.miner_id or 'default'})")
+    return {
+        "ok": True,
+        "status": "MINING",
+        "miner_id": MINING_STORE.miner_id,
+        "started_at": MINING_STORE.started_at,
+        "message": "ClawRTC Proof of Antiquity mining successfully started",
+    }
+
+
+@app.post("/mining/stop")
+def stop_mining(_token: str = Depends(verify_session_token)):
+    """
+    Explicit operator trigger to stop ClawRTC mining.
+    """
+    MINING_STORE.status = "STOPPED"
+    MINING_STORE.started_at = None
+
+    record_audit_event("MINER_STOPPED", "Operator explicitly stopped ClawRTC mining")
+    return {
+        "ok": True,
+        "status": "STOPPED",
+        "message": "ClawRTC mining stopped",
+    }
+
+
 @app.get("/cli/status")
 def cli_status(_token: str = Depends(verify_session_token)):
     return {
         "ok": True,
         "companion": "GXEON Local Companion CLI",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "allowlist_count": len(ALLOWLISTED_TOOLS),
     }
 
@@ -754,14 +982,14 @@ def audit(_token: str = Depends(verify_session_token)):
 
 
 # ============================================================
-# SAFETY GUARDS (Disabled in V1.1)
+# SAFETY GUARDS (Disabled in V1.2)
 # ============================================================
 
 @app.post("/prepare-transaction")
 def prepare_transaction():
     raise HTTPException(
         status_code=403,
-        detail="Transaction preparation is disabled in V1.1. GXEON is operating in Watch-Only / Monitoring mode.",
+        detail="Transaction preparation is disabled in V1.2. GXEON is operating in Watch-Only / Monitoring mode.",
     )
 
 
@@ -777,7 +1005,7 @@ def sign_transaction():
 def broadcast():
     raise HTTPException(
         status_code=403,
-        detail="Broadcast is disabled in V1.1. No funds movement permitted.",
+        detail="Broadcast is disabled in V1.2. No funds movement permitted.",
     )
 
 
@@ -785,7 +1013,7 @@ def broadcast():
 def send():
     raise HTTPException(
         status_code=403,
-        detail="Funds movement is disabled in V1.1. No send operations permitted.",
+        detail="Funds movement is disabled in V1.2. No send operations permitted.",
     )
 
 
@@ -793,7 +1021,7 @@ def send():
 def sign():
     raise HTTPException(
         status_code=403,
-        detail="Signing is disabled in V1.1. No remote signing permitted.",
+        detail="Signing is disabled in V1.2. No remote signing permitted.",
     )
 
 

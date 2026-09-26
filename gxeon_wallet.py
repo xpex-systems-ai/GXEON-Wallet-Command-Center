@@ -105,6 +105,7 @@ def cmd_status(_):
     data = get("/status")
     print("\n--- GXEON LOCAL COMPANION STATUS ---")
     print(f"System State       : {data.get('status', '').upper()}")
+    print(f"Mining State       : {data.get('mining_status', 'UNKNOWN')}")
     print(f"Registered Wallets : {data.get('registered_wallets_count')}")
     print(f"Active Adapters    : {data.get('active_adapters')}")
     print("Security Invariants:")
@@ -119,18 +120,26 @@ def cmd_detect(_):
     data = get("/detect", token)
     tools = data.get("tools", [])
     wallets = data.get("detected_wallets", [])
+    registered = data.get("registered_wallets", [])
     
     print("\n--- DETECTED LOCAL TOOLING & CLIs ---")
-    print(f"{'TOOL':<20} | {'STATUS':<12} | {'VERSION / PATH'}")
-    print("-" * 65)
+    print(f"{'TOOL':<18} | {'STATUS':<12} | {'PUBKEY DISCOVERY':<18} | {'VERSION / PATH'}")
+    print("-" * 80)
     for t in tools:
         status_str = "DETECTED" if t.get("installed") else "NOT FOUND"
+        disc = t.get("public_address_discovery", "UNAVAILABLE")
         v = t.get("version") or (t.get("path_sanitized") or "--")
-        print(f"{t.get('tool', ''):<20} | {status_str:<12} | {v}")
+        print(f"{t.get('tool', ''):<18} | {status_str:<12} | {disc:<18} | {v}")
     
-    print(f"\n--- LOCALLY REGISTERED PUBLIC ADDRESSES ({len(wallets)}) ---")
-    for w in wallets:
-        print(f"  - [{w.get('network').upper()}] {w.get('name')}: {w.get('publicAddress')} ({w.get('mode')})")
+    if wallets:
+        print(f"\n--- LIVE DETECTED CLI WALLETS ({len(wallets)}) ---")
+        for w in wallets:
+            print(f"  - [{w.get('network').upper()}] {w.get('name')}: {w.get('publicAddress')} ({w.get('mode')})")
+    
+    if registered:
+        print(f"\n--- REGISTERED WATCH-ONLY CONFIGS ({len(registered)}) ---")
+        for w in registered:
+            print(f"  - [{w.get('network').upper()}] {w.get('name')}: {w.get('publicAddress')} ({w.get('mode')})")
     print()
 
 
@@ -198,6 +207,55 @@ def cmd_transactions(args):
     print(f"Note    : {data.get('note', '')}\n")
 
 
+# Mining commands
+def cmd_mining_status(_):
+    token = load_cached_token()
+    data = get("/mining/status", token)
+    print("\n--- CLAWRTC PROOF OF ANTIQUITY MINING STATUS ---")
+    print(f"Status            : {data.get('status')}")
+    print(f"ClawRTC Installed : {data.get('clawrtc_installed')}")
+    print(f"ClawRTC Version   : {data.get('clawrtc_version') or 'Not installed'}")
+    print(f"Miner ID          : {data.get('miner_id') or 'NOT_CONFIGURED'}")
+    print(f"Attestation State : {data.get('attestation_state')}")
+    print(f"Current Epoch     : {data.get('current_epoch')}")
+    mult = data.get("antiquity_multiplier")
+    print(f"Antiquity Mult.   : {mult if mult is not None else '-- (Awaiting on-chain proof)'}")
+    print(f"Confirmed RTC     : {data.get('confirmed_rtc')}")
+    print(f"Pending Rewards   : {data.get('pending_rewards')}")
+    print("Hardware Metadata :")
+    for k, v in data.get("hardware", {}).items():
+        print(f"  - {k}: {v}")
+    print()
+
+
+def cmd_mining_start(_):
+    token = load_cached_token()
+    print("\nStarting ClawRTC Proof of Antiquity mining...")
+    res = post("/mining/start", {}, token)
+    print(f"Result : {res.get('message')}")
+    print(f"Status : {res.get('status')}\n")
+
+
+def cmd_mining_stop(_):
+    token = load_cached_token()
+    print("\nStopping ClawRTC mining...")
+    res = post("/mining/stop", {}, token)
+    print(f"Result : {res.get('message')}")
+    print(f"Status : {res.get('status')}\n")
+
+
+def cmd_mining_configure(args):
+    token = load_cached_token()
+    payload = {"miner_id": args.miner_id}
+    if args.destination:
+        payload["reward_destination"] = args.destination
+    res = post("/mining/configure", payload, token)
+    print(f"\nMiner identity configured: {res.get('miner_id')}")
+    if res.get("reward_destination"):
+        print(f"Reward destination : {res.get('reward_destination')}")
+    print()
+
+
 def cmd_stop(_):
     print("To stop GXEON Local Companion, press Ctrl+C in the companion terminal.")
 
@@ -205,7 +263,7 @@ def cmd_stop(_):
 def main():
     p = argparse.ArgumentParser(
         prog="gxeon-wallet",
-        description="GXEON Local Companion CLI V1.1 — Non-custodial pairing and wallet management",
+        description="GXEON Local Companion CLI V1.2 — Quantum Core, ClawRTC Proof of Antiquity & Wallet Operations",
     )
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -234,6 +292,39 @@ def main():
     tx = sub.add_parser("transactions", help="Inspect transactions of a wallet")
     tx.add_argument("wallet_id", help="The wallet identifier")
     tx.set_defaults(func=cmd_transactions)
+
+    # Mining subcommands
+    mining_p = sub.add_parser("mining", help="Proof of Antiquity & ClawRTC mining commands")
+    mining_sub = mining_p.add_subparsers(dest="mining_cmd", required=True)
+
+    m_status = mining_sub.add_parser("status", help="Show mining & Proof of Antiquity status")
+    m_status.set_defaults(func=cmd_mining_status)
+
+    m_start = mining_sub.add_parser("start", help="Start mining engine")
+    m_start.set_defaults(func=cmd_mining_start)
+
+    m_stop = mining_sub.add_parser("stop", help="Stop mining engine")
+    m_stop.set_defaults(func=cmd_mining_stop)
+
+    m_cfg = mining_sub.add_parser("configure", help="Configure miner identity")
+    m_cfg.add_argument("miner_id", help="The unique RustChain miner ID")
+    m_cfg.add_argument("--destination", help="Optional reward destination wallet address")
+    m_cfg.set_defaults(func=cmd_mining_configure)
+
+    # RustChain subcommands
+    rtc_p = sub.add_parser("rustchain", help="RustChain live queries")
+    rtc_sub = rtc_p.add_subparsers(dest="rtc_cmd", required=True)
+
+    rtc_status = rtc_sub.add_parser("status", help="Query RustChain status")
+    rtc_status.set_defaults(func=lambda _: print("\nRustChain Network Status: UNAVAILABLE (No official RPC configured)\n"))
+
+    rtc_bal = rtc_sub.add_parser("balance", help="Query RustChain wallet balance")
+    rtc_bal.add_argument("wallet_id", default="rustchain-main", nargs="?", help="Wallet ID")
+    rtc_bal.set_defaults(func=cmd_balance)
+
+    rtc_tx = rtc_sub.add_parser("history", help="Query RustChain transaction history")
+    rtc_tx.add_argument("wallet_id", default="rustchain-main", nargs="?", help="Wallet ID")
+    rtc_tx.set_defaults(func=cmd_transactions)
 
     stop = sub.add_parser("stop", help="Stop local companion")
     stop.set_defaults(func=cmd_stop)
