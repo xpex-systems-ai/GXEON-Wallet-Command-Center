@@ -63,27 +63,8 @@ describe('Local Companion & CLI Pairing Service', () => {
     });
   });
 
-  describe('Pairing Flow API Client', () => {
-    it('initiates pairing challenge successfully', async () => {
-      const mockResponse = {
-        ok: true,
-        pairing_code: '849201',
-        expires_in: 300,
-        message: 'Pairing code generated. Enter this 6-digit code in the GXEON Web Command Center.',
-      };
-
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      } as Response);
-
-      const result = await bridgeService.startPairing();
-      expect(result).not.toBeNull();
-      expect(result?.pairing_code).toBe('849201');
-      expect(result?.ok).toBe(true);
-    });
-
-    it('confirms pairing and stores session token on success', async () => {
+  describe('Pairing Flow (Terminal Code to UI Confirmation)', () => {
+    it('confirms pairing using terminal-generated code and stores session token on success', async () => {
       const mockConfirm = {
         ok: true,
         token: 'gxeon_sess_9876543210abcdef',
@@ -103,7 +84,7 @@ describe('Local Companion & CLI Pairing Service', () => {
       expect(bridgeService.isPaired()).toBe(true);
     });
 
-    it('handles invalid pairing code error gracefully', async () => {
+    it('handles invalid pairing code error gracefully without crashing', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
         ok: false,
         status: 400,
@@ -117,7 +98,25 @@ describe('Local Companion & CLI Pairing Service', () => {
       expect(bridgeService.isPaired()).toBe(false);
     });
 
-    it('revokes pairing session properly', async () => {
+    it('queries pairing status with active bearer token', async () => {
+      bridgeService.setSessionToken('valid-token-123');
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          paired: true,
+          companion_version: '1.1.0',
+          security_mode: 'local_only',
+        }),
+      } as Response);
+
+      const status = await bridgeService.getPairingStatus();
+      expect(status).not.toBeNull();
+      expect(status?.paired).toBe(true);
+      expect(status?.companion_version).toBe('1.1.0');
+    });
+
+    it('revokes pairing session properly and clears sessionStorage', async () => {
       bridgeService.setSessionToken('token-to-revoke');
       expect(bridgeService.isPaired()).toBe(true);
 
@@ -134,27 +133,40 @@ describe('Local Companion & CLI Pairing Service', () => {
   });
 
   describe('Detected Tools & Wallet Invariants', () => {
-    it('detects tools and local wallets via authenticated bridge endpoint', async () => {
+    it('detects tools and separates detected live wallets from registered watch-only configs', async () => {
       bridgeService.setSessionToken('auth-token');
 
       const mockDetection = {
         tools: [
           {
-            tool: 'rustchain',
+            tool: 'Solana CLI',
             installed: true,
-            version: '0.1.0',
-            path_sanitized: '/usr/local/bin/rustchain',
-            capabilities: ['READ_BALANCE', 'WATCH_ONLY'],
+            version: '1.18.0',
+            path_sanitized: 'solana',
+            capabilities: ['PUBKEY_DETECT', 'WATCH_ONLY'],
+            public_address_discovery: 'AVAILABLE',
           },
         ],
         detected_wallets: [
           {
-            id: 'rustchain-cli-default',
+            id: 'detected-solana-cli-default',
+            network: 'solana',
+            symbol: 'SOL',
+            publicAddress: '7v91N7iZ9mNicL8WVCzP9fEZjRzM2yLq7z4m6yW7b8qZ',
+            name: 'Solana CLI Default Keypair',
+            connectionType: 'CLI_DETECTED' as const,
+            mode: 'watch_only' as const,
+            ownershipStatus: 'UNVERIFIED' as const,
+          },
+        ],
+        registered_wallets: [
+          {
+            id: 'rustchain-main',
             network: 'rustchain',
             symbol: 'RTC',
             publicAddress: 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269',
-            name: 'RustChain Default CLI Wallet',
-            connectionType: 'LOCAL_CONFIG' as const,
+            name: 'GXEON Core Watch-Only RTC',
+            connectionType: 'WATCH_ONLY' as const,
             mode: 'watch_only' as const,
             ownershipStatus: 'UNVERIFIED' as const,
           },
@@ -169,20 +181,21 @@ describe('Local Companion & CLI Pairing Service', () => {
       const result = await bridgeService.detectToolsAndWallets();
       expect(result).not.toBeNull();
       expect(result?.tools).toHaveLength(1);
+      expect(result?.tools[0].public_address_discovery).toBe('AVAILABLE');
       expect(result?.detected_wallets).toHaveLength(1);
-      expect(result?.detected_wallets[0].publicAddress).toBe('RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269');
-      expect(result?.detected_wallets[0].mode).toBe('watch_only');
-      expect(result?.detected_wallets[0].ownershipStatus).toBe('UNVERIFIED');
+      expect(result?.detected_wallets[0].connectionType).toBe('CLI_DETECTED');
+      expect(result?.registered_wallets).toHaveLength(1);
+      expect(result?.registered_wallets?.[0].connectionType).toBe('WATCH_ONLY');
     });
 
     it('enforces imported CLI wallets to be strictly watch_only with UNVERIFIED ownership', () => {
       const detected: DetectedWallet = {
-        id: 'detected-cli-rtc',
-        network: 'rustchain',
-        publicAddress: 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269',
-        name: 'RustChain CLI Local',
-        symbol: 'RTC',
-        connectionType: 'LOCAL_CONFIG',
+        id: 'detected-solana-cli-default',
+        network: 'solana',
+        publicAddress: '7v91N7iZ9mNicL8WVCzP9fEZjRzM2yLq7z4m6yW7b8qZ',
+        name: 'Solana CLI Default Keypair',
+        symbol: 'SOL',
+        connectionType: 'CLI_DETECTED',
         mode: 'watch_only',
         ownershipStatus: 'UNVERIFIED',
       };
@@ -192,16 +205,17 @@ describe('Local Companion & CLI Pairing Service', () => {
         network: detected.network,
         symbol: detected.symbol,
         publicAddress: detected.publicAddress,
-        balance: '0.00',
+        balance: null,
         mode: 'watch_only',
         ownershipStatus: 'UNVERIFIED',
-        connectionType: 'LOCAL_CONFIG',
+        connectionType: 'CLI_DETECTED',
         notes: 'Imported via GXEON Local Companion CLI Pairing.',
       };
 
       expect(importedWallet.mode).toBe('watch_only');
       expect(importedWallet.ownershipStatus).toBe('UNVERIFIED');
-      expect(importedWallet.publicAddress).toBe('RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269');
+      expect(importedWallet.publicAddress).toBe('7v91N7iZ9mNicL8WVCzP9fEZjRzM2yLq7z4m6yW7b8qZ');
+      expect(importedWallet.balance).toBeNull();
       // Verify no sensitive keys exist
       expect((importedWallet as Record<string, unknown>).privateKey).toBeUndefined();
       expect((importedWallet as Record<string, unknown>).seed).toBeUndefined();
@@ -210,7 +224,7 @@ describe('Local Companion & CLI Pairing Service', () => {
   });
 
   describe('RustChain Live Read-Only Fallback', () => {
-    it('returns structured UNAVAILABLE response when RTC node is offline', async () => {
+    it('returns structured UNAVAILABLE response without fabricated balance', async () => {
       bridgeService.setSessionToken('auth-token');
 
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
@@ -220,14 +234,16 @@ describe('Local Companion & CLI Pairing Service', () => {
           address: 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269',
           balance: null,
           symbol: 'RTC',
-          note: 'RustChain node or RPC is currently unreachable on 127.0.0.1:8545.',
+          source: 'none',
+          note: 'No verified RustChain RPC node source configured. Truth in data: balance is UNAVAILABLE.',
         }),
       } as Response);
 
-      const balanceRes = await bridgeService.getRustChainBalance('rustchain-cli-default');
+      const balanceRes = await bridgeService.getRustChainBalance('rustchain-main');
       expect(balanceRes).not.toBeNull();
       expect(balanceRes?.status).toBe('UNAVAILABLE');
       expect(balanceRes?.balance).toBeNull();
+      expect(balanceRes?.source).toBe('none');
     });
   });
 });

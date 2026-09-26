@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from unittest.mock import patch, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 from bridge import (
@@ -26,7 +27,7 @@ def reset_pairing_state():
 
 
 # ============================================================
-# HEALTH & CORS SECURITY TESTS
+# HEALTH & CORS / PNA SECURITY TESTS
 # ============================================================
 
 def test_health_endpoint():
@@ -37,6 +38,8 @@ def test_health_endpoint():
     assert data["bind"] == "127.0.0.1"
     assert data["security_mode"] == "local_only"
     assert data["version"] == "1.1.0"
+    # Ensure active session count is NOT leaked in health response
+    assert "active_sessions" not in data
 
 
 def test_status_endpoint():
@@ -47,6 +50,8 @@ def test_status_endpoint():
     assert data["security_invariants"]["no_private_keys"] is True
     assert data["security_invariants"]["bind_host"] == "127.0.0.1"
     assert data["security_invariants"]["send_enabled"] is False
+    # Ensure active session count is NOT leaked in public status
+    assert "active_sessions" not in data
 
 
 def test_cors_production_origin_allowed():
@@ -68,11 +73,54 @@ def test_cors_wildcard_absent():
     assert "*" not in ALLOWED_ORIGINS
 
 
+def test_pna_origin_hardening():
+    # Known origin gets PNA approval
+    prod_origin = "https://studio-1105349706-f3598.web.app"
+    res_known = client.get(
+        "/health",
+        headers={
+            "Origin": prod_origin,
+            "Access-Control-Request-Private-Network": "true",
+        },
+    )
+    assert res_known.status_code == 200
+    assert res_known.headers.get("access-control-allow-private-network") == "true"
+
+    # Unknown origin does NOT receive PNA approval
+    untrusted_origin = "https://untrusted-attack-site.com"
+    res_unknown = client.get(
+        "/health",
+        headers={
+            "Origin": untrusted_origin,
+            "Access-Control-Request-Private-Network": "true",
+        },
+    )
+    assert res_unknown.status_code == 200
+    assert res_unknown.headers.get("access-control-allow-private-network") is None
+
+
+def test_invalid_host_header_blocked():
+    res = client.get("/health", headers={"Host": "evil-domain.com"})
+    assert res.status_code == 400
+    assert "Invalid Host header" in res.text
+
+
 # ============================================================
-# PAIRING PROTOCOL TESTS
+# PAIRING PROTOCOL & BROWSER EXPOSURE PROTECTION TESTS
 # ============================================================
 
-def test_pair_start_generates_valid_6_digit_code():
+def test_browser_cannot_obtain_pairing_code():
+    # Browser sending Origin header to /pair/start must be blocked
+    browser_res = client.post(
+        "/pair/start",
+        headers={"Origin": "https://studio-1105349706-f3598.web.app"},
+    )
+    assert browser_res.status_code == 403
+    assert "cannot be generated via web browser" in browser_res.json()["detail"]
+
+
+def test_pair_code_created_via_local_cli_path():
+    # CLI call without browser Origin header succeeds
     res = client.post("/pair/start")
     assert res.status_code == 200
     data = res.json()
@@ -85,11 +133,11 @@ def test_pair_start_generates_valid_6_digit_code():
 
 
 def test_pair_confirm_valid_flow():
-    # 1. Start pairing
+    # 1. Start pairing via CLI
     res_start = client.post("/pair/start")
     code = res_start.json()["pairing_code"]
 
-    # 2. Confirm pairing with correct code
+    # 2. Confirm pairing with correct code from UI
     res_confirm = client.post("/pair/confirm", json={"code": code})
     assert res_confirm.status_code == 200
     data = res_confirm.json()
@@ -100,10 +148,17 @@ def test_pair_confirm_valid_flow():
 
     token = data["token"]
 
-    # 3. Check status
+    # 3. Check status (protected)
     res_status = client.get("/pair/status", headers={"Authorization": f"Bearer {token}"})
     assert res_status.status_code == 200
     assert res_status.json()["paired"] is True
+
+
+def test_pair_status_requires_token():
+    # Calling /pair/status without token -> 401
+    assert client.get("/pair/status").status_code == 401
+    # Calling with invalid token -> 403
+    assert client.get("/pair/status", headers={"Authorization": "Bearer invalid_token"}).status_code == 403
 
 
 def test_pair_confirm_invalid_code():
@@ -154,7 +209,6 @@ def test_pair_revoke():
 # ============================================================
 
 def test_protected_endpoints_require_token():
-    # Without token -> 401
     assert client.get("/wallets").status_code == 401
     assert client.get("/wallets/rustchain-main").status_code == 401
     assert client.get("/adapters").status_code == 401
@@ -198,6 +252,7 @@ def test_tool_detection_allowlist_and_safety():
     data = res.json()
     assert "tools" in data
     assert "detected_wallets" in data
+    assert "registered_wallets" in data
 
     tool_names = [t["tool"] for t in data["tools"]]
     assert "RustChain CLI" in tool_names
@@ -210,9 +265,60 @@ def test_tool_detection_allowlist_and_safety():
     assert len(tool_names) == len(ALLOWLISTED_TOOLS)
 
 
+def test_solana_public_address_discovery_mocked():
+    res_start = client.post("/pair/start")
+    token = client.post("/pair/confirm", json={"code": res_start.json()["pairing_code"]}).json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Mock shutil.which to find solana and subprocess.run to return a valid base58 public address
+    valid_sol_address = "7v91N7iZ9mNicL8WVCzP9fEZjRzM2yLq7z4m6yW7b8qZ"
+
+    def mock_run(args, **kwargs):
+        mock_res = MagicMock()
+        if args[0] == "solana" and args[1] == "--version":
+            mock_res.returncode = 0
+            mock_res.stdout = "solana-cli 1.18.0\n"
+        elif args[0] == "solana" and args[1] == "address":
+            mock_res.returncode = 0
+            mock_res.stdout = f"{valid_sol_address}\n"
+        else:
+            mock_res.returncode = 1
+            mock_res.stdout = ""
+        return mock_res
+
+    with patch("shutil.which", side_effect=lambda bin_name: "solana" if "solana" in bin_name else None):
+        with patch("subprocess.run", side_effect=mock_run):
+            res = client.get("/detect", headers=headers)
+            assert res.status_code == 200
+            data = res.json()
+
+            detected_sol = [w for w in data["detected_wallets"] if w["network"] == "solana"]
+            assert len(detected_sol) == 1
+            assert detected_sol[0]["publicAddress"] == valid_sol_address
+            assert detected_sol[0]["connectionType"] == "CLI_DETECTED"
+            assert detected_sol[0]["mode"] == "watch_only"
+            assert detected_sol[0]["ownershipStatus"] == "UNVERIFIED"
+
+
 # ============================================================
 # RUSTCHAIN READ-ONLY TRUTH IN DATA TESTS
 # ============================================================
+
+def test_rustchain_adapter_partial_and_capabilities_truth():
+    res_start = client.post("/pair/start")
+    token = client.post("/pair/confirm", json={"code": res_start.json()["pairing_code"]}).json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res_adapters = client.get("/adapters", headers=headers)
+    assert res_adapters.status_code == 200
+    adapters = res_adapters.json()["adapters"]
+    rtc = next(a for a in adapters if a["id"] == "rustchain")
+    assert rtc["status"] == "partial"
+    assert rtc["capabilities_details"]["WATCH_ONLY"] == "AVAILABLE"
+    assert rtc["capabilities_details"]["READ_BALANCE"] == "UNAVAILABLE"
+    assert rtc["capabilities_details"]["READ_TRANSACTIONS"] == "UNAVAILABLE"
+    assert rtc["capabilities_details"]["SIGN"] == "DISABLED"
+
 
 def test_rustchain_live_balance_query():
     res_start = client.post("/pair/start")
@@ -228,6 +334,7 @@ def test_rustchain_live_balance_query():
     assert data["address"] == "RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269"
     assert data["balance"] is None
     assert data["status"] == "UNAVAILABLE"
+    assert data["source"] == "none"
     assert data["ownership_verified"] is False
     assert data["mode"] == "watch_only"
 
@@ -243,6 +350,7 @@ def test_rustchain_transactions_query():
     assert data["wallet_id"] == "rustchain-main"
     assert data["transactions"] == []
     assert data["status"] == "UNAVAILABLE"
+    assert data["source"] == "none"
 
 
 # ============================================================
@@ -253,3 +361,5 @@ def test_disabled_signing_and_broadcast_in_v1_1():
     assert client.post("/prepare-transaction").status_code == 403
     assert client.post("/sign-transaction").status_code == 403
     assert client.post("/broadcast").status_code == 403
+    assert client.post("/send").status_code == 403
+    assert client.post("/sign").status_code == 403

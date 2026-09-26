@@ -1,4 +1,4 @@
-export type ConnectionType = 'LOCAL_CONFIG' | 'BROWSER_PROVIDER' | 'WATCH_ONLY' | 'HARDWARE' | 'OFFLINE';
+export type ConnectionType = 'LOCAL_CONFIG' | 'BROWSER_PROVIDER' | 'WATCH_ONLY' | 'HARDWARE' | 'OFFLINE' | 'CLI_DETECTED';
 
 export type OwnershipStatus = 'VERIFIED' | 'UNVERIFIED';
 
@@ -155,7 +155,6 @@ export interface BridgePairConfirmResponse {
 
 export interface BridgePairStatusResponse {
   paired: boolean;
-  active_sessions_count: number;
   companion_version: string;
   security_mode: string;
 }
@@ -166,6 +165,7 @@ export interface DetectedTool {
   version?: string;
   path_sanitized?: string;
   capabilities: string[];
+  public_address_discovery?: string;
 }
 
 export interface DetectedWallet {
@@ -183,6 +183,7 @@ export interface DetectedWallet {
 export interface BridgeDetectionResult {
   tools: DetectedTool[];
   detected_wallets: DetectedWallet[];
+  registered_wallets?: DetectedWallet[];
 }
 
 export interface RustChainBalanceResponse {

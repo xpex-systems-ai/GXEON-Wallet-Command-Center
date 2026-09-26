@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -45,11 +46,28 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def private_network_access_middleware(request: Request, call_next):
-    """Support Private Network Access (PNA) preflight headers from modern browsers."""
+async def private_network_access_and_host_middleware(request: Request, call_next):
+    """
+    1. Host header validation: strictly 127.0.0.1, localhost, or testserver.
+    2. Private Network Access (PNA): Emits Access-Control-Allow-Private-Network ONLY if Origin is in ALLOWED_ORIGINS.
+    """
+    host = request.headers.get("host", "")
+    host_name = host.split(":")[0].lower()
+    
+    # If Host header is provided, validate that it points to localhost / loopback
+    if host_name and host_name not in ("127.0.0.1", "localhost", "testserver"):
+        return Response(status_code=400, content="Invalid Host header: bridge only accepts loopback host.")
+
     response: Response = await call_next(request)
-    if request.headers.get("Access-Control-Request-Private-Network") == "true":
-        response.headers["Access-Control-Allow-Private-Network"] = "true"
+    
+    origin = request.headers.get("origin")
+    pna_requested = request.headers.get("Access-Control-Request-Private-Network") == "true"
+    
+    # PNA permission ONLY given to validated origins in ALLOWED_ORIGINS
+    if pna_requested:
+        if origin and origin in ALLOWED_ORIGINS:
+            response.headers["Access-Control-Allow-Private-Network"] = "true"
+
     return response
 
 
@@ -154,7 +172,6 @@ class PairConfirmResponse(BaseModel):
 
 class PairStatusResponse(BaseModel):
     paired: bool
-    active_sessions_count: int
     companion_version: str
     security_mode: str
 
@@ -165,6 +182,7 @@ class ToolDetectionItem(BaseModel):
     version: Optional[str] = None
     path_sanitized: Optional[str] = None
     capabilities: List[str] = []
+    public_address_discovery: str = "UNAVAILABLE"
 
 
 class DetectedWalletItem(BaseModel):
@@ -182,10 +200,11 @@ class DetectedWalletItem(BaseModel):
 class DetectionResponse(BaseModel):
     tools: List[ToolDetectionItem]
     detected_wallets: List[DetectedWalletItem]
+    registered_wallets: List[DetectedWalletItem]
 
 
 # ============================================================
-# ADAPTERS CATALOG
+# ADAPTERS CATALOG (Truthful capability matrix)
 # ============================================================
 
 ADAPTERS_CATALOG = [
@@ -194,9 +213,17 @@ ADAPTERS_CATALOG = [
         "name": "RustChain RTC Adapter",
         "network": "rustchain",
         "version": "1.1.0",
-        "status": "active",
-        "capabilities": ["WATCH_ONLY", "READ_BALANCE", "READ_TRANSACTIONS"],
-        "description": "Native watch-only receiver for RustChain (RTC) with live RPC query.",
+        "status": "partial",
+        "capabilities": ["WATCH_ONLY"],
+        "capabilities_details": {
+            "WATCH_ONLY": "AVAILABLE",
+            "READ_BALANCE": "UNAVAILABLE",
+            "READ_TRANSACTIONS": "UNAVAILABLE",
+            "SIGN": "DISABLED",
+            "SEND": "DISABLED",
+            "BROADCAST": "DISABLED",
+        },
+        "description": "Watch-only monitoring for RustChain (RTC). Balance and transaction RPCs are UNAVAILABLE until verified source node is active.",
     },
     {
         "id": "evm-metamask",
@@ -205,8 +232,16 @@ ADAPTERS_CATALOG = [
         "version": "1.1.0",
         "status": "active",
         "capabilities": ["CONNECT", "READ_BALANCE", "WATCH_ONLY"],
+        "capabilities_details": {
+            "CONNECT": "AVAILABLE",
+            "READ_BALANCE": "AVAILABLE",
+            "WATCH_ONLY": "AVAILABLE",
+            "READ_TRANSACTIONS": "UNAVAILABLE",
+            "SIGN": "UNAVAILABLE",
+            "SEND": "DISABLED",
+        },
         "supported_chains": ["Ethereum Mainnet", "Base", "Polygon", "Arbitrum One"],
-        "description": "Browser provider connector for EVM chains. Keys never leave the wallet.",
+        "description": "Browser provider connector for EVM chains. Keys never leave the browser extension.",
     },
     {
         "id": "coinbase-wallet",
@@ -215,6 +250,13 @@ ADAPTERS_CATALOG = [
         "version": "1.1.0",
         "status": "partial",
         "capabilities": ["CONNECT", "WATCH_ONLY"],
+        "capabilities_details": {
+            "CONNECT": "AVAILABLE",
+            "WATCH_ONLY": "AVAILABLE",
+            "READ_BALANCE": "UNAVAILABLE",
+            "SIGN": "UNAVAILABLE",
+            "SEND": "DISABLED",
+        },
         "description": "Dedicated Coinbase Wallet extension connector. Separate from custodial exchange APIs.",
     },
     {
@@ -224,6 +266,13 @@ ADAPTERS_CATALOG = [
         "version": "0.2.0",
         "status": "partial",
         "capabilities": ["CLI_DETECT", "WATCH_ONLY"],
+        "capabilities_details": {
+            "CLI_DETECT": "AVAILABLE",
+            "WATCH_ONLY": "AVAILABLE",
+            "READ_BALANCE": "UNAVAILABLE",
+            "SIGN": "DISABLED",
+            "SEND": "DISABLED",
+        },
         "description": "Non-custodial Solana CLI address discovery. Signing remains local-only.",
     },
 ]
@@ -235,6 +284,7 @@ ADAPTERS_CATALOG = [
 
 @app.get("/health")
 def health():
+    """Minimal public health endpoint. Does not reveal active session count."""
     return {
         "ok": True,
         "service": "gxeon-wallet-local-companion",
@@ -248,8 +298,10 @@ def health():
 
 @app.get("/status")
 def status():
-    now = time.time()
-    valid_sessions = sum(1 for exp in PAIRING_STORE.sessions.values() if exp > now)
+    """
+    Public bridge status summary.
+    Invariant: Active session counts and sensitive tokens are NOT revealed publicly.
+    """
     registry_data = load_registry()
     wallet_count = len(registry_data.get("wallets", []))
     return {
@@ -262,8 +314,6 @@ def status():
         },
         "registered_wallets_count": wallet_count,
         "active_adapters": len(ADAPTERS_CATALOG),
-        "paired": valid_sessions > 0,
-        "active_sessions": valid_sessions,
         "uptime": "active",
     }
 
@@ -273,15 +323,27 @@ def status():
 # ============================================================
 
 @app.post("/pair/start", response_model=PairStartResponse)
-def pair_start():
-    """Generates a secure, 6-digit numeric pairing code with 5-minute TTL."""
-    # Generate 6-digit code using cryptographically secure RNG
+def pair_start(request: Request):
+    """
+    Generates a secure, 6-digit numeric pairing code with 5-minute TTL.
+    SECURITY INVARIANT:
+    Must ONLY be invoked via local CLI (no browser Origin header).
+    If invoked by browser with Origin header, rejects with HTTP 403 Forbidden.
+    """
+    origin = request.headers.get("origin")
+    if origin:
+        record_audit_event("PAIRING_START_BLOCKED", f"Browser origin {origin} blocked from reading raw pairing code", "warning")
+        raise HTTPException(
+            status_code=403,
+            detail="Pairing codes cannot be generated via web browser. Run 'gxeon_wallet.py pair' in your local CLI.",
+        )
+
     code = f"{secrets.randbelow(900000) + 100000:06d}"
     PAIRING_STORE.code = code
     PAIRING_STORE.created_at = time.time()
     PAIRING_STORE.attempts = 0
 
-    record_audit_event("PAIRING_STARTED", "Generated ephemeral 6-digit pairing code (valid for 5 minutes)")
+    record_audit_event("PAIRING_STARTED", "Generated ephemeral 6-digit pairing code via local CLI")
     return {
         "ok": True,
         "pairing_code": code,
@@ -292,13 +354,13 @@ def pair_start():
 
 @app.post("/pair/confirm", response_model=PairConfirmResponse)
 def pair_confirm(payload: PairConfirmRequest):
-    """Validates the 6-digit code and issues an ephemeral localSessionToken."""
+    """Validates the 6-digit code entered in web UI and issues an ephemeral localSessionToken."""
     now = time.time()
 
     if not PAIRING_STORE.code or (now - PAIRING_STORE.created_at) > PAIRING_CODE_TTL_SECONDS:
         PAIRING_STORE.code = None
         record_audit_event("PAIRING_FAILED", "Pairing code expired or uninitialized", "warning")
-        raise HTTPException(status_code=400, detail="Pairing code has expired. Generate a new code.")
+        raise HTTPException(status_code=400, detail="Pairing code has expired. Run 'gxeon_wallet.py pair' to generate a new code.")
 
     if PAIRING_STORE.attempts >= MAX_PAIRING_ATTEMPTS:
         PAIRING_STORE.code = None
@@ -330,20 +392,13 @@ def pair_confirm(payload: PairConfirmRequest):
 
 
 @app.get("/pair/status", response_model=PairStatusResponse)
-def pair_status(authorization: Optional[str] = Header(None)):
-    """Checks if the local companion is paired or if the provided token is active."""
-    now = time.time()
-    valid_sessions = sum(1 for exp in PAIRING_STORE.sessions.values() if exp > now)
-    
-    is_current_token_valid = False
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split("Bearer ", 1)[1].strip()
-        if PAIRING_STORE.sessions.get(token, 0) > now:
-            is_current_token_valid = True
-
+def pair_status(_token: str = Depends(verify_session_token)):
+    """
+    Protected endpoint: Checks if the session token is valid and active.
+    Requires Bearer authorization token.
+    """
     return {
-        "paired": is_current_token_valid if authorization else (valid_sessions > 0),
-        "active_sessions_count": valid_sessions,
+        "paired": True,
         "companion_version": "1.1.0",
         "security_mode": "local_only",
     }
@@ -412,21 +467,6 @@ def capabilities(_token: str = Depends(verify_session_token)):
     return {
         "capabilities": [
             {
-                "name": "READ_BALANCE",
-                "description": "Read publicly queryable on-chain balance",
-                "status": "supported",
-            },
-            {
-                "name": "READ_TRANSACTIONS",
-                "description": "Read transaction history from public explorer / RPC",
-                "status": "supported",
-            },
-            {
-                "name": "CONNECT",
-                "description": "Browser provider authorization handshake without seed request",
-                "status": "supported",
-            },
-            {
                 "name": "WATCH_ONLY",
                 "description": "Monitor address without private key requirement",
                 "status": "supported",
@@ -437,13 +477,33 @@ def capabilities(_token: str = Depends(verify_session_token)):
                 "status": "supported",
             },
             {
+                "name": "CONNECT",
+                "description": "Browser provider authorization handshake without seed request",
+                "status": "supported",
+            },
+            {
+                "name": "READ_BALANCE",
+                "description": "Read publicly queryable on-chain balance (unavailable for unconfigured RPCs)",
+                "status": "unavailable",
+            },
+            {
+                "name": "READ_TRANSACTIONS",
+                "description": "Read transaction history from public explorer / RPC",
+                "status": "unavailable",
+            },
+            {
                 "name": "SIGN",
-                "description": "Cryptographic proof of ownership via local companion plane",
-                "status": "guarded_manual",
+                "description": "Cryptographic proof of ownership via local companion plane (DISABLED in V1.1)",
+                "status": "disabled_in_v1",
             },
             {
                 "name": "SEND",
-                "description": "Broadcast on-chain funds movement (DISABLED in V1 for safety)",
+                "description": "Broadcast on-chain funds movement (DISABLED in V1.1 for safety)",
+                "status": "disabled_in_v1",
+            },
+            {
+                "name": "BROADCAST",
+                "description": "Broadcast on-chain transactions (DISABLED in V1.1)",
                 "status": "disabled_in_v1",
             },
         ]
@@ -451,30 +511,66 @@ def capabilities(_token: str = Depends(verify_session_token)):
 
 
 # ============================================================
-# SAFE LOCAL CLI & TOOL DETECTION
+# SAFE LOCAL CLI & TOOL DETECTION (Subprocess with shell=False)
 # ============================================================
 
 ALLOWLISTED_TOOLS = [
-    {"name": "RustChain CLI", "binaries": ["rustchain-cli", "rustchain", "rtc"], "network": "rustchain", "caps": ["RTC_QUERY", "WATCH_ONLY"]},
-    {"name": "Solana CLI", "binaries": ["solana", "solana-keygen"], "network": "solana", "caps": ["PUBKEY_DETECT", "WATCH_ONLY"]},
-    {"name": "Git", "binaries": ["git"], "network": "system", "caps": ["VERSION_CONTROL"]},
-    {"name": "Python", "binaries": ["python", "python3"], "network": "system", "caps": ["LOCAL_COMPANION_RUNTIME"]},
-    {"name": "Node.js", "binaries": ["node"], "network": "system", "caps": ["WEB3_TOOLING"]},
+    {
+        "name": "RustChain CLI",
+        "binaries": ["rustchain-cli", "rustchain", "rtc"],
+        "network": "rustchain",
+        "caps": ["WATCH_ONLY"],
+        "can_discover_address": False,
+    },
+    {
+        "name": "Solana CLI",
+        "binaries": ["solana", "solana-keygen"],
+        "network": "solana",
+        "caps": ["PUBKEY_DETECT", "WATCH_ONLY"],
+        "can_discover_address": True,
+    },
+    {
+        "name": "Git",
+        "binaries": ["git"],
+        "network": "system",
+        "caps": ["VERSION_CONTROL"],
+        "can_discover_address": False,
+    },
+    {
+        "name": "Python",
+        "binaries": ["python", "python3"],
+        "network": "system",
+        "caps": ["LOCAL_COMPANION_RUNTIME"],
+        "can_discover_address": False,
+    },
+    {
+        "name": "Node.js",
+        "binaries": ["node"],
+        "network": "system",
+        "caps": ["WEB3_TOOLING"],
+        "can_discover_address": False,
+    },
 ]
 
 
-def detect_tool_safely(tool_info: dict) -> ToolDetectionItem:
-    """Safely checks binary existence via shutil.which without shell execution."""
+def detect_tool_safely(tool_info: dict) -> tuple[ToolDetectionItem, Optional[str]]:
+    """
+    Safely checks binary existence via shutil.which without shell execution.
+    Returns (ToolDetectionItem, Optional[discovered_public_address]).
+    """
     installed = False
     version_str = None
     sanitized_path = None
+    discovered_address = None
+    matched_binary_path = None
 
     for binary in tool_info["binaries"]:
         bin_path = shutil.which(binary)
         if bin_path:
             installed = True
             sanitized_path = os.path.basename(bin_path)
-            # Query version with strict argv and timeout, never shell=True
+            matched_binary_path = bin_path
+            # Query version with strict fixed argv and timeout, never shell=True
             try:
                 res = subprocess.run(
                     [bin_path, "--version"],
@@ -489,13 +585,37 @@ def detect_tool_safely(tool_info: dict) -> ToolDetectionItem:
                 version_str = "detected"
             break
 
-    return ToolDetectionItem(
+    # Real public key discovery ONLY for safe, verified commands
+    pubkey_discovery_status = "UNAVAILABLE"
+    if installed and tool_info.get("can_discover_address") and matched_binary_path:
+        # Solana CLI safe address query: 'solana address'
+        if tool_info.get("network") == "solana":
+            try:
+                res = subprocess.run(
+                    [matched_binary_path, "address"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                    shell=False,
+                )
+                if res.returncode == 0:
+                    raw_addr = res.stdout.strip()
+                    # Validate Solana Base58 public key format (32 to 44 chars)
+                    if re.match(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$", raw_addr):
+                        discovered_address = raw_addr
+                        pubkey_discovery_status = "AVAILABLE"
+            except Exception:
+                pubkey_discovery_status = "UNAVAILABLE"
+
+    item = ToolDetectionItem(
         tool=tool_info["name"],
         installed=installed,
         version=version_str,
         path_sanitized=sanitized_path,
         capabilities=tool_info["caps"],
+        public_address_discovery=pubkey_discovery_status,
     )
+    return item, discovered_address
 
 
 @app.get("/detect", response_model=DetectionResponse)
@@ -503,14 +623,34 @@ def detect_tools(_token: str = Depends(verify_session_token)):
     """
     Scans local machine strictly for allowlisted CLI tools and public wallet configurations.
     Zero arbitrary shell execution; zero private key extraction.
+    Separates dynamically detected_wallets from statically registered_wallets.
     """
-    detected_tools = [detect_tool_safely(t) for t in ALLOWLISTED_TOOLS]
-    
-    # Load safe public addresses from local registry
+    detected_tools: List[ToolDetectionItem] = []
+    detected_wallets: List[DetectedWalletItem] = []
+
+    for t in ALLOWLISTED_TOOLS:
+        item, addr = detect_tool_safely(t)
+        detected_tools.append(item)
+        if addr and t.get("network") == "solana":
+            detected_wallets.append(
+                DetectedWalletItem(
+                    id="detected-solana-cli-default",
+                    name="Solana CLI Default Keypair",
+                    network="solana",
+                    symbol="SOL",
+                    publicAddress=addr,
+                    connectionType="CLI_DETECTED",
+                    mode="watch_only",
+                    ownershipStatus="UNVERIFIED",
+                    purpose="Discovered via local Solana CLI ('solana address')",
+                )
+            )
+
+    # Load statically registered public addresses from local registry
     reg = load_registry()
-    detected_wallets = []
+    registered_wallets: List[DetectedWalletItem] = []
     for w in reg.get("wallets", []):
-        detected_wallets.append(
+        registered_wallets.append(
             DetectedWalletItem(
                 id=w.get("id", "w-unknown"),
                 name=w.get("name", "Unknown Wallet"),
@@ -524,10 +664,11 @@ def detect_tools(_token: str = Depends(verify_session_token)):
             )
         )
 
-    record_audit_event("CLI_DETECTED", f"Scanned {len(detected_tools)} tools and {len(detected_wallets)} public wallets")
+    record_audit_event("CLI_DETECTED", f"Scanned {len(detected_tools)} tools, {len(detected_wallets)} live CLI wallets, and {len(registered_wallets)} registered wallets")
     return {
         "tools": detected_tools,
         "detected_wallets": detected_wallets,
+        "registered_wallets": registered_wallets,
     }
 
 
@@ -542,14 +683,14 @@ def cli_status(_token: str = Depends(verify_session_token)):
 
 
 # ============================================================
-# RUSTCHAIN LIVE READ-ONLY ON-CHAIN QUERIES
+# RUSTCHAIN LIVE READ-ONLY ON-CHAIN QUERIES (Honest Fallback)
 # ============================================================
 
 @app.get("/wallets/{wallet_id}/balance")
 def query_wallet_balance(wallet_id: str, _token: str = Depends(verify_session_token)):
     """
     Queries live on-chain balance for a wallet.
-    Strict Invariant: If RPC is not reachable or unconfigured, returns UNAVAILABLE (null).
+    Strict Invariant: Since no official verified RustChain RPC endpoint is configured, returns UNAVAILABLE (null).
     Never fabricates figures.
     """
     target = None
@@ -561,10 +702,9 @@ def query_wallet_balance(wallet_id: str, _token: str = Depends(verify_session_to
     if not target:
         raise HTTPException(status_code=404, detail="Wallet not found")
 
-    # In V1.1, RustChain RPC connectivity is evaluated
     record_audit_event("RTC_BALANCE_SYNC_REQUESTED", f"Balance requested for {wallet_id} ({target.get('address')})")
 
-    # Truth in data: Since live RustChain mainnet node is pending connection, return honest UNAVAILABLE
+    # Truth in data: No verified RustChain RPC node is active; returns honest UNAVAILABLE
     return {
         "wallet_id": wallet_id,
         "network": target.get("network"),
@@ -572,11 +712,11 @@ def query_wallet_balance(wallet_id: str, _token: str = Depends(verify_session_to
         "address": target.get("address"),
         "balance": None,  # Explicitly null / unavailable
         "status": "UNAVAILABLE",
-        "source": "rustchain_official_rpc",
+        "source": "none",
         "queried_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "ownership_verified": False,
         "mode": target.get("mode", "watch_only"),
-        "note": "Live node sync pending. GXEON never fabricates balance data.",
+        "note": "No verified RustChain RPC node source configured. Truth in data: balance is UNAVAILABLE.",
     }
 
 
@@ -602,14 +742,14 @@ def query_wallet_transactions(wallet_id: str, _token: str = Depends(verify_sessi
         "address": target.get("address"),
         "transactions": [],
         "status": "UNAVAILABLE",
-        "source": "rustchain_block_explorer",
+        "source": "none",
         "queried_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "note": "Explorer queries active. Zero synthetic transactions.",
+        "note": "No verified RustChain transaction indexer configured. Truth in data: history is UNAVAILABLE.",
     }
 
 
 @app.get("/audit")
-def audit():
+def audit(_token: str = Depends(verify_session_token)):
     return {"audit_events": AUDIT_LOG[-50:]}
 
 
@@ -638,6 +778,22 @@ def broadcast():
     raise HTTPException(
         status_code=403,
         detail="Broadcast is disabled in V1.1. No funds movement permitted.",
+    )
+
+
+@app.post("/send")
+def send():
+    raise HTTPException(
+        status_code=403,
+        detail="Funds movement is disabled in V1.1. No send operations permitted.",
+    )
+
+
+@app.post("/sign")
+def sign():
+    raise HTTPException(
+        status_code=403,
+        detail="Signing is disabled in V1.1. No remote signing permitted.",
     )
 
 

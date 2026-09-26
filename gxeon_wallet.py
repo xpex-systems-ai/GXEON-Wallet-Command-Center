@@ -105,8 +105,6 @@ def cmd_status(_):
     data = get("/status")
     print("\n--- GXEON LOCAL COMPANION STATUS ---")
     print(f"System State       : {data.get('status', '').upper()}")
-    print(f"Pairing Status     : {'PAIRED' if data.get('paired') else 'UNPAIRED'}")
-    print(f"Active Sessions    : {data.get('active_sessions', 0)}")
     print(f"Registered Wallets : {data.get('registered_wallets_count')}")
     print(f"Active Adapters    : {data.get('active_adapters')}")
     print("Security Invariants:")

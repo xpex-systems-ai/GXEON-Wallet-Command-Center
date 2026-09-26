@@ -9,7 +9,6 @@ import {
   Copy,
   Check,
   ArrowRight,
-  Sparkles,
   Cpu,
   Unplug,
   HardDriveDownload,
@@ -38,6 +37,7 @@ export const ConnectCliModal: React.FC<ConnectCliModalProps> = ({
   const [detectionData, setDetectionData] = useState<BridgeDetectionResult | null>(null);
   const [importedWallets, setImportedWallets] = useState<Set<string>>(new Set());
   const [copiedCmd, setCopiedCmd] = useState(false);
+  const [copiedPairCmd, setCopiedPairCmd] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -70,20 +70,6 @@ export const ConnectCliModal: React.FC<ConnectCliModalProps> = ({
       setStep('check');
     } finally {
       setIsCheckingBridge(false);
-    }
-  };
-
-  const handleGenerateCode = async () => {
-    setPairingError(null);
-    try {
-      const res = await bridgeService.startPairing();
-      if (res?.pairing_code) {
-        setInputCode(res.pairing_code);
-      } else {
-        setPairingError('Failed to generate pairing code. Ensure bridge is running.');
-      }
-    } catch {
-      setPairingError('Error communicating with Local Companion.');
     }
   };
 
@@ -243,32 +229,46 @@ export const ConnectCliModal: React.FC<ConnectCliModalProps> = ({
               </div>
 
               <div className="space-y-4">
+                <div className="p-3.5 rounded-xl bg-[#0B1220] border border-[#1E314F] space-y-2">
+                  <div className="text-xs font-mono text-slate-300 font-bold">
+                    GENERATE PAIRING CODE IN YOUR TERMINAL:
+                  </div>
+                  <p className="text-[11px] font-mono text-slate-400 leading-relaxed">
+                    For zero-trust security, pairing codes are generated and displayed solely inside your local CLI.
+                  </p>
+                  <div className="flex items-center justify-between gap-2 p-2.5 bg-[#111C30] rounded-lg border border-[#1E314F] font-mono text-xs text-[#00D4FF]">
+                    <span>python gxeon_wallet.py pair</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('python gxeon_wallet.py pair');
+                        setCopiedPairCmd(true);
+                        setTimeout(() => setCopiedPairCmd(false), 2000);
+                      }}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#1E314F] hover:bg-[#2A436B] text-white text-[11px] transition-all"
+                    >
+                      {copiedPairCmd ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedPairCmd ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                </div>
+
                 <div className="text-xs font-mono text-slate-300">
-                  Enter the <strong>6-digit Pairing Code</strong> from your local companion terminal (or generate one directly):
+                  Enter the <strong>6-digit Pairing Code</strong> printed in your terminal:
                 </div>
 
                 <form onSubmit={handleConfirmPairing} className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="relative flex-1">
-                      <KeyRound className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
-                      <input
-                        type="text"
-                        maxLength={6}
-                        required
-                        value={inputCode}
-                        onChange={(e) => setInputCode(e.target.value.replace(/\D/g, ''))}
-                        placeholder="123456"
-                        className="w-full bg-[#111C30] border border-[#1E314F] rounded-lg pl-10 pr-4 py-2.5 text-center font-mono font-bold text-lg text-[#00D4FF] tracking-[0.3em] placeholder-slate-600 focus:outline-none focus:border-[#00D4FF]"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleGenerateCode}
-                      className="px-4 py-2.5 rounded-lg bg-[#111C30] hover:bg-[#1E314F] border border-[#1E314F] text-xs font-mono text-slate-300 hover:text-white transition-all flex items-center gap-1.5"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-[#FF7A00]" />
-                      <span>GENERATE CODE</span>
-                    </button>
+                  <div className="relative">
+                    <KeyRound className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+                    <input
+                      type="text"
+                      maxLength={6}
+                      required
+                      value={inputCode}
+                      onChange={(e) => setInputCode(e.target.value.replace(/\D/g, ''))}
+                      placeholder="123456"
+                      className="w-full bg-[#111C30] border border-[#1E314F] rounded-lg pl-10 pr-4 py-2.5 text-center font-mono font-bold text-lg text-[#00D4FF] tracking-[0.3em] placeholder-slate-600 focus:outline-none focus:border-[#00D4FF]"
+                    />
                   </div>
 
                   {pairingError && (
@@ -338,48 +338,95 @@ export const ConnectCliModal: React.FC<ConnectCliModalProps> = ({
                 </div>
               </div>
 
-              {/* Detected Public Wallets */}
-              <div className="space-y-3 pt-2">
-                <div className="text-xs font-mono text-slate-300 font-bold flex items-center gap-2">
-                  <HardDriveDownload className="w-4 h-4 text-[#00D4FF]" />
-                  PUBLIC WALLET ADDRESSES AVAILABLE ({detectionData.detected_wallets.length}):
-                </div>
+              {/* Live Detected CLI Public Wallets */}
+              {detectionData.detected_wallets.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <div className="text-xs font-mono text-slate-300 font-bold flex items-center gap-2">
+                    <HardDriveDownload className="w-4 h-4 text-[#00D4FF]" />
+                    DISCOVERED CLI WALLETS ({detectionData.detected_wallets.length}):
+                  </div>
 
-                <div className="space-y-2.5">
-                  {detectionData.detected_wallets.map((w) => {
-                    const isImported = importedWallets.has(w.id);
-                    return (
-                      <div
-                        key={w.id}
-                        className="p-3 rounded-xl bg-[#111C30] border border-[#1E314F] flex items-center justify-between gap-3"
-                      >
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono font-bold text-white">{w.name}</span>
-                            <Badge variant="orange">{w.network.toUpperCase()}</Badge>
-                            <Badge variant="slate">WATCH-ONLY</Badge>
-                          </div>
-                          <div className="text-[11px] font-mono text-slate-400 truncate max-w-sm">
-                            {w.publicAddress}
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => handleImportWallet(w)}
-                          disabled={isImported}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all shrink-0 ${
-                            isImported
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-[#FF7A00] hover:bg-[#FF8B1F] text-black shadow-glow-orange'
-                          }`}
+                  <div className="space-y-2.5">
+                    {detectionData.detected_wallets.map((w) => {
+                      const isImported = importedWallets.has(w.id);
+                      return (
+                        <div
+                          key={w.id}
+                          className="p-3 rounded-xl bg-[#111C30] border border-[#1E314F] flex items-center justify-between gap-3"
                         >
-                          {isImported ? 'ADDED' : 'ADD TO GXEON'}
-                        </button>
-                      </div>
-                    );
-                  })}
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold text-white">{w.name}</span>
+                              <Badge variant="orange">{w.network.toUpperCase()}</Badge>
+                              <Badge variant="cyan">CLI DISCOVERED</Badge>
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-400 truncate max-w-sm">
+                              {w.publicAddress}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleImportWallet(w)}
+                            disabled={isImported}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all shrink-0 ${
+                              isImported
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-[#FF7A00] hover:bg-[#FF8B1F] text-black shadow-glow-orange'
+                            }`}
+                          >
+                            {isImported ? 'ADDED' : 'ADD TO GXEON'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Statically Configured Watch-Only Wallets */}
+              {detectionData.registered_wallets && detectionData.registered_wallets.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <div className="text-xs font-mono text-slate-300 font-bold flex items-center gap-2">
+                    <HardDriveDownload className="w-4 h-4 text-[#FF7A00]" />
+                    REGISTERED WATCH-ONLY CONFIGURATIONS ({detectionData.registered_wallets.length}):
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {detectionData.registered_wallets.map((w) => {
+                      const isImported = importedWallets.has(w.id);
+                      return (
+                        <div
+                          key={w.id}
+                          className="p-3 rounded-xl bg-[#111C30] border border-[#1E314F] flex items-center justify-between gap-3"
+                        >
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold text-white">{w.name}</span>
+                              <Badge variant="orange">{w.network.toUpperCase()}</Badge>
+                              <Badge variant="slate">WATCH-ONLY</Badge>
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-400 truncate max-w-sm">
+                              {w.publicAddress}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleImportWallet(w)}
+                            disabled={isImported}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all shrink-0 ${
+                              isImported
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-[#FF7A00] hover:bg-[#FF8B1F] text-black shadow-glow-orange'
+                            }`}
+                          >
+                            {isImported ? 'ADDED' : 'ADD TO GXEON'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-between pt-4 border-t border-[#1E314F]">
                 <button
