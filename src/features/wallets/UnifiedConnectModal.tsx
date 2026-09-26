@@ -44,10 +44,19 @@ export const UnifiedConnectModal: React.FC<UnifiedConnectModalProps> = ({
     try {
       const result = await evmAdapter.connect();
       if (result.success && result.publicAddress) {
+        const chainNames: Record<number, { network: string; symbol: string }> = {
+          1: { network: 'ethereum', symbol: 'ETH' },
+          8453: { network: 'base', symbol: 'ETH' },
+          137: { network: 'polygon', symbol: 'POL' },
+          42161: { network: 'arbitrum', symbol: 'ETH' },
+          10: { network: 'optimism', symbol: 'ETH' },
+        };
+        const chain = chainNames[result.chainId || 0];
         onConnected({
           name: 'MetaMask EVM Connected',
-          network: 'evm',
-          symbol: 'ETH',
+          network: chain?.network || 'evm',
+          chainId: result.chainId,
+          symbol: chain?.symbol || 'ETH',
           publicAddress: result.publicAddress,
           connectionType: 'BROWSER_PROVIDER',
           mode: 'connected_provider',
@@ -198,8 +207,8 @@ export const UnifiedConnectModal: React.FC<UnifiedConnectModalProps> = ({
 
               {/* 3. Coinbase Wallet */}
               <div
-                onClick={handleConnectCoinbase}
-                className="p-4 rounded-xl bg-[#111C30] hover:bg-[#152238] border border-[#1E314F] hover:border-[#00D4FF]/50 transition-all cursor-pointer flex items-center justify-between group"
+                aria-disabled="true"
+                className="p-4 rounded-xl bg-[#111C30] border border-[#1E314F] opacity-60 cursor-not-allowed flex items-center justify-between group"
               >
                 <div className="flex items-start gap-3.5">
                   <div className="p-2.5 rounded-lg bg-[#00D4FF]/10 text-[#00D4FF] border border-[#00D4FF]/20 mt-0.5">
@@ -210,10 +219,10 @@ export const UnifiedConnectModal: React.FC<UnifiedConnectModalProps> = ({
                       <span className="font-mono font-bold text-sm text-white group-hover:text-[#00D4FF] transition-colors">
                         Coinbase Wallet Extension
                       </span>
-                      <Badge variant="orange">SELF-CUSTODIAL</Badge>
+                      <Badge variant="slate">COMING SOON</Badge>
                     </div>
                     <p className="text-xs text-slate-400 font-mono mt-1 leading-relaxed">
-                      Self-custodial browser extension connector (separate from custodial exchange).
+                      Connector remains disabled until the authorization handshake is implemented.
                     </p>
                   </div>
                 </div>
