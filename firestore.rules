@@ -46,7 +46,8 @@ service cloud.firestore {
 
     // Users collection (isolated to matching user ID)
     match /users/{userId} {
-      allow read, write: if isOwner(userId) && hasNoSensitiveFields(request.resource.data);
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && hasNoSensitiveFields(request.resource.data);
     }
 
     // Wallets collection (Owner-isolated Control Plane metadata & public addresses only)
