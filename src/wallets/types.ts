@@ -6,11 +6,22 @@ export type WalletCapability =
   | 'SEND'
   | 'WATCH_ONLY';
 
-export type AdapterStatus = 'ACTIVE' | 'READY' | 'COMING_SOON' | 'UNAVAILABLE';
+export type AdapterStatus =
+  | 'ACTIVE'
+  | 'PARTIAL'
+  | 'READY_FOR_PROVIDER'
+  | 'COMING_SOON'
+  | 'UNAVAILABLE';
+
+export type CapabilityAvailability =
+  | 'AVAILABLE'
+  | 'UNAVAILABLE'
+  | 'COMING_SOON'
+  | 'DISABLED_IN_V1';
 
 export interface AdapterCapabilityDescriptor {
   capability: WalletCapability;
-  supported: boolean;
+  status: CapabilityAvailability;
   notes?: string;
 }
 
@@ -21,8 +32,10 @@ export interface WalletAdapterInfo {
   version: string;
   status: AdapterStatus;
   capabilities: WalletCapability[];
+  capabilityDetails?: AdapterCapabilityDescriptor[];
   supportedChains?: string[];
   description: string;
+  sourceStatus?: string;
   iconName?: string;
 }
 
@@ -39,7 +52,9 @@ export interface WalletAdapter {
   network: string;
   status: AdapterStatus;
   capabilities: WalletCapability[];
+  capabilityDetails: AdapterCapabilityDescriptor[];
   hasCapability(cap: WalletCapability): boolean;
+  isCapabilityAvailable(cap: WalletCapability): boolean;
   connect?(): Promise<ConnectResult>;
   disconnect?(): Promise<void>;
   getBalance?(address: string): Promise<string | null>;

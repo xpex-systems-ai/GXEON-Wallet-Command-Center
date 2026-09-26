@@ -11,21 +11,30 @@ describe('WalletRegistry & Adapters', () => {
     expect(ids).toContain('solana');
   });
 
-  it('declares proper capabilities for RustChain adapter', () => {
+  it('declares truthful status and capabilities for RustChain adapter', () => {
     const rtc = walletRegistry.getAdapter('rustchain');
     expect(rtc).toBeDefined();
-    expect(rtc?.status).toBe('ACTIVE');
-    expect(rtc?.hasCapability('READ_BALANCE')).toBe(true);
-    expect(rtc?.hasCapability('READ_TRANSACTIONS')).toBe(true);
+    expect(rtc?.status).toBe('PARTIAL');
     expect(rtc?.hasCapability('WATCH_ONLY')).toBe(true);
+    expect(rtc?.isCapabilityAvailable('WATCH_ONLY')).toBe(true);
+    expect(rtc?.isCapabilityAvailable('READ_BALANCE')).toBe(false);
+    expect(rtc?.isCapabilityAvailable('READ_TRANSACTIONS')).toBe(false);
     expect(rtc?.hasCapability('SEND')).toBe(false);
   });
 
-  it('marks Solana adapter strictly as COMING_SOON without fake connection', () => {
+  it('marks Solana adapter strictly as COMING_SOON without simulated connection', () => {
     const solana = walletRegistry.getAdapter('solana');
     expect(solana).toBeDefined();
     expect(solana?.status).toBe('COMING_SOON');
-    expect(solana?.hasCapability('CONNECT')).toBe(false);
+    expect(solana?.isCapabilityAvailable('CONNECT')).toBe(false);
+  });
+
+  it('computes dynamic network counts without hardcoding', () => {
+    const counts = walletRegistry.getNetworkCounts();
+    expect(counts.total).toBe(4);
+    expect(counts.active).toBe(1); // EVM
+    expect(counts.partial).toBe(2); // RustChain, Coinbase
+    expect(counts.comingSoon).toBe(1); // Solana
   });
 
   it('formats addresses safely with proper truncation', () => {
@@ -38,11 +47,12 @@ describe('WalletRegistry & Adapters', () => {
     expect(formattedEvm).toBe('0x1234...5678');
   });
 
-  it('returns adapter info objects with descriptions and status', () => {
+  it('returns adapter info objects with sourceStatus and capability details', () => {
     const infos = walletRegistry.getAdapterInfos();
-    expect(infos.length).toBeGreaterThanOrEqual(4);
+    expect(infos.length).toBe(4);
+    const rtcInfo = infos.find((i) => i.id === 'rustchain');
+    expect(rtcInfo?.sourceStatus).toContain('NOT CONFIGURED');
     const evmInfo = infos.find((i) => i.id === 'evm-metamask');
     expect(evmInfo?.supportedChains).toContain('Ethereum Mainnet');
-    expect(evmInfo?.supportedChains).toContain('Base');
   });
 });

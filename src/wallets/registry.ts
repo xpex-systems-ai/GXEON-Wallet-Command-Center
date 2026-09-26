@@ -35,24 +35,57 @@ export class WalletRegistry {
     return Array.from(this.adapters.values());
   }
 
+  /**
+   * Returns counts of networks grouped dynamically by their operational status.
+   * Never hardcodes network numbers.
+   */
+  getNetworkCounts(): {
+    active: number;
+    partial: number;
+    comingSoon: number;
+    total: number;
+  } {
+    let active = 0;
+    let partial = 0;
+    let comingSoon = 0;
+
+    for (const adapter of this.adapters.values()) {
+      if (adapter.status === 'ACTIVE') active++;
+      else if (adapter.status === 'PARTIAL' || adapter.status === 'READY_FOR_PROVIDER') partial++;
+      else if (adapter.status === 'COMING_SOON') comingSoon++;
+    }
+
+    return {
+      active,
+      partial,
+      comingSoon,
+      total: this.adapters.size,
+    };
+  }
+
   getAdapterInfos(): WalletAdapterInfo[] {
     return this.getAllAdapters().map((adapter) => {
       let supportedChains: string[] | undefined;
       let description = '';
+      let sourceStatus = '';
 
       switch (adapter.id) {
         case 'rustchain':
-          description = 'RustChain RTC native watcher and bounty destination adapter.';
+          description = 'RustChain RTC native watch-only receiver for bounty tracking.';
+          sourceStatus = 'RPC SOURCE NOT CONFIGURED';
           break;
         case 'evm-metamask':
           description = 'EVM browser provider connector for MetaMask, Rabby, and Web3 extensions.';
           supportedChains = ['Ethereum Mainnet', 'Base', 'Polygon', 'Arbitrum One'];
+          sourceStatus = 'BROWSER EXTENSION / RPC';
           break;
         case 'coinbase-wallet':
-          description = 'Self-custodial Coinbase Wallet connector.';
+          description = 'Self-custodial Coinbase Wallet extension connector.';
+          sourceStatus = 'BROWSER EXTENSION';
           break;
         case 'solana':
-          description = 'Solana non-custodial monitor (Under Development).';
+          description = 'Solana non-custodial monitor (Under Specification).';
+          sourceStatus = 'UNDER DEVELOPMENT';
           break;
       }
 
@@ -63,8 +96,10 @@ export class WalletRegistry {
         version: '1.0.0',
         status: adapter.status,
         capabilities: adapter.capabilities,
+        capabilityDetails: adapter.capabilityDetails,
         supportedChains,
         description,
+        sourceStatus,
       };
     });
   }

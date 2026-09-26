@@ -1,14 +1,49 @@
-import { WalletAdapter, WalletCapability, AdapterStatus } from '../types';
+import {
+  WalletAdapter,
+  WalletCapability,
+  AdapterStatus,
+  AdapterCapabilityDescriptor,
+} from '../types';
 
 export class RustChainAdapter implements WalletAdapter {
   id = 'rustchain';
   name = 'RustChain RTC Adapter';
   network = 'rustchain';
-  status: AdapterStatus = 'ACTIVE';
-  capabilities: WalletCapability[] = ['READ_BALANCE', 'READ_TRANSACTIONS', 'WATCH_ONLY'];
+  // Truthful status: Operates in Watch-Only monitoring mode; awaiting official RPC node configuration
+  status: AdapterStatus = 'PARTIAL';
+
+  capabilities: WalletCapability[] = ['WATCH_ONLY', 'READ_BALANCE', 'READ_TRANSACTIONS'];
+
+  capabilityDetails: AdapterCapabilityDescriptor[] = [
+    {
+      capability: 'WATCH_ONLY',
+      status: 'AVAILABLE',
+      notes: 'Watch-only address tracking active for bounty submissions.',
+    },
+    {
+      capability: 'READ_BALANCE',
+      status: 'UNAVAILABLE',
+      notes: 'Source RPC endpoint not configured. Real-time balance lookup awaiting verified node.',
+    },
+    {
+      capability: 'READ_TRANSACTIONS',
+      status: 'UNAVAILABLE',
+      notes: 'Historical explorer RPC not configured. History queries unavailable.',
+    },
+    {
+      capability: 'SEND',
+      status: 'DISABLED_IN_V1',
+      notes: 'Funds movement disabled by GXEON security invariant.',
+    },
+  ];
 
   hasCapability(cap: WalletCapability): boolean {
     return this.capabilities.includes(cap);
+  }
+
+  isCapabilityAvailable(cap: WalletCapability): boolean {
+    const detail = this.capabilityDetails.find((d) => d.capability === cap);
+    return detail ? detail.status === 'AVAILABLE' : false;
   }
 
   formatAddress(address: string): string {
@@ -18,12 +53,12 @@ export class RustChainAdapter implements WalletAdapter {
   }
 
   /**
-   * Queries balance from RustChain local plane or public node if available.
-   * In V1, if no public live endpoint is active, returns null (displayed as '--' without fake numbers).
+   * Queries balance from RustChain node if available.
+   * TRUTH IN DATA INVARIANT:
+   * Since no verified live RPC endpoint is currently active, returns null.
+   * Zero fake balances or zero mock numbers are ever returned.
    */
   async getBalance(_address: string): Promise<string | null> {
-    // RustChain live public RPC query integration
-    // When live RPC is not reachable, never fabricate a fake number.
     return null;
   }
 }

@@ -1,42 +1,29 @@
 # GXEON Wallet Adapters Specification
 
-The GXEON Wallet Command Center implements an extensible adapter layer in `src/wallets/`.
+The GXEON Wallet Command Center implements an extensible, truth-first adapter layer in `src/wallets/`.
 
-## 1. Capability System
+## 1. Truthful Adapter Status Matrix
 
-Every adapter implements `WalletAdapter` and explicitly declares supported capabilities from the enum:
-
-- `READ_BALANCE`: Querying public balance from blockchain node/explorer.
-- `READ_TRANSACTIONS`: Querying transaction history from explorer.
-- `CONNECT`: Establishing a handshake with a browser extension provider (e.g. MetaMask).
-- `SIGN`: Requesting cryptographic proof of address ownership.
-- `SEND`: Broadcasting on-chain transfers (*Disabled in V1*).
-- `WATCH_ONLY`: Monitoring public address activity without signing keys.
+| Adapter ID | Network | Operational Status | Declared Capabilities | Active Source |
+| :--- | :--- | :--- | :--- | :--- |
+| `rustchain` | RustChain (RTC) | `PARTIAL` | `WATCH_ONLY` (Available)<br>`READ_BALANCE` (Unavailable)<br>`READ_TRANSACTIONS` (Unavailable) | RPC not configured; Watch-Only address tracking |
+| `evm-metamask` | EVM (Eth, Base, Polygon, Arb) | `ACTIVE` | `CONNECT` (Available)<br>`READ_BALANCE` (Available)<br>`READ_TRANSACTIONS` (Available)<br>`SIGN` (Available)<br>`WATCH_ONLY` (Available) | Browser Extension (EIP-1193) |
+| `coinbase-wallet` | EVM | `PARTIAL` | `CONNECT` (Available)<br>`WATCH_ONLY` (Available) | Injected Extension detection |
+| `solana` | Solana | `COMING_SOON` | `WATCH_ONLY` (Coming Soon) | Under specification |
 
 ---
 
-## 2. Adapter Catalog
+## 2. RustChain RTC Adapter Details
 
-| Adapter ID | Network | Status | Capabilities |
-| :--- | :--- | :--- | :--- |
-| `rustchain` | RustChain (RTC) | `ACTIVE` | `READ_BALANCE`, `READ_TRANSACTIONS`, `WATCH_ONLY` |
-| `evm-metamask` | EVM (Eth, Base, Polygon, Arb) | `ACTIVE` | `CONNECT`, `READ_BALANCE`, `READ_TRANSACTIONS`, `SIGN`, `WATCH_ONLY` |
-| `coinbase-wallet` | EVM | `READY` | `CONNECT`, `READ_BALANCE`, `READ_TRANSACTIONS`, `WATCH_ONLY` |
-| `solana` | Solana | `COMING_SOON` | `WATCH_ONLY` |
+- **Target Public Address:** `RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269`
+- **Mode:** `WATCH_ONLY`
+- **Ownership Status:** `UNVERIFIED` (until local cryptographic signature proof).
+- **Balance / History Query:** Since no official live public RPC endpoint is currently active, `getBalance()` returns `null` (rendered as `UNAVAILABLE`). Zero fake numbers are fabricated.
 
 ---
 
-## 3. RustChain Adapter Details
+## 3. EVM Adapter Details
 
-- **Identifier:** `rustchain`
-- **Initial Target Address:** `RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269`
-- **Operational Mode:** `WATCH_ONLY`
-- **Verification Rule:** `ownership_verified: false` until signed proof is executed via local plane.
-
----
-
-## 4. EVM / MetaMask Adapter Details
-
-- **Identifier:** `evm-metamask`
-- **Standard:** EIP-1193 (`window.ethereum`)
-- **Flow:** User clicks Connect → MetaMask popup requests authorization → Public address and chain ID returned → Zero seed phrases requested.
+- **Protocol:** EIP-1193 (`window.ethereum`)
+- **Key Safety:** Zero seed phrase requests.
+- **Precision:** Wei-to-ether conversions use `BigInt` operations to preserve financial precision.
