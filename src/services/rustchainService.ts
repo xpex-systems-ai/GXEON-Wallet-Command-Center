@@ -108,7 +108,7 @@ export class RustChainService {
   /**
    * Retrieves verified transaction history for a RustChain wallet address.
    */
-  async getWalletTransactions(walletId: string, address: string): Promise<{
+  async getWalletTransactions(walletId: string, _address: string): Promise<{
     transactions: WalletTransactionItem[];
     status: 'AVAILABLE' | 'UNAVAILABLE';
     source: string;
