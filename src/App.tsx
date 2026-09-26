@@ -12,6 +12,9 @@ import { TransactionsView } from './features/transactions/TransactionsView';
 import { SecurityView } from './features/security/SecurityView';
 import { AuditLogView } from './features/audit/AuditLogView';
 import { AuthGate } from './features/auth/AuthGate';
+import { QuickFixServiceCard } from './features/sales/QuickFixServiceCard';
+import { JobPipelineTracker } from './features/sales/JobPipelineTracker';
+import { CustomerOrder, JobTicket } from './features/sales/types';
 
 import {
   WalletItem,
@@ -260,6 +263,9 @@ export function App() {
     );
   }
 
+  const [salesOrders, setSalesOrders] = useState<CustomerOrder[]>([]);
+  const [salesTickets, setSalesTickets] = useState<JobTicket[]>([]);
+
   const bountyStats = bountyService.getStats();
 
   return (
@@ -294,6 +300,39 @@ export function App() {
               bountyStats={bountyStats}
               onNavigate={(tab) => setCurrentTab(tab)}
             />
+          )}
+
+          {currentTab === 'sales' && (
+            <div className="space-y-6">
+              <QuickFixServiceCard
+                onOrderCreated={(order) => {
+                  setSalesOrders((prev) => [order, ...prev]);
+                  addToast('success', 'Pedido Criado', `Pedido ${order.id} registrado com sucesso.`);
+                }}
+              />
+              <JobPipelineTracker
+                orders={salesOrders}
+                tickets={salesTickets}
+                onTriggerExecution={(ticketId) => {
+                  setSalesTickets((prev) =>
+                    prev.map((t) => (t.ticketId === ticketId ? { ...t, state: 'EXECUTING' } : t))
+                  );
+                  addToast('info', 'Execução Iniciada', 'Agente iniciou a análise técnica.');
+                }}
+                onTriggerQA={(ticketId) => {
+                  setSalesTickets((prev) =>
+                    prev.map((t) => (t.ticketId === ticketId ? { ...t, state: 'QA_PASSED' } : t))
+                  );
+                  addToast('info', 'QA Aprovado', 'Testes de validação concluídos com sucesso.');
+                }}
+                onDeliverJob={(ticketId) => {
+                  setSalesTickets((prev) =>
+                    prev.map((t) => (t.ticketId === ticketId ? { ...t, state: 'DELIVERED' } : t))
+                  );
+                  addToast('success', 'Job Entregue', 'Correção entregue ao cliente.');
+                }}
+              />
+            </div>
           )}
 
           {currentTab === 'wallets' && (
