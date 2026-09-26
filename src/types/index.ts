@@ -115,6 +115,8 @@ export interface BridgeStatusResponse {
   };
   registered_wallets_count: number;
   active_adapters: number;
+  paired?: boolean;
+  active_sessions?: number;
   uptime: string;
 }
 
@@ -129,11 +131,90 @@ export interface MultiAssetEarningsStats {
 
 /**
  * ============================================================
+ * GXEON LOCAL COMPANION V1.1 — PAIRING & TOOL DETECTION TYPES
+ * ============================================================
+ */
+
+export interface BridgePairStartResponse {
+  ok: boolean;
+  pairing_code: string;
+  expires_in: number;
+  message: string;
+}
+
+export interface BridgePairConfirmRequest {
+  code: string;
+}
+
+export interface BridgePairConfirmResponse {
+  ok: boolean;
+  token: string;
+  expires_in: number;
+  session_id: string;
+}
+
+export interface BridgePairStatusResponse {
+  paired: boolean;
+  active_sessions_count: number;
+  companion_version: string;
+  security_mode: string;
+}
+
+export interface DetectedTool {
+  tool: string;
+  installed: boolean;
+  version?: string;
+  path_sanitized?: string;
+  capabilities: string[];
+}
+
+export interface DetectedWallet {
+  id: string;
+  name: string;
+  network: string;
+  symbol: string;
+  publicAddress: string;
+  connectionType: ConnectionType;
+  mode: WalletMode;
+  ownershipStatus: OwnershipStatus;
+  purpose?: string;
+}
+
+export interface BridgeDetectionResult {
+  tools: DetectedTool[];
+  detected_wallets: DetectedWallet[];
+}
+
+export interface RustChainBalanceResponse {
+  wallet_id: string;
+  network: string;
+  symbol: string;
+  address: string;
+  balance: string | null;
+  status: 'AVAILABLE' | 'UNAVAILABLE';
+  source: string;
+  queried_at: string;
+  ownership_verified: boolean;
+  mode: string;
+  note?: string;
+}
+
+export interface RustChainTransactionsResponse {
+  wallet_id: string;
+  network: string;
+  symbol: string;
+  address: string;
+  transactions: TransactionItem[];
+  status: 'AVAILABLE' | 'UNAVAILABLE';
+  source: string;
+  queried_at: string;
+  note?: string;
+}
+
+/**
+ * ============================================================
  * GXEON QUANTUM MODE FOUNDATION — EVENT TAXONOMY ARCHITECTURE
  * ============================================================
- * Standardized typed event contracts for event-driven, multi-agent mesh,
- * proof of antiquity, mining attestations, and verifiable treasury ops.
- * (Architecture only — zero simulated/synthetic records)
  */
 
 export type QuantumEventType =

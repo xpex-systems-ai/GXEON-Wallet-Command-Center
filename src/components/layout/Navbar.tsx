@@ -1,7 +1,8 @@
 import React from 'react';
-import { ShieldCheck, Server, RefreshCw, Cpu, User, LogOut, Cloud, HardDrive } from 'lucide-react';
+import { ShieldCheck, Server, RefreshCw, Cpu, User, LogOut, Cloud, HardDrive, Terminal } from 'lucide-react';
 import { Badge } from '../common/Badge';
 import { BridgeHealthResponse } from '../../types';
+import { bridgeService } from '../../services/bridgeService';
 
 interface NavbarProps {
   bridgeHealth: BridgeHealthResponse | null;
@@ -62,10 +63,23 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Bridge Status */}
           {bridgeHealth?.ok ? (
-            <Badge variant="green" dot>
-              <Server className="w-3.5 h-3.5 inline mr-1" />
-              <span className="hidden md:inline">BRIDGE </span>127.0.0.1:8790
-            </Badge>
+            <>
+              <Badge variant="green" dot>
+                <Server className="w-3.5 h-3.5 inline mr-1" />
+                <span className="hidden md:inline">BRIDGE </span>127.0.0.1:8790
+              </Badge>
+              {bridgeService.isPaired() ? (
+                <Badge variant="cyan" dot>
+                  <Terminal className="w-3.5 h-3.5 inline mr-1" />
+                  <span className="hidden sm:inline">COMPANION </span>PAIRED
+                </Badge>
+              ) : (
+                <Badge variant="slate">
+                  <Terminal className="w-3.5 h-3.5 inline mr-1 text-slate-400" />
+                  <span className="hidden sm:inline">CLI </span>UNPAIRED
+                </Badge>
+              )}
+            </>
           ) : (
             <Badge variant="amber" dot>
               <Server className="w-3.5 h-3.5 inline mr-1" />
