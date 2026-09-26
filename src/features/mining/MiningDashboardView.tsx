@@ -489,7 +489,7 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
 
               <div className="flex items-center justify-between text-slate-400 text-[10px]">
                 <span>Historical Events Tracked:</span>
-                <span className="text-slate-300">{rewardHistory.length}</span>
+                <span className="text-slate-300">{rewardHistoryStatus === 'UNAVAILABLE' ? 'UNAVAILABLE' : rewardHistory.length}</span>
               </div>
 
               <div className="p-3 bg-[#0B1220] rounded-lg border border-[#1E314F]">
