@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { payoutVerifier } from '../payoutVerifier';
 import { BountyItem } from '../../types';
 
@@ -29,7 +29,7 @@ describe('Payout Verification Engine', () => {
     expect(result.verificationStatus).toBe('FAILED');
   });
 
-  it('verifies valid EVM transaction hash and confirms verification', async () => {
+  it('returns FORMAT_VALID for valid EVM syntax when live RPC is not active', async () => {
     const result = await payoutVerifier.verifyPayout({
       bountyId: 'b-3',
       network: 'evm',
@@ -39,8 +39,39 @@ describe('Payout Verification Engine', () => {
       txHash: '0x3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b',
     });
 
-    expect(result.verificationStatus).toBe('CONFIRMED');
+    expect(result.verificationStatus).toBe('FORMAT_VALID');
     expect(result.txHash).toBe('0x3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b');
+  });
+
+  it('returns CONFIRMED when custom RPC returns on-chain transaction receipt', async () => {
+    // Mock global fetch for custom RPC
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        result: {
+          blockNumber: '0x1234',
+          status: '0x1',
+        },
+      }),
+    } as any);
+
+    try {
+      const result = await payoutVerifier.verifyPayout({
+        bountyId: 'b-3-live',
+        network: 'evm',
+        asset: 'ETH',
+        destinationWallet: '0x71C8407C27daB54E627B0a726715f33346e0176b',
+        expectedAmount: '0.5',
+        txHash: '0x3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b',
+        customRpcEndpoint: 'https://rpc.example.com',
+      });
+
+      expect(result.verificationStatus).toBe('CONFIRMED');
+      expect(result.verificationSource).toBe('custom_node_rpc');
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 
   it('evaluates canMarkAsPaid strictly based on confirmed verification', () => {

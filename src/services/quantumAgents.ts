@@ -17,7 +17,7 @@ import { quantumEventBus } from '../events/eventBus';
 
 export class MiningAgent {
   private state: MiningAgentState = {
-    isObserving: true,
+    isObserving: false,
     lastCheck: new Date().toISOString(),
     minerStatus: 'STOPPED',
     activeAttestation: false,
@@ -27,6 +27,11 @@ export class MiningAgent {
   constructor() {
     quantumEventBus.subscribe('MINER_STARTED', () => {
       this.state.minerStatus = 'MINING';
+      this.state.activeAttestation = false; // Starts UNATTESTED!
+      this.state.lastCheck = new Date().toISOString();
+    });
+
+    quantumEventBus.subscribe('ATTESTATION_CONFIRMED', () => {
       this.state.activeAttestation = true;
       this.state.lastCheck = new Date().toISOString();
     });
@@ -40,6 +45,7 @@ export class MiningAgent {
 
   evaluate(miningState: ProofOfAntiquityState): MiningAgentState {
     this.state.lastCheck = new Date().toISOString();
+    this.state.isObserving = miningState.clawrtc_installed && Boolean(miningState.source && miningState.source !== 'none');
     this.state.minerStatus = miningState.status;
     this.state.activeAttestation = miningState.attestation_state === 'ATTESTED';
 
@@ -51,7 +57,8 @@ export class MiningAgent {
     } else if (miningState.status === 'STOPPED' || miningState.status === 'CONFIGURED') {
       recs.push('Miner is ready. Operator may click START MINING to initiate epoch attestation.');
     } else if (miningState.status === 'MINING') {
-      recs.push(`Mining active on Epoch #${miningState.current_epoch}. Monitoring hardware attestation.`);
+      const epochStr = miningState.current_epoch ? `#${miningState.current_epoch}` : 'Pending';
+      recs.push(`Mining active on Epoch ${epochStr}. Awaiting hardware attestation proof.`);
     }
 
     this.state.recommendations = recs;

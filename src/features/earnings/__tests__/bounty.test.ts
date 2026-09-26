@@ -43,7 +43,7 @@ describe('Bounty State Machine & Multi-Asset Accounting', () => {
       destinationWallet: 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269',
       txHash: '0xabc1234567890abcdef',
       verifiedAt: new Date().toISOString(),
-      verificationSource: 'rustchain_official_rpc',
+      verificationSource: 'rustchain_onchain_rpc',
       verificationStatus: 'CONFIRMED',
     };
 

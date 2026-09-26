@@ -42,16 +42,16 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
     reward_destination: 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269',
     hardware: {
       cpu_arch: 'x86_64',
-      processor: 'AMD64 / Intel CPU',
+      processor: 'System CPU',
       os: 'Windows/Linux',
-      compatibility: 'Proof of Antiquity Compatible',
+      compatibility: 'DETECTED_HARDWARE',
     },
     attestation_state: 'UNATTESTED',
     last_attestation_timestamp: null,
-    current_epoch: 42,
+    current_epoch: null,
     antiquity_multiplier: null,
-    confirmed_rtc: 0,
-    pending_rewards: 0,
+    confirmed_rtc: null,
+    pending_rewards: null,
     source: 'bridge',
     queried_at: new Date().toISOString(),
   });
@@ -309,7 +309,9 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
           </div>
           <div className="mt-3">
             <div className="text-2xl font-bold font-mono text-amber-400">
-              {miningState.pending_rewards > 0 ? `${miningState.pending_rewards} RTC` : '0 PENDING'}
+              {miningState.pending_rewards !== null && miningState.pending_rewards !== undefined
+                ? `${miningState.pending_rewards} RTC`
+                : 'UNAVAILABLE'}
             </div>
             <div className="text-xs text-slate-400 mt-1 font-mono">
               Subject to epoch block finalization
@@ -331,7 +333,9 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
           </div>
           <div className="mt-3">
             <div className="text-2xl font-bold font-mono text-emerald-400">
-              {miningState.confirmed_rtc > 0 ? `${miningState.confirmed_rtc} RTC` : 'UNAVAILABLE'}
+              {miningState.confirmed_rtc !== null && miningState.confirmed_rtc !== undefined
+                ? `${miningState.confirmed_rtc} RTC`
+                : 'UNAVAILABLE'}
             </div>
             <div className="text-xs text-slate-400 mt-1 font-mono truncate">
               To: {miningState.reward_destination ? `${miningState.reward_destination.slice(0, 10)}...` : 'Not Set'}

@@ -46,7 +46,7 @@ export type BountyStatus =
   | 'PAID'
   | 'REJECTED';
 
-export type VerificationStatus = 'UNVERIFIED' | 'PENDING' | 'CONFIRMED' | 'FAILED';
+export type VerificationStatus = 'UNVERIFIED' | 'FORMAT_VALID' | 'QUERYING' | 'PENDING' | 'CONFIRMED' | 'FAILED';
 
 export interface PayoutVerification {
   network: string;
@@ -227,13 +227,20 @@ export interface ProofOfAntiquityState {
   clawrtc_version?: string | null;
   miner_id?: string | null;
   reward_destination?: string | null;
+  config_source?: string;
   hardware: HardwareMetadata;
   attestation_state: AttestationState;
+  attestation_id?: string | null;
   last_attestation_timestamp?: string | null;
-  current_epoch: number;
+  current_epoch?: number | null;
   antiquity_multiplier?: number | null; // null / unavailable if no real proof
-  confirmed_rtc: number;
-  pending_rewards: number;
+  confirmed_rtc?: number | null;
+  pending_rewards?: number | null;
+  estimated_rewards?: number | null;
+  pid?: number | null;
+  process_alive?: boolean;
+  exit_code?: number | null;
+  supported_commands?: string[];
   source: string;
   queried_at: string;
 }

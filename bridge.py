@@ -96,19 +96,24 @@ PAIRING_STORE = PairingState()
 # ============================================================
 
 class MiningState:
-    status: str = "STOPPED"  # STOPPED, MINING, CONFIGURED, NOT_INSTALLED, ERROR
+    status: str = "STOPPED"  # STOPPED, MINING, CONFIGURED, NOT_INSTALLED, NOT_CONFIGURED, ERROR
     miner_id: Optional[str] = None
     reward_destination: Optional[str] = None
+    config_source: str = "UNCONFIGURED"  # UNCONFIGURED, LOCAL_METADATA_CONFIGURED, CLAWRTC_CONFIGURED
     started_at: Optional[float] = None
     last_attestation_timestamp: Optional[str] = None
     last_attestation_status: str = "UNATTESTED"  # UNATTESTED, ATTESTED, EXPIRED, FAILED
-    current_epoch: int = 42
+    current_epoch: Optional[int] = None  # None / null by default (never synthetic 42)
     antiquity_multiplier: Optional[float] = None  # None / unavailable until real proof returned
-    confirmed_rtc: float = 0.0
-    pending_rewards: float = 0.0
+    confirmed_rtc: Optional[float] = None  # None / null by default (never synthetic 0.0)
+    pending_rewards: Optional[float] = None  # None / null by default (never synthetic 0.0)
+    estimated_rewards: Optional[float] = None
+    pid: Optional[int] = None
+    exit_code: Optional[int] = None
 
 
 MINING_STORE = MiningState()
+MINER_PROCESS: Optional[subprocess.Popen] = None
 
 # Non-sensitive audit buffer
 AUDIT_LOG: List[Dict[str, Any]] = [
@@ -148,7 +153,7 @@ def get_hardware_metadata() -> dict[str, str]:
         "cpu_arch": platform.machine() or "x86_64",
         "processor": platform.processor() or "Standard CPU",
         "os": f"{platform.system()} {platform.release()}",
-        "compatibility": "Compatible with Proof of Antiquity (ClawRTC)",
+        "compatibility": "DETECTED_HARDWARE",
     }
 
 
@@ -242,19 +247,26 @@ class MiningStatusResponse(BaseModel):
     clawrtc_version: Optional[str] = None
     miner_id: Optional[str] = None
     reward_destination: Optional[str] = None
+    config_source: str = "UNCONFIGURED"
     hardware: Dict[str, str]
     attestation_state: str
+    attestation_id: Optional[str] = None
     last_attestation_timestamp: Optional[str] = None
     current_epoch: Optional[int] = None
     antiquity_multiplier: Optional[float] = None
     confirmed_rtc: Optional[float] = None
     pending_rewards: Optional[float] = None
+    estimated_rewards: Optional[float] = None
+    pid: Optional[int] = None
+    process_alive: bool = False
+    exit_code: Optional[int] = None
+    supported_commands: List[str] = []
     source: str
     queried_at: str
 
 
 class MiningConfigureRequest(BaseModel):
-    miner_id: str = Field(..., min_length=3, max_length=128)
+    miner_id: str = Field(..., min_length=1, max_length=128)
     reward_destination: Optional[str] = Field(None, max_length=128)
 
 
@@ -797,28 +809,74 @@ def detect_tools(_token: str = Depends(verify_session_token)):
 # CLAWRTC & MINING CONTROL ENDPOINTS (Proof of Antiquity)
 # ============================================================
 
+def inspect_clawrtc_capabilities(binary_path: str) -> List[str]:
+    """
+    Safely inspects installed ClawRTC binary for supported subcommands via --help.
+    Returns list of discovered capability flags without assuming unconfirmed commands exist.
+    """
+    try:
+        res = subprocess.run([binary_path, "--help"], capture_output=True, text=True, timeout=3, shell=False)
+        help_text = (res.stdout + res.stderr).lower()
+        caps = ["VERSION_CHECK"]
+        if "mine" in help_text or "mining" in help_text or "start" in help_text:
+            caps.append("MINING_CONTROL")
+        if "antiquity" in help_text or "poa" in help_text or "attest" in help_text:
+            caps.append("PROOF_OF_ANTIQUITY")
+        if "config" in help_text or "set-miner" in help_text:
+            caps.append("CONFIG_MANAGEMENT")
+        if "wallet" in help_text or "address" in help_text:
+            caps.append("WALLET_MANAGEMENT")
+        if "status" in help_text:
+            caps.append("STATUS_QUERY")
+        return caps
+    except Exception:
+        return ["VERSION_CHECK"]
+
+
 @app.get("/mining/status", response_model=MiningStatusResponse)
 def get_mining_status(_token: str = Depends(verify_session_token)):
     """
-    Returns full Proof of Antiquity status, hardware metadata, and ClawRTC mining state.
+    Returns full Proof of Antiquity status, hardware metadata, process state, and ClawRTC mining state.
     Strict Invariant: No fake multipliers or synthetic balances.
     """
+    global MINER_PROCESS
     clawrtc_bin = shutil.which("clawrtc") or shutil.which("clawrtc-cli")
     clawrtc_installed = bool(clawrtc_bin)
     version_str = None
+    supported_caps: List[str] = []
 
     if clawrtc_installed:
         try:
             res = subprocess.run([clawrtc_bin, "--version"], capture_output=True, text=True, timeout=3, shell=False)
             if res.returncode == 0:
                 version_str = res.stdout.strip()
+            supported_caps = inspect_clawrtc_capabilities(clawrtc_bin)
         except Exception:
             version_str = "1.0.0"
-        if MINING_STORE.status == "NOT_INSTALLED":
-            MINING_STORE.status = "CONFIGURED" if MINING_STORE.miner_id else "INSTALLED"
+
+    # Verify real process health
+    process_alive = False
+    if MINER_PROCESS is not None:
+        poll_res = MINER_PROCESS.poll()
+        if poll_res is None:
+            process_alive = True
+            MINING_STORE.status = "MINING"
+            MINING_STORE.pid = MINER_PROCESS.pid
+            MINING_STORE.exit_code = None
+        else:
+            # Process died or completed
+            process_alive = False
+            MINING_STORE.exit_code = poll_res
+            MINING_STORE.status = "ERROR" if poll_res != 0 else "STOPPED"
+            MINING_STORE.pid = None
+            MINER_PROCESS = None
     else:
-        if MINING_STORE.status != "MINING":
+        if not clawrtc_installed:
             MINING_STORE.status = "NOT_INSTALLED"
+        elif not MINING_STORE.miner_id:
+            MINING_STORE.status = "NOT_CONFIGURED"
+        elif MINING_STORE.status not in ("MINING", "ERROR", "STOPPED"):
+            MINING_STORE.status = "CONFIGURED"
 
     return {
         "status": MINING_STORE.status,
@@ -826,13 +884,20 @@ def get_mining_status(_token: str = Depends(verify_session_token)):
         "clawrtc_version": version_str,
         "miner_id": MINING_STORE.miner_id,
         "reward_destination": MINING_STORE.reward_destination,
+        "config_source": MINING_STORE.config_source,
         "hardware": get_hardware_metadata(),
         "attestation_state": MINING_STORE.last_attestation_status,
+        "attestation_id": None,
         "last_attestation_timestamp": MINING_STORE.last_attestation_timestamp,
         "current_epoch": MINING_STORE.current_epoch,
         "antiquity_multiplier": MINING_STORE.antiquity_multiplier,
         "confirmed_rtc": MINING_STORE.confirmed_rtc,
         "pending_rewards": MINING_STORE.pending_rewards,
+        "estimated_rewards": MINING_STORE.estimated_rewards,
+        "pid": MINING_STORE.pid,
+        "process_alive": process_alive,
+        "exit_code": MINING_STORE.exit_code,
+        "supported_commands": supported_caps,
         "source": "local_companion_clawrtc" if clawrtc_installed else "none",
         "queried_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
@@ -841,20 +906,39 @@ def get_mining_status(_token: str = Depends(verify_session_token)):
 @app.post("/mining/configure")
 def configure_mining(payload: MiningConfigureRequest, _token: str = Depends(verify_session_token)):
     """
-    Configures miner_id and reward_destination without accepting private keys.
+    Configures miner_id and reward_destination.
+    Distinguishes LOCAL_METADATA_CONFIGURED vs CLAWRTC_CONFIGURED.
     """
-    MINING_STORE.miner_id = payload.miner_id.strip()
+    miner_id_clean = payload.miner_id.strip()
+    if not miner_id_clean:
+        raise HTTPException(status_code=400, detail="Miner ID cannot be blank")
+
+    MINING_STORE.miner_id = miner_id_clean
     if payload.reward_destination:
         MINING_STORE.reward_destination = payload.reward_destination.strip()
-    if MINING_STORE.status in ("NOT_INSTALLED", "INSTALLED"):
+
+    clawrtc_bin = shutil.which("clawrtc") or shutil.which("clawrtc-cli")
+    config_source = "LOCAL_METADATA_CONFIGURED"
+
+    if clawrtc_bin:
+        try:
+            res = subprocess.run([clawrtc_bin, "config", "set-miner", miner_id_clean], capture_output=True, text=True, timeout=3, shell=False)
+            if res.returncode == 0:
+                config_source = "CLAWRTC_CONFIGURED"
+        except Exception:
+            config_source = "LOCAL_METADATA_CONFIGURED"
+
+    MINING_STORE.config_source = config_source
+    if MINING_STORE.status in ("NOT_INSTALLED", "INSTALLED", "NOT_CONFIGURED"):
         MINING_STORE.status = "CONFIGURED"
 
-    record_audit_event("MINER_CONFIGURED", f"Miner ID configured as: {MINING_STORE.miner_id}")
+    record_audit_event("MINER_CONFIGURED", f"Miner ID configured as: {MINING_STORE.miner_id} ({config_source})")
     return {
         "ok": True,
         "message": f"Miner identity configured: {MINING_STORE.miner_id}",
         "miner_id": MINING_STORE.miner_id,
         "reward_destination": MINING_STORE.reward_destination,
+        "config_source": config_source,
     }
 
 
@@ -862,37 +946,108 @@ def configure_mining(payload: MiningConfigureRequest, _token: str = Depends(veri
 def start_mining(_token: str = Depends(verify_session_token)):
     """
     Explicit operator trigger to start ClawRTC Proof of Antiquity mining.
-    Executes allowlisted command strictly with shell=False.
+    CRITICAL INVARIANT:
+    - Rejects with HTTP 409 if ClawRTC binary is missing (status=NOT_INSTALLED).
+    - Rejects with HTTP 400 if miner_id is not configured (status=NOT_CONFIGURED).
+    - Executes allowlisted command strictly with shell=False.
+    - Confirms process started before setting status=MINING.
+    - Attestation remains UNATTESTED until real proof is returned.
     """
-    if MINING_STORE.status == "MINING":
-        return {"ok": True, "status": "MINING", "message": "Miner is already running"}
+    global MINER_PROCESS
 
     clawrtc_bin = shutil.which("clawrtc") or shutil.which("clawrtc-cli")
-    # If clawrtc binary is not installed, we simulate the runner state if configured
+    if not clawrtc_bin:
+        MINING_STORE.status = "NOT_INSTALLED"
+        record_audit_event("MINER_START_BLOCKED", "ClawRTC binary not found in PATH", "warning")
+        raise HTTPException(
+            status_code=409,
+            detail="ClawRTC binary not found in PATH. Status is NOT_INSTALLED."
+        )
+
+    if not MINING_STORE.miner_id:
+        MINING_STORE.status = "NOT_CONFIGURED"
+        record_audit_event("MINER_START_BLOCKED", "Miner ID is missing", "warning")
+        raise HTTPException(
+            status_code=400,
+            detail="Miner ID is missing. Configure miner identity before starting. Status is NOT_CONFIGURED."
+        )
+
+    if MINER_PROCESS is not None and MINER_PROCESS.poll() is None:
+        return {
+            "ok": True,
+            "status": "MINING",
+            "miner_id": MINING_STORE.miner_id,
+            "pid": MINER_PROCESS.pid,
+            "message": "Miner process is already running",
+        }
+
+    try:
+        proc = subprocess.Popen(
+            [clawrtc_bin, "mine"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False
+        )
+    except Exception as e:
+        MINING_STORE.status = "ERROR"
+        record_audit_event("MINER_START_FAILED", f"Failed to spawn ClawRTC process: {e}", "error")
+        raise HTTPException(status_code=500, detail=f"Failed to start miner process: {e}")
+
+    # Confirm process spawned
+    if proc.poll() is not None:
+        MINING_STORE.status = "ERROR"
+        MINING_STORE.exit_code = proc.poll()
+        raise HTTPException(status_code=500, detail=f"Miner process terminated immediately with exit code {proc.poll()}")
+
+    MINER_PROCESS = proc
+    MINING_STORE.pid = proc.pid
     MINING_STORE.status = "MINING"
     MINING_STORE.started_at = time.time()
-    MINING_STORE.last_attestation_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    MINING_STORE.last_attestation_status = "ATTESTED"
+    MINING_STORE.last_attestation_status = "UNATTESTED"  # Remains UNATTESTED until live attestation
+    MINING_STORE.exit_code = None
 
-    record_audit_event("MINER_STARTED", f"Operator explicitly started ClawRTC Proof of Antiquity (Miner ID: {MINING_STORE.miner_id or 'default'})")
+    record_audit_event("MINER_STARTED", f"Operator started ClawRTC miner (PID: {proc.pid}, Miner ID: {MINING_STORE.miner_id})")
     return {
         "ok": True,
         "status": "MINING",
         "miner_id": MINING_STORE.miner_id,
+        "pid": proc.pid,
         "started_at": MINING_STORE.started_at,
-        "message": "ClawRTC Proof of Antiquity mining successfully started",
+        "message": "ClawRTC Proof of Antiquity mining process successfully started",
     }
 
 
 @app.post("/mining/stop")
 def stop_mining(_token: str = Depends(verify_session_token)):
     """
-    Explicit operator trigger to stop ClawRTC mining.
+    Explicit operator trigger to stop ClawRTC mining process.
     """
+    global MINER_PROCESS
+
+    clawrtc_bin = shutil.which("clawrtc") or shutil.which("clawrtc-cli")
+    if clawrtc_bin:
+        try:
+            subprocess.run([clawrtc_bin, "stop"], capture_output=True, text=True, timeout=5, shell=False)
+        except Exception:
+            pass
+
+    if MINER_PROCESS is not None and MINER_PROCESS.poll() is None:
+        try:
+            MINER_PROCESS.terminate()
+            try:
+                MINER_PROCESS.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                MINER_PROCESS.kill()
+            MINING_STORE.exit_code = MINER_PROCESS.poll()
+        except Exception as e:
+            record_audit_event("MINER_STOP_ERROR", f"Error stopping process: {e}", "warning")
+
+    MINER_PROCESS = None
     MINING_STORE.status = "STOPPED"
+    MINING_STORE.pid = None
     MINING_STORE.started_at = None
 
-    record_audit_event("MINER_STOPPED", "Operator explicitly stopped ClawRTC mining")
+    record_audit_event("MINER_STOPPED", "Operator explicitly stopped ClawRTC mining process")
     return {
         "ok": True,
         "status": "STOPPED",

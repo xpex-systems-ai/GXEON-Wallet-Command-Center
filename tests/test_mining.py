@@ -17,20 +17,37 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def reset_bridge_state():
     """Reset pairing store and mining state before every test."""
+    import bridge
+    bridge.MINER_PROCESS = None
+
     PAIRING_STORE.code = None
     PAIRING_STORE.created_at = 0.0
     PAIRING_STORE.attempts = 0
     PAIRING_STORE.sessions.clear()
 
-    MINING_STORE.status = "STOPPED"
+    MINING_STORE.status = "NOT_INSTALLED"
     MINING_STORE.miner_id = None
     MINING_STORE.reward_destination = "RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269"
+    MINING_STORE.config_source = "UNCONFIGURED"
     MINING_STORE.antiquity_multiplier = None
     MINING_STORE.last_attestation_status = "NOT_SUBMITTED"
+    MINING_STORE.last_attestation_timestamp = None
     MINING_STORE.current_epoch = None
-    MINING_STORE.total_mined_rtc = None
-    MINING_STORE.pending_rewards_count = 0
+    MINING_STORE.confirmed_rtc = None
+    MINING_STORE.pending_rewards = None
+    MINING_STORE.estimated_rewards = None
+    MINING_STORE.pid = None
+    MINING_STORE.started_at = None
+    MINING_STORE.exit_code = None
     yield
+
+    # Clean up any lingering subprocess
+    if bridge.MINER_PROCESS is not None:
+        try:
+            bridge.MINER_PROCESS.kill()
+        except Exception:
+            pass
+        bridge.MINER_PROCESS = None
 
 
 def _obtain_session_token() -> str:
@@ -45,19 +62,26 @@ def _obtain_session_token() -> str:
 # HARDWARE METADATA & CLAWRTC TOOL TESTS
 # ============================================================
 
-def test_hardware_metadata_collection():
+def test_hardware_metadata_truthfulness():
+    """Hardware metadata must NOT falsely claim compatibility with Proof of Antiquity."""
     metadata = get_hardware_metadata()
     assert "cpu_arch" in metadata
     assert "processor" in metadata
     assert "os" in metadata
     assert "compatibility" in metadata
+    assert metadata["compatibility"] in ("DETECTED_HARDWARE", "UNKNOWN")
+    assert "Compatible with Proof of Antiquity" not in metadata["compatibility"]
 
 
 # ============================================================
-# MINING ENDPOINTS AUTHENTICATION & ACCESS CONTROL
+# MINING ENDPOINTS AUTHENTICATION & TRUTHFUL DEFAULTS
 # ============================================================
 
-def test_mining_status_paired():
+def test_mining_status_truthful_defaults():
+    """
+    CRITICAL INVARIANT:
+    Status defaults must be None/null, not synthetic 42 epoch or 0.0 fake balance.
+    """
     token = _obtain_session_token()
     headers = {"Authorization": f"Bearer {token}"}
     response = client.get("/mining/status", headers=headers)
@@ -68,7 +92,12 @@ def test_mining_status_paired():
     assert "reward_destination" in data
     assert "clawrtc_installed" in data
     assert "hardware" in data
-    # Invariant: RTC public address is separate from miner_id
+    assert data["current_epoch"] is None
+    assert data["confirmed_rtc"] is None
+    assert data["pending_rewards"] is None
+    assert data["estimated_rewards"] is None
+    assert data["antiquity_multiplier"] is None
+    # Public destination address separate from miner_id
     assert data["reward_destination"] == "RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269"
 
 
@@ -97,10 +126,48 @@ def test_mining_start_stop_requires_auth():
 
 
 # ============================================================
-# MINING LIFECYCLE WITH VALID PAIRING SESSION
+# MONEY TRUTH: BLOCKING INVALID MINING TRANSITIONS
 # ============================================================
 
-def test_mining_configure_and_start_lifecycle():
+def test_mining_start_blocked_when_clawrtc_not_installed():
+    """If ClawRTC binary is missing, /mining/start must return HTTP 409 NOT_INSTALLED."""
+    token = _obtain_session_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch("shutil.which", return_value=None):
+        MINING_STORE.miner_id = "miner-test-01"
+        res = client.post("/mining/start", headers=headers)
+        assert res.status_code == 409
+        assert "NOT_INSTALLED" in res.json()["detail"]
+        assert MINING_STORE.status == "NOT_INSTALLED"
+        assert MINING_STORE.last_attestation_status != "ATTESTED"
+
+
+def test_mining_start_blocked_when_miner_id_not_configured():
+    """If miner_id is missing, /mining/start must return HTTP 400 NOT_CONFIGURED."""
+    token = _obtain_session_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch("shutil.which", return_value="C:\\bin\\clawrtc.exe"):
+        MINING_STORE.miner_id = None
+        res = client.post("/mining/start", headers=headers)
+        assert res.status_code == 400
+        assert "NOT_CONFIGURED" in res.json()["detail"]
+        assert MINING_STORE.status == "NOT_CONFIGURED"
+
+
+# ============================================================
+# MINING LIFECYCLE & PROCESS TRACKING
+# ============================================================
+
+def test_mining_lifecycle_with_mocked_process():
+    """
+    Verifies full lifecycle:
+    1. configure miner_id
+    2. start miner with real/mocked process
+    3. verify status=MINING, attestation=UNATTESTED, pid tracked, process_alive=True
+    4. stop miner -> status=STOPPED, pid cleared, process_alive=False
+    """
     token = _obtain_session_token()
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -117,32 +184,41 @@ def test_mining_configure_and_start_lifecycle():
     conf_data = conf_res.json()
     assert conf_data["ok"] is True
     assert conf_data["miner_id"] == "node-alpha-101"
-    assert conf_data["reward_destination"] == "RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269"
 
-    # 2. Start Mining
-    start_res = client.post("/mining/start", headers=headers)
-    assert start_res.status_code == 200
-    start_data = start_res.json()
-    assert start_data["ok"] is True
-    assert start_data["status"] == "MINING"
-    assert start_data["miner_id"] == "node-alpha-101"
+    # Mock running process
+    mock_proc = MagicMock()
+    mock_proc.pid = 9876
+    mock_proc.poll.return_value = None  # Process is running
 
-    # 3. Verify status reflects active mining
-    status_res = client.get("/mining/status", headers=headers)
-    status_data = status_res.json()
-    assert status_data["status"] == "MINING"
-    assert status_data["miner_id"] == "node-alpha-101"
+    with patch("shutil.which", return_value="C:\\bin\\clawrtc.exe"):
+        with patch("subprocess.Popen", return_value=mock_proc):
+            # 2. Start Mining
+            start_res = client.post("/mining/start", headers=headers)
+            assert start_res.status_code == 200
+            start_data = start_res.json()
+            assert start_data["ok"] is True
+            assert start_data["status"] == "MINING"
+            assert start_data["pid"] == 9876
 
-    # 4. Stop Mining
-    stop_res = client.post("/mining/stop", headers=headers)
-    assert stop_res.status_code == 200
-    stop_data = stop_res.json()
-    assert stop_data["ok"] is True
-    assert stop_data["status"] == "STOPPED"
+            # 3. Verify status reflects active mining and UNATTESTED (no fake ATTESTED)
+            status_res = client.get("/mining/status", headers=headers)
+            status_data = status_res.json()
+            assert status_data["status"] == "MINING"
+            assert status_data["pid"] == 9876
+            assert status_data["process_alive"] is True
+            assert status_data["attestation_state"] == "UNATTESTED"
 
-    # 5. Verify status reflects stopped
-    status_res2 = client.get("/mining/status", headers=headers)
-    assert status_res2.json()["status"] == "STOPPED"
+            # 4. Stop Mining
+            stop_res = client.post("/mining/stop", headers=headers)
+            assert stop_res.status_code == 200
+            assert stop_res.json()["ok"] is True
+
+            # 5. Verify status reflects stopped
+            status_res2 = client.get("/mining/status", headers=headers)
+            status_data2 = status_res2.json()
+            assert status_data2["status"] == "STOPPED"
+            assert status_data2["pid"] is None
+            assert status_data2["process_alive"] is False
 
 
 def test_detect_tools_includes_clawrtc():
