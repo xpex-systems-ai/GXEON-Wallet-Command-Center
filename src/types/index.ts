@@ -1,8 +1,17 @@
-export type ConnectionType = 'LOCAL_CONFIG' | 'BROWSER_PROVIDER' | 'WATCH_ONLY' | 'HARDWARE' | 'OFFLINE' | 'CLI_DETECTED';
+export type ConnectionType =
+  | 'LOCAL_CONFIG'
+  | 'BROWSER_PROVIDER'
+  | 'WATCH_ONLY'
+  | 'HARDWARE'
+  | 'OFFLINE'
+  | 'CLI_DETECTED'
+  | 'CLAWRTC_MINING';
 
 export type OwnershipStatus = 'VERIFIED' | 'UNVERIFIED';
 
 export type WalletMode = 'watch_only' | 'local_signing' | 'connected_provider';
+
+export type BalanceStatus = 'NOT_SYNCED' | 'QUERYING' | 'AVAILABLE' | 'UNAVAILABLE' | 'ERROR';
 
 export interface WalletItem {
   id: string;
@@ -12,10 +21,14 @@ export interface WalletItem {
   chainId?: number | string;
   symbol: string;
   publicAddress: string;
+  minerId?: string;
   connectionType: ConnectionType;
   ownershipStatus: OwnershipStatus;
   mode: WalletMode;
   balance?: string | null; // null or '--' when unavailable, never fabricated
+  balanceStatus?: BalanceStatus;
+  source?: string;
+  lastSync?: string;
   isOnline?: boolean;
   purpose?: string;
   notes?: string;
@@ -52,11 +65,16 @@ export interface BountyItem {
   ownerUid?: string;
   title: string;
   platform: string;
+  issueId?: string;
+  submissionUrl?: string;
   submissionDate?: string;
   expectedReward: string;
   currency: string;
+  asset?: string;
   destinationWalletAddress: string;
   destinationWalletId?: string;
+  pendingId?: string;
+  txHash?: string;
   status: BountyStatus;
   evidenceUrl?: string;
   payoutVerification?: PayoutVerification;
@@ -66,7 +84,7 @@ export interface BountyItem {
 }
 
 export type TransactionStatus = 'DETECTED' | 'PENDING' | 'CONFIRMED' | 'FAILED';
-export type TransactionType = 'INCOMING_PAYOUT' | 'BOUNTY_REWARD' | 'TRANSFER' | 'CONTRACT_CALL' | 'WATCH_EVENT';
+export type TransactionType = 'INCOMING_PAYOUT' | 'BOUNTY_REWARD' | 'MINING_REWARD' | 'TRANSFER' | 'CONTRACT_CALL' | 'WATCH_EVENT';
 
 export interface TransactionItem {
   id: string;
@@ -82,6 +100,7 @@ export interface TransactionItem {
   txHash: string;
   explorerUrl?: string;
   bountyId?: string;
+  minerId?: string;
   notes?: string;
 }
 
@@ -115,8 +134,7 @@ export interface BridgeStatusResponse {
   };
   registered_wallets_count: number;
   active_adapters: number;
-  paired?: boolean;
-  active_sessions?: number;
+  mining_status?: string;
   uptime: string;
 }
 
@@ -131,7 +149,7 @@ export interface MultiAssetEarningsStats {
 
 /**
  * ============================================================
- * GXEON LOCAL COMPANION V1.1 — PAIRING & TOOL DETECTION TYPES
+ * GXEON QUANTUM V1.2 — PAIRING & TOOL DETECTION TYPES
  * ============================================================
  */
 
@@ -166,6 +184,7 @@ export interface DetectedTool {
   path_sanitized?: string;
   capabilities: string[];
   public_address_discovery?: string;
+  miner_id_discovery?: string;
 }
 
 export interface DetectedWallet {
@@ -184,6 +203,94 @@ export interface BridgeDetectionResult {
   tools: DetectedTool[];
   detected_wallets: DetectedWallet[];
   registered_wallets?: DetectedWallet[];
+}
+
+/**
+ * ============================================================
+ * GXEON QUANTUM V1.2 — CLAWRTC & PROOF OF ANTIQUITY TYPES
+ * ============================================================
+ */
+
+export type MiningStatus = 'NOT_INSTALLED' | 'INSTALLED' | 'CONFIGURED' | 'MINING' | 'STOPPED' | 'ERROR';
+export type AttestationState = 'UNATTESTED' | 'PENDING' | 'ATTESTED' | 'EXPIRED' | 'FAILED';
+
+export interface HardwareMetadata {
+  cpu_arch: string;
+  processor: string;
+  os: string;
+  compatibility: string;
+}
+
+export interface ProofOfAntiquityState {
+  status: MiningStatus;
+  clawrtc_installed: boolean;
+  clawrtc_version?: string | null;
+  miner_id?: string | null;
+  reward_destination?: string | null;
+  hardware: HardwareMetadata;
+  attestation_state: AttestationState;
+  last_attestation_timestamp?: string | null;
+  current_epoch: number;
+  antiquity_multiplier?: number | null; // null / unavailable if no real proof
+  confirmed_rtc: number;
+  pending_rewards: number;
+  source: string;
+  queried_at: string;
+}
+
+/**
+ * ============================================================
+ * RUSTCHAIN (RTC) HISTORY & DATA TYPES
+ * ============================================================
+ */
+
+export interface RewardHistoryItem {
+  id: string;
+  epoch: number;
+  amount: string;
+  timestamp: string;
+  attestationId?: string;
+  minerId: string;
+  destinationWallet: string;
+  status: 'PENDING' | 'CONFIRMED' | 'FAILED';
+  source: string;
+}
+
+export interface WalletTransactionItem {
+  id: string;
+  txHash: string;
+  network: string;
+  fromAddress: string;
+  toAddress: string;
+  amount: string;
+  symbol: string;
+  timestamp: string;
+  status: 'PENDING' | 'CONFIRMED' | 'FAILED';
+  blockNumber?: number;
+  source: string;
+}
+
+export interface PayoutItem {
+  id: string;
+  type: 'BOUNTY' | 'MINING_REWARD' | 'COMMUNITY_GRANT';
+  bountyId?: string;
+  rewardId?: string;
+  destinationWallet: string;
+  asset: string;
+  amount: string;
+  txHash?: string;
+  status: VerificationStatus;
+  verifiedAt?: string;
+  source: string;
+}
+
+export interface PendingRewardItem {
+  id: string;
+  epoch: number;
+  estimatedAmount: string;
+  minerId: string;
+  status: 'PENDING_ATTESTATION' | 'CALCULATING' | 'READY_FOR_DISTRIBUTION';
+  source: string;
 }
 
 export interface RustChainBalanceResponse {
@@ -214,32 +321,90 @@ export interface RustChainTransactionsResponse {
 
 /**
  * ============================================================
- * GXEON QUANTUM MODE FOUNDATION — EVENT TAXONOMY ARCHITECTURE
+ * GXEON QUANTUM EVENT BUS TYPES
  * ============================================================
  */
 
 export type QuantumEventType =
+  | 'COMPANION_ONLINE'
+  | 'COMPANION_PAIRED'
+  | 'COMPANION_OFFLINE'
+  | 'CLAWRTC_DETECTED'
+  | 'CLAWRTC_CONFIGURED'
+  | 'MINER_REGISTERED'
+  | 'MINER_STARTED'
+  | 'MINER_STOPPED'
+  | 'ATTESTATION_DETECTED'
+  | 'ATTESTATION_CONFIRMED'
+  | 'EPOCH_CHANGED'
+  | 'EPOCH_REWARD_DETECTED'
+  | 'EPOCH_REWARD_CONFIRMED'
+  | 'RTC_BALANCE_UPDATED'
+  | 'RTC_TRANSACTION_DETECTED'
   | 'WALLET_CONNECTED'
-  | 'BALANCE_SYNC_REQUESTED'
-  | 'BALANCE_SYNC_CONFIRMED'
+  | 'WALLET_IMPORTED'
   | 'BOUNTY_SUBMITTED'
   | 'BOUNTY_ACCEPTED'
   | 'PAYOUT_DETECTED'
   | 'PAYOUT_CONFIRMED'
-  | 'MINER_ATTESTED'
-  | 'EPOCH_REWARD_DETECTED';
+  | 'SECURITY_ALERT'
+  | 'SECURITY_INVARIANT_VIOLATION'
+  | 'BALANCE_SYNC_REQUESTED'
+  | 'BALANCE_SYNC_CONFIRMED'
+  | 'MINER_ATTESTED';
 
 export interface QuantumEventPayload {
   eventType: QuantumEventType;
-  version: '1.0';
+  version: string;
   timestamp: string;
-  source: 'control_plane' | 'signing_bridge' | 'mining_mesh' | 'payout_agent';
-  correlationId: string;
+  source: string;
+  correlationId?: string;
+  subjectId?: string;
   data: Record<string, unknown>;
   attestation?: {
     scheme: string;
-    signature?: string;
-    publicKey?: string;
-    epoch?: number;
+    epoch: number;
+    proof?: string;
   };
+}
+
+export interface QuantumEvent {
+  id: string;
+  ownerUid?: string;
+  type: QuantumEventType;
+  timestamp: string;
+  source: string;
+  status: 'DETECTED' | 'PENDING' | 'CONFIRMED' | 'FAILED' | 'INFO';
+  subjectId?: string;
+  metadataSafe: Record<string, unknown>;
+}
+
+/**
+ * ============================================================
+ * GXEON QUANTUM AGENT MESH INTERFACES (Read-Only Observers)
+ * ============================================================
+ */
+
+export interface MiningAgentState {
+  isObserving: boolean;
+  lastCheck: string;
+  minerStatus: MiningStatus;
+  activeAttestation: boolean;
+  recommendations: string[];
+}
+
+export interface PayoutAgentState {
+  isObserving: boolean;
+  lastCheck: string;
+  verifiedPayoutsCount: number;
+  pendingPayoutsCount: number;
+  alerts: string[];
+}
+
+export interface SecurityAgentState {
+  isObserving: boolean;
+  lastCheck: string;
+  pairingHealth: boolean;
+  invariantStatus: 'STABLE' | 'DEGRADED' | 'ALERT';
+  securityViolationsCount: number;
 }

@@ -8,6 +8,7 @@ import {
   BridgeDetectionResult,
   RustChainBalanceResponse,
   RustChainTransactionsResponse,
+  ProofOfAntiquityState,
 } from '../types';
 import { WalletAdapterInfo } from '../wallets/types';
 
@@ -123,7 +124,7 @@ export class BridgeService {
         this.setSessionToken(data.token);
       }
       return { success: true, data };
-    } catch (e) {
+    } catch {
       return { success: false, error: 'Could not communicate with Local Companion bridge' };
     }
   }
@@ -240,6 +241,66 @@ export class BridgeService {
       return await response.json();
     } catch {
       return null;
+    }
+  }
+
+  // ============================================================
+  // MINING & CLAWRTC CONTROLS (Proof of Antiquity)
+  // ============================================================
+
+  async getMiningStatus(): Promise<ProofOfAntiquityState | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/mining/status`, {
+        method: 'GET',
+        headers: this.getAuthHeaders(),
+      });
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async configureMining(minerId: string, rewardDestination?: string): Promise<{ ok: boolean; message?: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/mining/configure`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          miner_id: minerId.trim(),
+          reward_destination: rewardDestination ? rewardDestination.trim() : undefined,
+        }),
+      });
+      if (!response.ok) return { ok: false, message: 'Configuration failed' };
+      return await response.json();
+    } catch {
+      return { ok: false, message: 'Network error configuring mining' };
+    }
+  }
+
+  async startMining(): Promise<{ ok: boolean; status?: string; message?: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/mining/start`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+      });
+      if (!response.ok) return { ok: false, message: 'Failed to start mining' };
+      return await response.json();
+    } catch {
+      return { ok: false, message: 'Network error starting mining' };
+    }
+  }
+
+  async stopMining(): Promise<{ ok: boolean; status?: string; message?: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/mining/stop`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+      });
+      if (!response.ok) return { ok: false, message: 'Failed to stop mining' };
+      return await response.json();
+    } catch {
+      return { ok: false, message: 'Network error stopping mining' };
     }
   }
 }
