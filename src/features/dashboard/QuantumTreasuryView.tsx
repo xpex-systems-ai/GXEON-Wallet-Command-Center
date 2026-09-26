@@ -26,16 +26,28 @@ export const QuantumTreasuryView: React.FC<QuantumTreasuryViewProps> = ({
 }) => {
   // Aggregate balances per asset across all registered wallets
   // Non-summed across different currencies!
-  const balancesByAsset: Record<string, { total: number; hasUnavailable: boolean; count: number }> = {};
+  const addDecimalStrings = (a: string, b: string): string => {
+    const [ai = '0', af = ''] = a.split('.');
+    const [bi = '0', bf = ''] = b.split('.');
+    const scale = Math.max(af.length, bf.length);
+    const ap = BigInt((ai || '0') + af.padEnd(scale, '0'));
+    const bp = BigInt((bi || '0') + bf.padEnd(scale, '0'));
+    const sum = (ap + bp).toString().padStart(scale + 1, '0');
+    if (scale === 0) return sum;
+    const out = sum.slice(0, -scale) + '.' + sum.slice(-scale);
+    return out.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+  };
+
+  const balancesByAsset: Record<string, { total: string; hasUnavailable: boolean; count: number }> = {};
 
   wallets.forEach((w) => {
     const symbol = w.symbol.toUpperCase();
     if (!balancesByAsset[symbol]) {
-      balancesByAsset[symbol] = { total: 0, hasUnavailable: false, count: 0 };
+      balancesByAsset[symbol] = { total: '0', hasUnavailable: false, count: 0 };
     }
     balancesByAsset[symbol].count += 1;
-    if (w.balance !== null && w.balance !== undefined) {
-      balancesByAsset[symbol].total += Number(w.balance);
+    if (w.balance !== null && w.balance !== undefined && /^\d+(\.\d+)?$/.test(String(w.balance))) {
+      balancesByAsset[symbol].total = addDecimalStrings(balancesByAsset[symbol].total, String(w.balance));
     } else {
       balancesByAsset[symbol].hasUnavailable = true;
     }
@@ -102,7 +114,7 @@ export const QuantumTreasuryView: React.FC<QuantumTreasuryViewProps> = ({
 
               <div className="mt-3">
                 <div className="text-2xl font-bold font-mono text-white">
-                  {data.hasUnavailable && data.total === 0 ? (
+                  {data.hasUnavailable && data.total === '0' ? (
                     <span className="text-slate-400 text-lg">UNAVAILABLE</span>
                   ) : (
                     <span>
