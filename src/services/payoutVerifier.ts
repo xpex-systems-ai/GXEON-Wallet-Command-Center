@@ -50,6 +50,17 @@ export const EVM_CHAIN_IDS: Record<string, number> = {
   optimism: 10,
 };
 
+export const EVM_NATIVE_ASSETS: Record<string, string[]> = {
+  ethereum: ['ETH'],
+  mainnet: ['ETH'],
+  eth: ['ETH'],
+  base: ['ETH'],
+  polygon: ['POL', 'MATIC'],
+  matic: ['POL', 'MATIC'],
+  arbitrum: ['ETH'],
+  optimism: ['ETH'],
+};
+
 export const VERIFIED_TOKEN_REGISTRY: Record<string, Record<string, { address: string; decimals: number }>> = {
   ethereum: {
     USDC: { address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6 },
@@ -138,7 +149,7 @@ export class PayoutVerifier {
    * Validates if a given PayoutVerification was genuinely issued by PayoutVerifier.
    * Protects against forged caller-provided objects.
    */
-  isValidVerifiedReceipt(v?: PayoutVerification): boolean {
+  isValidVerifiedReceipt(v?: PayoutVerification, bounty?: BountyItem): boolean {
     if (!v || !v.verificationId) return false;
     const stored = VERIFIED_RECEIPTS_STORE.get(v.verificationId);
     if (!stored) return false;
@@ -150,7 +161,12 @@ export class PayoutVerifier {
       stored.network.toLowerCase() === v.network.toLowerCase() &&
       stored.asset.toUpperCase() === v.asset.toUpperCase() &&
       LIVE_ONCHAIN_SOURCES.includes(stored.verificationSource) &&
-      v.verificationStatus === 'CONFIRMED'
+      v.verificationStatus === 'CONFIRMED' &&
+      (!bounty ||
+        (stored.subjectId === bounty.id &&
+         stored.destinationWallet.toLowerCase() === bounty.destinationWalletAddress.toLowerCase() &&
+         stored.asset.toUpperCase() === (bounty.asset || bounty.currency).toUpperCase() &&
+         stored.amount === bounty.expectedReward))
     );
   }
 
@@ -359,8 +375,9 @@ export class PayoutVerifier {
         const expectedDest = (req.destinationWallet || '').trim().toLowerCase();
         const assetNormalized = req.asset.toUpperCase();
 
-        // Check A: Native Transfer (e.g. ETH, MATIC)
-        if (assetNormalized === 'ETH' || assetNormalized === 'MATIC' || assetNormalized === 'NATIVE') {
+        // Check A: Native transfer, strictly bound to the validated chain.
+        const allowedNativeAssets = EVM_NATIVE_ASSETS[req.network.toLowerCase()] || [];
+        if (allowedNativeAssets.includes(assetNormalized)) {
           if (tx && tx.to && tx.to.toLowerCase() === expectedDest) {
             const actualWei = parseHexToBigInt(tx.value);
             const expectedWei = parseTokenAmountToUnits(req.expectedAmount, 18);
@@ -410,6 +427,18 @@ export class PayoutVerifier {
     // 2. SOLANA ON-CHAIN VERIFICATION VIA TRUSTED RPC ONLY
     // ============================================================
     if (isSolana) {
+      if (req.network.toLowerCase() !== 'solana') {
+        return {
+          network: req.network,
+          asset: req.asset,
+          destinationWallet: req.destinationWallet,
+          txHash: cleanTx,
+          verifiedAt: timestamp,
+          verificationSource: 'solana_network_mismatch',
+          verificationStatus: 'FAILED',
+        };
+      }
+
       const trustedSolanaEndpoints = TRUSTED_RPC_REGISTRY.solana || [];
       let solanaTxInfo: any = null;
 
@@ -505,6 +534,7 @@ export class PayoutVerifier {
       const verification: PayoutVerification = {
         verificationId,
         proofVersion: 'v1.2',
+        subjectId: req.bountyId || req.minerRewardId,
         network: req.network,
         chainId: verifiedChainId,
         asset: req.asset,
@@ -560,7 +590,7 @@ export class PayoutVerifier {
    */
   canMarkAsPaid(bounty: BountyItem): boolean {
     if (!bounty.payoutVerification) return false;
-    return this.isValidVerifiedReceipt(bounty.payoutVerification);
+    return this.isValidVerifiedReceipt(bounty.payoutVerification, bounty);
   }
 }
 
