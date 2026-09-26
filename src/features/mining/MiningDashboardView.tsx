@@ -35,16 +35,17 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
   onAddToast,
 }) => {
   const [miningState, setMiningState] = useState<ProofOfAntiquityState>({
-    status: 'STOPPED',
+    status: 'ERROR',
     clawrtc_installed: false,
     clawrtc_version: null,
     miner_id: null,
-    reward_destination: 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269',
+    reward_destination: null,
+    config_source: 'UNAVAILABLE',
     hardware: {
-      cpu_arch: 'x86_64',
-      processor: 'System CPU',
-      os: 'Windows/Linux',
-      compatibility: 'DETECTED_HARDWARE',
+      cpu_arch: 'UNKNOWN',
+      processor: 'UNKNOWN',
+      os: 'UNKNOWN',
+      compatibility: 'UNKNOWN',
     },
     attestation_state: 'UNATTESTED',
     last_attestation_timestamp: null,
@@ -52,12 +53,14 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
     antiquity_multiplier: null,
     confirmed_rtc: null,
     pending_rewards: null,
-    source: 'bridge',
+    source: 'bridge_unavailable',
     queried_at: new Date().toISOString(),
   });
 
   const [pendingRewards, setPendingRewards] = useState<PendingRewardItem[]>([]);
   const [rewardHistory, setRewardHistory] = useState<RewardHistoryItem[]>([]);
+  const [pendingRewardsStatus, setPendingRewardsStatus] = useState<'AVAILABLE' | 'UNAVAILABLE'>('UNAVAILABLE');
+  const [rewardHistoryStatus, setRewardHistoryStatus] = useState<'AVAILABLE' | 'UNAVAILABLE'>('UNAVAILABLE');
   const [agentState, setAgentState] = useState<MiningAgentState>(miningAgent.getState());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isActionPending, setIsActionPending] = useState(false);
@@ -81,6 +84,8 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
       ]);
       setPendingRewards(pendingRes.pending || []);
       setRewardHistory(historyRes.rewards || []);
+      setPendingRewardsStatus(pendingRes.status);
+      setRewardHistoryStatus(historyRes.status);
 
       // Run mining agent observer assessment
       const agentUpdate = miningAgent.evaluate(liveState);
@@ -96,10 +101,13 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
   }, [onAddToast]);
 
   useEffect(() => {
+    if (!bridgeService.isPaired()) return;
     refreshMiningData();
-    const interval = setInterval(refreshMiningData, 15000);
+    const interval = setInterval(() => {
+      if (bridgeService.isPaired()) refreshMiningData();
+    }, 15000);
     return () => clearInterval(interval);
-  }, [refreshMiningData]);
+  }, [refreshMiningData, isPaired]);
 
   const handleStartMining = async () => {
     setIsActionPending(true);
@@ -147,6 +155,10 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
       case 'CONFIGURED':
       case 'INSTALLED':
         return <Badge variant="cyan" dot>READY</Badge>;
+      case 'NOT_CONFIGURED':
+        return <Badge variant="orange">CONFIGURE MINER</Badge>;
+      case 'NOT_INSTALLED':
+        return <Badge variant="slate">NOT INSTALLED</Badge>;
       case 'ERROR':
         return <Badge variant="red" dot>ERROR</Badge>;
       default:
@@ -187,7 +199,7 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
               ClawRTC Mining & Attestation Hub
             </h1>
             <p className="text-sm text-slate-300 mt-1 max-w-2xl">
-              Real-time monitoring of RustChain antiquity attestations, epoch cycles, and non-custodial RTC reward distributions.
+              Local miner process monitoring with attestation/reward fields shown only when a verified RustChain source is available.
             </p>
           </div>
 
@@ -389,7 +401,7 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
               <div className="p-3 bg-[#0B1220] rounded-lg border border-[#1E314F] sm:col-span-2">
                 <div className="text-slate-400 mb-1">REWARD DESTINATION (RTC WALLET)</div>
                 <div className="text-[#00D4FF] font-bold select-all break-all">
-                  {miningState.reward_destination || 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269'}
+                  {miningState.reward_destination || 'NOT CONFIGURED'}
                 </div>
               </div>
             </div>
@@ -406,9 +418,13 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
               </div>
             </div>
 
-            {pendingRewards.length === 0 ? (
+            {pendingRewardsStatus === 'UNAVAILABLE' ? (
+              <div className="p-8 text-center text-xs font-mono text-amber-400">
+                Reward source UNAVAILABLE — no verified RustChain reward endpoint is connected.
+              </div>
+            ) : pendingRewards.length === 0 ? (
               <div className="p-8 text-center text-xs font-mono text-slate-400">
-                No pending epoch rewards found for active miner identity.
+                Verified reward source is available and returned no pending rewards.
               </div>
             ) : (
               <div className="overflow-x-auto mt-4">
@@ -502,16 +518,16 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
 
             <div className="mt-4 space-y-2 font-mono text-xs">
               <div className="p-2 bg-[#0B1220] rounded border border-[#1E314F]">
-                <code className="text-[#00D4FF]">gxeon-wallet mining status</code>
+                <code className="text-[#00D4FF]">python gxeon_wallet.py mining status</code>
               </div>
               <div className="p-2 bg-[#0B1220] rounded border border-[#1E314F]">
-                <code className="text-[#00D4FF]">gxeon-wallet mining start</code>
+                <code className="text-[#00D4FF]">python gxeon_wallet.py mining start</code>
               </div>
               <div className="p-2 bg-[#0B1220] rounded border border-[#1E314F]">
-                <code className="text-[#00D4FF]">gxeon-wallet mining stop</code>
+                <code className="text-[#00D4FF]">python gxeon_wallet.py mining stop</code>
               </div>
               <div className="p-2 bg-[#0B1220] rounded border border-[#1E314F]">
-                <code className="text-[#00D4FF]">gxeon-wallet rustchain balance</code>
+                <code className="text-[#00D4FF]">python gxeon_wallet.py rustchain balance</code>
               </div>
             </div>
           </Card>
