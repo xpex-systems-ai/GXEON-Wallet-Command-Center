@@ -171,19 +171,28 @@ def test_mining_lifecycle_with_mocked_process():
     token = _obtain_session_token()
     headers = {"Authorization": f"Bearer {token}"}
 
-    # 1. Configure miner identity and reward destination
-    conf_res = client.post(
-        "/mining/configure",
-        headers=headers,
-        json={
-            "miner_id": "node-alpha-101",
-            "reward_destination": "RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269",
-        },
-    )
+    # 1. Configure miner identity and reward destination against a verified mocked ClawRTC.
+    mock_config = MagicMock()
+    mock_config.returncode = 0
+    mock_config.stdout = ""
+    with patch("shutil.which", return_value="C:\\bin\\clawrtc.exe"), \
+         patch("subprocess.run", return_value=mock_config), \
+         patch("bridge.discover_clawrtc_miner_id", return_value="node-alpha-101"), \
+         patch("bridge.try_apply_reward_destination", return_value=True):
+        conf_res = client.post(
+            "/mining/configure",
+            headers=headers,
+            json={
+                "miner_id": "node-alpha-101",
+                "reward_destination": "RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269",
+            },
+        )
     assert conf_res.status_code == 200
     conf_data = conf_res.json()
     assert conf_data["ok"] is True
     assert conf_data["miner_id"] == "node-alpha-101"
+    assert conf_data["config_source"] == "CLAWRTC_CONFIGURED"
+    assert conf_data["reward_destination_source"] == "CLAWRTC_CONFIGURED"
 
     # Mock running process
     mock_proc = MagicMock()
