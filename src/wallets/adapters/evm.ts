@@ -45,8 +45,6 @@ export class EvmAdapter implements WalletAdapter {
   capabilities: WalletCapability[] = [
     'CONNECT',
     'READ_BALANCE',
-    'READ_TRANSACTIONS',
-    'SIGN',
     'WATCH_ONLY',
   ];
 
@@ -54,32 +52,32 @@ export class EvmAdapter implements WalletAdapter {
     {
       capability: 'CONNECT',
       status: 'AVAILABLE',
-      notes: 'Browser provider EIP-1193 authorization without seed phrase.',
+      notes: 'Browser provider EIP-1193 authorization handshake without seed phrase.',
     },
     {
       capability: 'READ_BALANCE',
       status: 'AVAILABLE',
-      notes: 'Direct eth_getBalance query via injected provider.',
-    },
-    {
-      capability: 'READ_TRANSACTIONS',
-      status: 'AVAILABLE',
-      notes: 'Public block explorer query.',
-    },
-    {
-      capability: 'SIGN',
-      status: 'AVAILABLE',
-      notes: 'Personal sign / message proof performed locally in wallet.',
+      notes: 'Direct eth_getBalance query via injected EIP-1193 provider.',
     },
     {
       capability: 'WATCH_ONLY',
       status: 'AVAILABLE',
-      notes: 'Address tracking supported across EVM chains.',
+      notes: 'Address tracking supported across EVM chains (Ethereum, Base, Polygon, Arbitrum).',
+    },
+    {
+      capability: 'READ_TRANSACTIONS',
+      status: 'UNAVAILABLE',
+      notes: 'Transaction history query is not implemented in V1 browser adapter; requires verified indexer.',
+    },
+    {
+      capability: 'SIGN',
+      status: 'UNAVAILABLE',
+      notes: 'Signing is not implemented in browser adapter in V1; cryptographic signing is isolated to local CLI.',
     },
     {
       capability: 'SEND',
       status: 'DISABLED_IN_V1',
-      notes: 'Sending funds is disabled in V1.',
+      notes: 'Funds movement is disabled by GXEON security invariant in V1.',
     },
   ];
 

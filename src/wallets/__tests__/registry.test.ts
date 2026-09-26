@@ -55,4 +55,20 @@ describe('WalletRegistry & Adapters', () => {
     const evmInfo = infos.find((i) => i.id === 'evm-metamask');
     expect(evmInfo?.supportedChains).toContain('Ethereum Mainnet');
   });
+
+  it('declares truthful capabilities for EVM adapter (READ_TRANSACTIONS and SIGN are unavailable in V1 web)', () => {
+    const evm = walletRegistry.getAdapter('evm-metamask');
+    expect(evm).toBeDefined();
+    expect(evm?.status).toBe('ACTIVE');
+    expect(evm?.hasCapability('CONNECT')).toBe(true);
+    expect(evm?.isCapabilityAvailable('CONNECT')).toBe(true);
+    expect(evm?.hasCapability('READ_BALANCE')).toBe(true);
+    expect(evm?.isCapabilityAvailable('READ_BALANCE')).toBe(true);
+    expect(evm?.hasCapability('WATCH_ONLY')).toBe(true);
+    expect(evm?.isCapabilityAvailable('WATCH_ONLY')).toBe(true);
+    // Unimplemented in browser adapter:
+    expect(evm?.isCapabilityAvailable('READ_TRANSACTIONS')).toBe(false);
+    expect(evm?.isCapabilityAvailable('SIGN')).toBe(false);
+    expect(evm?.isCapabilityAvailable('SEND')).toBe(false);
+  });
 });
