@@ -117,17 +117,17 @@ export class RustChainService {
     const timestamp = new Date().toISOString();
     try {
       const txRes = await bridgeService.getRustChainTransactions(walletId);
-      if (txRes && txRes.status === 'AVAILABLE' && txRes.transactions.length > 0) {
-        const mapped: WalletTransactionItem[] = txRes.transactions.map((t) => ({
+      if (txRes && txRes.status === 'AVAILABLE') {
+        const mapped: WalletTransactionItem[] = txRes.transactions.map((t: any) => ({
           id: t.id,
           txHash: t.txHash,
           network: 'rustchain',
-          fromAddress: t.walletAddress,
-          toAddress: address,
+          fromAddress: t.fromAddress || 'UNAVAILABLE',
+          toAddress: t.toAddress || 'UNAVAILABLE',
           amount: t.amount,
           symbol: 'RTC',
           timestamp: t.date,
-          status: t.status === 'CONFIRMED' ? 'CONFIRMED' : 'PENDING',
+          status: t.status === 'CONFIRMED' ? 'CONFIRMED' : t.status === 'FAILED' ? 'FAILED' : 'PENDING',
           source: txRes.source,
         }));
         return {
