@@ -38,21 +38,34 @@ class QuantumEventBus {
       ownerUid?: string;
     }
   ): QuantumEvent {
-    // Deep sanitize metadata fields
-    const safeData: Record<string, unknown> = {};
-    const sensitiveKeyRegex = /^(private_?key|seed|mnemonic|token|secret|password|auth|signing_?key)$/i;
+    // Deep sanitize metadata fields while preserving public transaction hashes.
+    const sensitiveKeyRegex = /^(private_?key|seed|mnemonic|token|secret|password|auth|authorization|signing_?key|recovery_?phrase)$/i;
 
+    const sanitizeValue = (key: string, value: unknown): unknown => {
+      if (sensitiveKeyRegex.test(key)) return '[REDACTED_SECURITY_DATA]';
+      if (Array.isArray(value)) return value.map((item) => sanitizeValue('', item));
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(
+          Object.entries(value as Record<string, unknown>).map(([nestedKey, nestedValue]) => [
+            nestedKey,
+            sanitizeValue(nestedKey, nestedValue),
+          ])
+        );
+      }
+      if (typeof value === 'string') {
+        // Transaction hashes are public audit identifiers, not private key material.
+        if (/^(txHash|transactionHash)$/i.test(key) && /^0x[0-9a-fA-F]{64}$/.test(value)) {
+          return value;
+        }
+        return sanitizeAuditDetail(value);
+      }
+      return value;
+    };
+
+    const safeData: Record<string, unknown> = {};
     if (options.metadataSafe) {
       for (const [key, value] of Object.entries(options.metadataSafe)) {
-        if (sensitiveKeyRegex.test(key)) {
-          safeData[key] = '[REDACTED_SECURITY_DATA]';
-        } else if (typeof value === 'string') {
-          safeData[key] = sanitizeAuditDetail(value);
-        } else if (value && typeof value === 'object') {
-          safeData[key] = JSON.parse(JSON.stringify(value));
-        } else {
-          safeData[key] = value;
-        }
+        safeData[key] = sanitizeValue(key, value);
       }
     }
 
