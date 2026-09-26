@@ -1072,7 +1072,7 @@ def start_mining(_token: str = Depends(verify_session_token)):
     clawrtc_bin = shutil.which("clawrtc") or shutil.which("clawrtc-cli")
     if not clawrtc_bin:
         MINING_STORE.status = "NOT_INSTALLED"
-        raise HTTPException(status_code=409, detail="ClawRTC binary not found in PATH.")
+        raise HTTPException(status_code=409, detail="NOT_INSTALLED: ClawRTC binary not found in PATH.")
 
     if not MINING_STORE.miner_id:
         discovered = discover_clawrtc_miner_id(clawrtc_bin)
@@ -1082,7 +1082,7 @@ def start_mining(_token: str = Depends(verify_session_token)):
 
     if not MINING_STORE.miner_id or MINING_STORE.config_source != "CLAWRTC_CONFIGURED":
         MINING_STORE.status = "NOT_CONFIGURED"
-        raise HTTPException(status_code=409, detail="ClawRTC miner identity is not verified/configured.")
+        raise HTTPException(status_code=400, detail="NOT_CONFIGURED: ClawRTC miner identity is not verified/configured.")
 
     if MINING_STORE.reward_destination and MINING_STORE.reward_destination_source != "CLAWRTC_CONFIGURED":
         raise HTTPException(
