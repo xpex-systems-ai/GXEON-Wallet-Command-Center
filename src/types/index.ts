@@ -49,6 +49,8 @@ export type BountyStatus =
 export type VerificationStatus = 'UNVERIFIED' | 'FORMAT_VALID' | 'QUERYING' | 'PENDING' | 'CONFIRMED' | 'FAILED';
 
 export interface PayoutVerification {
+  verificationId?: string;
+  proofVersion?: string;
   network: string;
   asset: string;
   destinationWallet: string;

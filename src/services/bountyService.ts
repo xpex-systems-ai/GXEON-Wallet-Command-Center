@@ -1,6 +1,6 @@
 import { BountyItem, BountyStatus, PayoutVerification, MultiAssetEarningsStats } from '../types';
 import { auditService } from './auditService';
-import { LIVE_ONCHAIN_SOURCES } from './payoutVerifier';
+import { payoutVerifier } from './payoutVerifier';
 import {
   fetchBountiesFromFirestore,
   saveBountyToFirestore,
@@ -42,7 +42,7 @@ export function canTransitionBountyStatus(
     };
   }
 
-  // Strict check: transition to PAID requires confirmed on-chain verification
+  // Strict check: transition to PAID requires authentic confirmed on-chain verification
   if (target === 'PAID') {
     if (!verification) {
       return {
@@ -50,22 +50,11 @@ export function canTransitionBountyStatus(
         reason: 'Transition to PAID requires a valid PayoutVerification proof.',
       };
     }
-    if (verification.verificationStatus !== 'CONFIRMED') {
+    if (!payoutVerifier.isValidVerifiedReceipt(verification)) {
       return {
         allowed: false,
-        reason: `Transition to PAID requires verificationStatus=CONFIRMED, received ${verification.verificationStatus}.`,
-      };
-    }
-    if (!verification.txHash || verification.txHash.trim() === '') {
-      return {
-        allowed: false,
-        reason: 'Transition to PAID requires a confirmed transaction hash.',
-      };
-    }
-    if (!verification.verificationSource || !LIVE_ONCHAIN_SOURCES.includes(verification.verificationSource)) {
-      return {
-        allowed: false,
-        reason: 'Transition to PAID requires a live on-chain source confirmation (format validation alone is insufficient).',
+        reason:
+          'Transition to PAID requires an authentic, verified PayoutVerification issued by PayoutVerifier.verifyPayout(). Forged, legacy, or unverified proofs are strictly rejected.',
       };
     }
   }
