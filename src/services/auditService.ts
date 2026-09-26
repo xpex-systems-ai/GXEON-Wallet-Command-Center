@@ -1,4 +1,8 @@
 import { AuditEvent } from '../types';
+import {
+  fetchAuditEventsFromFirestore,
+  recordAuditEventToFirestore,
+} from './firestore/auditRepository';
 
 const AUDIT_STORAGE_KEY = 'gxeon_audit_log_v1';
 
@@ -67,6 +71,20 @@ export class AuditService {
     }
   }
 
+  async loadFromCloud(ownerUid: string): Promise<AuditEvent[]> {
+    try {
+      const cloudItems = await fetchAuditEventsFromFirestore(ownerUid);
+      if (cloudItems.length > 0) {
+        this.events = cloudItems;
+        this.saveToStorage();
+      }
+      return this.getEvents();
+    } catch (err) {
+      console.warn('Failed to load audit events from Firestore:', err);
+      return this.getEvents();
+    }
+  }
+
   getEvents(): AuditEvent[] {
     return [...this.events].reverse();
   }
@@ -75,18 +93,37 @@ export class AuditService {
     event: string,
     detail: string,
     severity: 'info' | 'warning' | 'error' | 'critical' = 'info',
-    actor: string = 'operator'
+    actor: string = 'operator',
+    ownerUid?: string
   ): void {
     const sanitizedDetail = sanitizeAuditDetail(detail);
 
+    const customId = `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const newEvent: AuditEvent = {
-      id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: customId,
+      ownerUid,
       timestamp: new Date().toISOString(),
       event,
       detail: sanitizedDetail,
       severity,
       actor,
     };
+
+    if (ownerUid) {
+      recordAuditEventToFirestore(
+        {
+          timestamp: newEvent.timestamp,
+          event: newEvent.event,
+          detail: newEvent.detail,
+          severity: newEvent.severity,
+          actor: newEvent.actor,
+        },
+        ownerUid,
+        customId
+      ).catch((err) => {
+        console.warn('Failed to record audit event to Firestore:', err);
+      });
+    }
 
     this.events.push(newEvent);
     this.saveToStorage();

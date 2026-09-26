@@ -1,4 +1,8 @@
 import { TransactionItem } from '../types';
+import {
+  fetchTransactionsFromFirestore,
+  recordTransactionToFirestore,
+} from './firestore/transactionRepository';
 
 const TX_STORAGE_KEY = 'gxeon_transactions_v1';
 
@@ -32,15 +36,41 @@ export class TransactionService {
     }
   }
 
+  async loadFromCloud(ownerUid: string): Promise<TransactionItem[]> {
+    try {
+      const cloudItems = await fetchTransactionsFromFirestore(ownerUid);
+      this.transactions = cloudItems;
+      this.saveToStorage();
+      return [...this.transactions];
+    } catch (err) {
+      console.warn('Failed to load transactions from Firestore:', err);
+      return this.getTransactions();
+    }
+  }
+
   getTransactions(): TransactionItem[] {
     return [...this.transactions];
   }
 
-  recordTransaction(tx: Omit<TransactionItem, 'id'>): TransactionItem {
+  async recordTransaction(
+    tx: Omit<TransactionItem, 'id'>,
+    ownerUid?: string
+  ): Promise<TransactionItem> {
+    const customId = `tx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const newTx: TransactionItem = {
       ...tx,
-      id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: customId,
+      ownerUid,
     };
+
+    if (ownerUid) {
+      try {
+        await recordTransactionToFirestore({ ...tx, ownerUid }, ownerUid, customId);
+      } catch (err) {
+        console.warn('Failed to record transaction to Firestore:', err);
+      }
+    }
+
     this.transactions.unshift(newTx);
     this.saveToStorage();
     return newTx;

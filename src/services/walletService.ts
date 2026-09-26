@@ -1,6 +1,12 @@
 import { WalletItem } from '../types';
 import { bridgeService } from './bridgeService';
 import { auditService } from './auditService';
+import {
+  fetchWalletsFromFirestore,
+  saveWalletToFirestore,
+  updateWalletInFirestore,
+  deleteWalletFromFirestore,
+} from './firestore/walletRepository';
 
 const STORAGE_KEY = 'gxeon_wallets_v1';
 
@@ -51,59 +57,107 @@ export class WalletService {
     }
   }
 
-  async getAllWallets(): Promise<WalletItem[]> {
-    // 1. Fetch from Local Bridge if online
+  async getAllWallets(ownerUid?: string): Promise<WalletItem[]> {
+    let cloudWallets: WalletItem[] = [];
+    if (ownerUid) {
+      try {
+        cloudWallets = await fetchWalletsFromFirestore(ownerUid);
+      } catch (err) {
+        console.warn('Could not fetch wallets from Firestore, falling back to local storage:', err);
+      }
+    }
+
+    // Fetch from Local Bridge if online
     const bridgeWallets = await bridgeService.getWallets();
 
-    if (bridgeWallets.length > 0) {
-      // Merge with custom additions
-      const mergedMap = new Map<string, WalletItem>();
-      for (const w of bridgeWallets) {
+    const mergedMap = new Map<string, WalletItem>();
+
+    // 1. Add bridge wallets
+    for (const w of bridgeWallets) {
+      mergedMap.set(w.id, w);
+    }
+
+    // 2. Add cloud wallets (if logged in)
+    for (const w of cloudWallets) {
+      if (!mergedMap.has(w.id)) {
         mergedMap.set(w.id, w);
       }
+    }
+
+    // 3. Add local baseline / storage if no cloud wallets or not logged in
+    if (cloudWallets.length === 0) {
       for (const w of this.localWallets) {
         if (!mergedMap.has(w.id)) {
           mergedMap.set(w.id, w);
         }
       }
-      return Array.from(mergedMap.values());
     }
 
-    // Fallback to local storage state
-    return [...this.localWallets];
+    return Array.from(mergedMap.values());
   }
 
-  async addWallet(wallet: Omit<WalletItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<WalletItem> {
+  async addWallet(
+    wallet: Omit<WalletItem, 'id' | 'createdAt' | 'updatedAt'>,
+    ownerUid?: string
+  ): Promise<WalletItem> {
+    const customId = `w-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const newWallet: WalletItem = {
       ...wallet,
-      id: `w-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: customId,
+      ownerUid,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    if (ownerUid) {
+      try {
+        await saveWalletToFirestore(wallet, ownerUid, customId);
+      } catch (err) {
+        console.warn('Failed to save wallet to Firestore, saved locally:', err);
+      }
+    }
 
     this.localWallets.push(newWallet);
     this.saveToStorage();
 
     auditService.recordEvent(
       'wallet_registered',
-      `Registered wallet ${newWallet.name} (${newWallet.network}) with address ${newWallet.publicAddress}`
+      `Registered wallet ${newWallet.name} (${newWallet.network}) with address ${newWallet.publicAddress}`,
+      'info',
+      ownerUid
     );
 
     return newWallet;
   }
 
-  async removeWallet(id: string): Promise<boolean> {
+  async removeWallet(id: string, ownerUid?: string): Promise<boolean> {
+    if (ownerUid) {
+      try {
+        await deleteWalletFromFirestore(id, ownerUid);
+      } catch (err) {
+        console.warn('Failed to delete wallet from Firestore:', err);
+      }
+    }
+
     const prevLen = this.localWallets.length;
     this.localWallets = this.localWallets.filter((w) => w.id !== id);
     if (this.localWallets.length < prevLen) {
       this.saveToStorage();
-      auditService.recordEvent('wallet_removed', `Removed wallet ID ${id}`);
+      auditService.recordEvent('wallet_removed', `Removed wallet ID ${id}`, 'info', ownerUid);
       return true;
     }
     return false;
   }
 
-  async updateBalance(id: string, balance: string | null): Promise<void> {
+  async updateBalance(id: string, balance: string | null, ownerUid?: string): Promise<void> {
+    if (ownerUid) {
+      try {
+        await updateWalletInFirestore(id, { balance }, ownerUid);
+      } catch (err) {
+        console.warn('Failed to update balance in Firestore:', err);
+      }
+    }
+
     this.localWallets = this.localWallets.map((w) => {
       if (w.id === id) {
         return { ...w, balance, updatedAt: new Date().toISOString() };
