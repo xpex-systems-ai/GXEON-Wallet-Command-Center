@@ -929,8 +929,11 @@ def configure_mining(payload: MiningConfigureRequest, _token: str = Depends(veri
             config_source = "LOCAL_METADATA_CONFIGURED"
 
     MINING_STORE.config_source = config_source
-    if MINING_STORE.status in ("NOT_INSTALLED", "INSTALLED", "NOT_CONFIGURED"):
-        MINING_STORE.status = "CONFIGURED"
+    if clawrtc_bin:
+        if MINING_STORE.status in ("NOT_INSTALLED", "INSTALLED", "NOT_CONFIGURED"):
+            MINING_STORE.status = "CONFIGURED"
+    else:
+        MINING_STORE.status = "NOT_INSTALLED"
 
     record_audit_event("MINER_CONFIGURED", f"Miner ID configured as: {MINING_STORE.miner_id} ({config_source})")
     return {

@@ -261,7 +261,16 @@ export class BridgeService {
     }
   }
 
-  async configureMining(minerId: string, rewardDestination?: string): Promise<{ ok: boolean; message?: string }> {
+  async configureMining(
+    minerId: string,
+    rewardDestination?: string
+  ): Promise<{
+    ok: boolean;
+    message?: string;
+    miner_id?: string;
+    reward_destination?: string;
+    config_source?: 'LOCAL_METADATA_CONFIGURED' | 'CLAWRTC_CONFIGURED' | 'UNCONFIGURED';
+  }> {
     try {
       const response = await fetch(`${this.baseUrl}/mining/configure`, {
         method: 'POST',
@@ -271,10 +280,10 @@ export class BridgeService {
           reward_destination: rewardDestination ? rewardDestination.trim() : undefined,
         }),
       });
-      if (!response.ok) return { ok: false, message: 'Configuration failed' };
+      if (!response.ok) return { ok: false, message: 'Configuration failed', config_source: 'UNCONFIGURED' };
       return await response.json();
     } catch {
-      return { ok: false, message: 'Network error configuring mining' };
+      return { ok: false, message: 'Network error configuring mining', config_source: 'UNCONFIGURED' };
     }
   }
 

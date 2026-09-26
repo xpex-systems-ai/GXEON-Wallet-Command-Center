@@ -1,5 +1,6 @@
 import { BountyItem, BountyStatus, PayoutVerification, MultiAssetEarningsStats } from '../types';
 import { auditService } from './auditService';
+import { LIVE_ONCHAIN_SOURCES } from './payoutVerifier';
 import {
   fetchBountiesFromFirestore,
   saveBountyToFirestore,
@@ -61,14 +62,6 @@ export function canTransitionBountyStatus(
         reason: 'Transition to PAID requires a confirmed transaction hash.',
       };
     }
-    const LIVE_ONCHAIN_SOURCES = [
-      'evm_eip1193_rpc_receipt',
-      'evm_rpc_receipt',
-      'custom_node_rpc',
-      'rustchain_onchain_rpc',
-      'rustchain_onchain_attestation',
-      'solana_onchain_rpc',
-    ];
     if (!verification.verificationSource || !LIVE_ONCHAIN_SOURCES.includes(verification.verificationSource)) {
       return {
         allowed: false,

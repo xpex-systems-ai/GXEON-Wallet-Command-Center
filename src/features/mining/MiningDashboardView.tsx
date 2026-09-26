@@ -129,14 +129,14 @@ export const MiningDashboardView: React.FC<MiningDashboardViewProps> = ({
     e.preventDefault();
     if (!configMinerId.trim()) return;
     setIsActionPending(true);
-    const ok = await clawRtcService.configure(configMinerId.trim(), configRewardDest.trim() || undefined);
+    const res = await clawRtcService.configure(configMinerId.trim(), configRewardDest.trim() || undefined);
     setIsActionPending(false);
-    if (ok) {
-      if (onAddToast) onAddToast('success', 'Configured', 'Mining parameters updated.');
+    if (res.success) {
+      if (onAddToast) onAddToast('success', 'Configured', `Mining identity configured (${res.configSource}).`);
       setShowConfigModal(false);
       refreshMiningData();
     } else {
-      if (onAddToast) onAddToast('warning', 'Config Blocked', 'Failed to update configuration.');
+      if (onAddToast) onAddToast('warning', 'Config Blocked', res.message || 'Failed to update configuration.');
     }
   };
 

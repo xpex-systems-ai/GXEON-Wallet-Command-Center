@@ -221,6 +221,35 @@ def test_mining_lifecycle_with_mocked_process():
             assert status_data2["process_alive"] is False
 
 
+def test_missing_clawrtc_stays_not_installed_even_with_miner_id_metadata():
+    """
+    CRITICAL INVARIANT:
+    If miner_id metadata is configured but ClawRTC binary is missing:
+    - status must remain NOT_INSTALLED
+    - config_source must be LOCAL_METADATA_CONFIGURED
+    """
+    token = _obtain_session_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch("shutil.which", return_value=None):
+        conf_res = client.post(
+            "/mining/configure",
+            headers=headers,
+            json={"miner_id": "persisted-metadata-miner-01"},
+        )
+        assert conf_res.status_code == 200
+        conf_data = conf_res.json()
+        assert conf_data["config_source"] == "LOCAL_METADATA_CONFIGURED"
+
+        # Check status endpoint
+        status_res = client.get("/mining/status", headers=headers)
+        status_data = status_res.json()
+        assert status_data["status"] == "NOT_INSTALLED"
+        assert status_data["config_source"] == "LOCAL_METADATA_CONFIGURED"
+        assert status_data["miner_id"] == "persisted-metadata-miner-01"
+        assert status_data["clawrtc_installed"] is False
+
+
 def test_detect_tools_includes_clawrtc():
     token = _obtain_session_token()
     headers = {"Authorization": f"Bearer {token}"}
@@ -242,3 +271,4 @@ def test_detect_tools_includes_clawrtc():
             clawrtc_item = next(t for t in data["tools"] if t["tool"] == "ClawRTC")
             assert clawrtc_item["installed"] is True
             assert "v0.9.4" in clawrtc_item["version"]
+

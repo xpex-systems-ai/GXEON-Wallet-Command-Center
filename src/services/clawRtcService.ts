@@ -45,18 +45,37 @@ export class ClawRtcService {
    * Explicit operator configuration of miner_id.
    * ABSOLUTE SECURITY INVARIANT:
    * Does not request or accept private keys.
+   * Truth in Events:
+   * Only emits CLAWRTC_CONFIGURED if config_source is CLAWRTC_CONFIGURED.
+   * If LOCAL_METADATA_CONFIGURED, emits MINER_LOCAL_METADATA_CONFIGURED.
    */
-  async configure(minerId: string, destinationWallet?: string): Promise<boolean> {
+  async configure(
+    minerId: string,
+    destinationWallet?: string
+  ): Promise<{
+    success: boolean;
+    configSource: 'LOCAL_METADATA_CONFIGURED' | 'CLAWRTC_CONFIGURED' | 'UNCONFIGURED';
+    message?: string;
+  }> {
     const res = await bridgeService.configureMining(minerId, destinationWallet);
+    const configSource = res.config_source || (res.ok ? 'LOCAL_METADATA_CONFIGURED' : 'UNCONFIGURED');
     if (res.ok) {
-      quantumEventBus.publish('CLAWRTC_CONFIGURED', {
-        source: 'clawrtc_service',
-        subjectId: minerId,
-        metadataSafe: { minerId, destinationWallet: destinationWallet || 'default' },
-      });
-      return true;
+      if (configSource === 'CLAWRTC_CONFIGURED') {
+        quantumEventBus.publish('CLAWRTC_CONFIGURED', {
+          source: 'clawrtc_service',
+          subjectId: minerId,
+          metadataSafe: { minerId, destinationWallet: destinationWallet || 'default', configSource },
+        });
+      } else {
+        quantumEventBus.publish('MINER_LOCAL_METADATA_CONFIGURED', {
+          source: 'clawrtc_service',
+          subjectId: minerId,
+          metadataSafe: { minerId, destinationWallet: destinationWallet || 'default', configSource },
+        });
+      }
+      return { success: true, configSource, message: res.message };
     }
-    return false;
+    return { success: false, configSource: 'UNCONFIGURED', message: res.message || 'Configuration failed' };
   }
 
   /**

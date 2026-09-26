@@ -78,4 +78,53 @@ describe('ClawRTC Service & Mining Controls', () => {
       })
     );
   });
+
+  it('publishes MINER_LOCAL_METADATA_CONFIGURED and NOT CLAWRTC_CONFIGURED when config_source is LOCAL_METADATA_CONFIGURED', async () => {
+    vi.spyOn(bridgeService, 'configureMining').mockResolvedValue({
+      ok: true,
+      config_source: 'LOCAL_METADATA_CONFIGURED',
+      miner_id: 'test-local-miner',
+    });
+
+    const clawSpy = vi.fn();
+    const localSpy = vi.fn();
+    quantumEventBus.subscribe('CLAWRTC_CONFIGURED', clawSpy);
+    quantumEventBus.subscribe('MINER_LOCAL_METADATA_CONFIGURED', localSpy);
+
+    const res = await clawRtcService.configure('test-local-miner');
+    expect(res.success).toBe(true);
+    expect(res.configSource).toBe('LOCAL_METADATA_CONFIGURED');
+    expect(clawSpy).not.toHaveBeenCalled();
+    expect(localSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'MINER_LOCAL_METADATA_CONFIGURED',
+        subjectId: 'test-local-miner',
+      })
+    );
+  });
+
+  it('publishes CLAWRTC_CONFIGURED only when config_source is CLAWRTC_CONFIGURED', async () => {
+    vi.spyOn(bridgeService, 'configureMining').mockResolvedValue({
+      ok: true,
+      config_source: 'CLAWRTC_CONFIGURED',
+      miner_id: 'test-claw-miner',
+    });
+
+    const clawSpy = vi.fn();
+    const localSpy = vi.fn();
+    quantumEventBus.subscribe('CLAWRTC_CONFIGURED', clawSpy);
+    quantumEventBus.subscribe('MINER_LOCAL_METADATA_CONFIGURED', localSpy);
+
+    const res = await clawRtcService.configure('test-claw-miner');
+    expect(res.success).toBe(true);
+    expect(res.configSource).toBe('CLAWRTC_CONFIGURED');
+    expect(clawSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'CLAWRTC_CONFIGURED',
+        subjectId: 'test-claw-miner',
+      })
+    );
+    expect(localSpy).not.toHaveBeenCalled();
+  });
 });
+
