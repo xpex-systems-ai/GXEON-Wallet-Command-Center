@@ -9,16 +9,17 @@ export class ClawRtcService {
   async getStatus(): Promise<ProofOfAntiquityState> {
     const timestamp = new Date().toISOString();
     const fallback: ProofOfAntiquityState = {
-      status: 'NOT_INSTALLED',
+      status: 'ERROR',
       clawrtc_installed: false,
       clawrtc_version: null,
       miner_id: null,
       reward_destination: null,
+      config_source: 'UNAVAILABLE',
       hardware: {
-        cpu_arch: 'x86_64',
-        processor: 'Standard CPU',
-        os: 'Windows/Linux',
-        compatibility: 'DETECTED_HARDWARE',
+        cpu_arch: 'UNKNOWN',
+        processor: 'UNKNOWN',
+        os: 'UNKNOWN',
+        compatibility: 'UNKNOWN',
       },
       attestation_state: 'UNATTESTED',
       last_attestation_timestamp: null,
@@ -26,7 +27,7 @@ export class ClawRtcService {
       antiquity_multiplier: null,
       confirmed_rtc: null,
       pending_rewards: null,
-      source: 'none',
+      source: 'bridge_unavailable',
       queried_at: timestamp,
     };
 
