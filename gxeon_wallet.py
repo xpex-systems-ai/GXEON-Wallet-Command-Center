@@ -47,7 +47,7 @@ def get(path: str, token: str | None = None):
             return json.loads(r.read().decode("utf-8"))
     except HTTPError as e:
         if e.code in (401, 403):
-            print(f"[AUTH ERROR] Endpoint {path} requires pairing. Run 'gxeon-wallet pair' or pass code.")
+            print(f"[AUTH ERROR] Endpoint {path} requires pairing. Run 'python gxeon_wallet.py pair'.")
         else:
             print(f"[HTTP ERROR {e.code}] {e.reason}")
         sys.exit(1)
@@ -57,14 +57,14 @@ def get(path: str, token: str | None = None):
         sys.exit(2)
 
 
-def post(path: str, data: dict, token: str | None = None):
+def post(path: str, data: dict, token: str | None = None, timeout: int = 4):
     try:
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
         body = json.dumps(data).encode("utf-8")
         req = Request(BASE_URL + path, data=body, headers=headers, method="POST")
-        with urlopen(req, timeout=4) as r:
+        with urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
     except HTTPError as e:
         err_msg = e.read().decode("utf-8")
@@ -92,12 +92,23 @@ def cmd_pair(_):
     code = data.get("pairing_code")
     expires = data.get("expires_in", 300)
     print("\n" + "=" * 55)
-    print("     GXEON LOCAL COMPANION — PAIRING CODE")
+    print("     GXEON LOCAL COMPANION — CLI PAIRING")
     print("=" * 55)
-    print(f"\n   PAIRING CODE :  >>> {code} <<<\n")
-    print(f"   Expires in   :  {expires // 60} minutes ({expires} seconds)")
-    print("   Instructions :  Enter this 6-digit code in the GXEON Web")
-    print("                   Command Center at: https://studio-1105349706-f3598.web.app\n")
+    print(f"\n   ONE-TIME CODE :  >>> {code} <<<\n")
+    print(f"   Expires in    :  {expires // 60} minutes ({expires} seconds)")
+    print("   Re-enter the displayed code below to authorize this local CLI session.")
+    entered = input("   CODE: ").strip()
+    if entered != str(code):
+        print("[PAIRING ABORTED] Code did not match.")
+        return
+    confirmed = post("/pair/confirm", {"code": entered})
+    token = confirmed.get("token")
+    if not token:
+        print("[PAIRING FAILED] Companion did not issue a session token.")
+        return
+    save_cached_token(token, int(confirmed.get("expires_in", 3600)))
+    print(f"\n   CLI paired successfully. Session: {confirmed.get('session_id')}")
+    print("   Token stored only in the local user session cache and expires automatically.\n")
     print("=" * 55 + "\n")
 
 
@@ -239,7 +250,7 @@ def cmd_mining_start(_):
 def cmd_mining_stop(_):
     token = load_cached_token()
     print("\nStopping ClawRTC mining...")
-    res = post("/mining/stop", {}, token)
+    res = post("/mining/stop", {}, token, timeout=12)
     print(f"Result : {res.get('message')}")
     print(f"Status : {res.get('status')}\n")
 
