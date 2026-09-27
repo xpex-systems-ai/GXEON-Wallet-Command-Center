@@ -26,6 +26,10 @@
         "function": "stripeWebhook"
       },
       {
+        "source": "/api/integration-status",
+        "function": "integrationStatus"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
