@@ -50,6 +50,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url === '/api/debug/state') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      orders: Array.from(memoryStore.orders.values()),
+      jobs: Array.from(memoryStore.jobs.values()),
+      events: Array.from(memoryStore.stripeEvents.values()),
+      mappings: Array.from(memoryStore.paymentIntentMappings.entries())
+    }));
+    return;
+  }
+
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Not Found' }));
 });
