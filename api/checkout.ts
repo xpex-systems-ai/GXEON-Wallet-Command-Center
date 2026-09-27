@@ -1,31 +1,48 @@
-import { StripeServerService, InMemoryFirestoreAdapter } from '../src/server/stripeServerService';
-import { handleCheckoutEndpoint } from '../src/server/httpEndpoints';
+import { VercelStripeService, CheckoutSessionInput } from './_stripe.js';
 
-const memoryDb = new InMemoryFirestoreAdapter();
-let service: StripeServerService | null = null;
+let service: VercelStripeService | null = null;
 
-function getService(): StripeServerService {
+function getService(): VercelStripeService {
   if (!service) {
-    const apiKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY;
-    if (!apiKey) {
-      throw new Error('STRIPE_SECRET_KEY is missing');
-    }
-    service = new StripeServerService({
-      stripeApiKey: apiKey,
-      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
-      firestore: memoryDb,
-      publicUrl: process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined
-    });
+    service = new VercelStripeService({});
   }
   return service;
 }
 
 export default async function handler(req: any, res: any) {
+  if (req.method !== 'POST') {
+    res.statusCode = 405;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+    return;
+  }
+
+  let body: CheckoutSessionInput;
+  try {
+    if (req.body && typeof req.body === 'object') {
+      body = req.body;
+    } else {
+      let raw = '';
+      for await (const chunk of req) {
+        raw += chunk;
+      }
+      body = JSON.parse(raw);
+    }
+  } catch (err: any) {
+    res.statusCode = 400;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    return;
+  }
+
   try {
     const s = getService();
-    await handleCheckoutEndpoint(req, res, s);
+    const result = await s.createCheckoutSession(body);
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(result));
   } catch (err: any) {
-    const status = err.message?.includes('missing') ? 503 : 500;
+    const status = err.message?.includes('required') ? 400 : 500;
     res.statusCode = status;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: err.message || 'Checkout failed' }));
