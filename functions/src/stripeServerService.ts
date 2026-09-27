@@ -1,9 +1,5 @@
 import Stripe from 'stripe';
-import { CustomerOrder, JobTicket, MoneyTruthState } from '../features/sales/types';
-import { FirestoreStore } from './firestoreAdapter';
-
-export type { FirestoreStore, FirestoreTransactionContext } from './firestoreAdapter';
-export { InMemoryFirestoreAdapter } from './firestoreAdapter';
+import { CustomerOrder, JobTicket, FirestoreStore } from './adminFirestoreAdapter';
 
 export interface CheckoutSessionInput {
   customerName: string;
@@ -71,13 +67,6 @@ export class StripeServerService {
     }
   }
 
-  /**
-   * Server-side Checkout Session creation with Strict End-to-End Idempotency and State Flow:
-   * 1. If an order already has a confirmed Stripe session, returns the existing session (no duplicates).
-   * 2. State: CUSTOMER_CREATED persisted before Stripe session creation.
-   * 3. Call Stripe with stable idempotencyKey: `cs_create_${orderId}`.
-   * 4. State: CHECKOUT_CREATED persisted only after Stripe session is confirmed.
-   */
   async createCheckoutSession(
     input: CheckoutSessionInput
   ): Promise<CheckoutSessionResult> {
@@ -94,7 +83,6 @@ export class StripeServerService {
 
     const existingOrder = await this.firestore.getOrder(orderId);
 
-    // If order already has an active Stripe session, retrieve and return it directly (idempotency)
     if (existingOrder && existingOrder.stripeSessionId) {
       try {
         const existingSession = await this.stripe.checkout.sessions.retrieve(existingOrder.stripeSessionId);
@@ -106,7 +94,7 @@ export class StripeServerService {
           };
         }
       } catch {
-        // Fallthrough to recreate session if retrieve failed
+        // Fallthrough
       }
     }
 
@@ -120,17 +108,15 @@ export class StripeServerService {
         customerEmail: input.customerEmail,
         serviceId: 'gxeon_quick_fix_v1',
         amountBrl: 49.0,
-        state: 'CUSTOMER_CREATED', // Starts strictly at CUSTOMER_CREATED
+        state: 'CUSTOMER_CREATED',
         problemSummary: input.problemSummary,
         repoOrCodeUrl: input.repoOrCodeUrl,
         createdAt: now,
         updatedAt: now
       };
-      // Step 1: Persist initial order at CUSTOMER_CREATED
       await this.firestore.setOrder(orderId, order);
     }
 
-    // Step 2: Create Stripe Checkout Session with durable idempotency key
     const session = await this.stripe.checkout.sessions.create(
       {
         mode: 'payment',
@@ -139,7 +125,7 @@ export class StripeServerService {
           {
             price_data: {
               currency: 'brl',
-              unit_amount: 4900, // Exact R$ 49,00 server-enforced
+              unit_amount: 4900,
               product_data: {
                 name: 'GXEON Quick Fix',
                 description: 'Diagnóstico técnico especializado e implementação de 1 correção cirúrgica.',
@@ -177,7 +163,6 @@ export class StripeServerService {
       throw new Error('Failed to generate Stripe checkout session');
     }
 
-    // Step 3: Transition state to CHECKOUT_CREATED only after Stripe session is successfully generated
     await this.firestore.updateOrderState(orderId, 'CHECKOUT_CREATED', {
       stripeSessionId: session.id,
       updatedAt: new Date().toISOString()
@@ -190,11 +175,6 @@ export class StripeServerService {
     };
   }
 
-  /**
-   * Verified Stripe webhook processor with atomic Firestore transaction idempotency.
-   * Uses official Stripe constructEvent SDK for signature verification.
-   * Enforces strict session binding and does not mark event processed prematurely.
-   */
   async handleWebhook(
     payload: string | Buffer,
     signatureHeader: string
@@ -220,9 +200,7 @@ export class StripeServerService {
 
     const eventId = event.id;
 
-    // Run inside atomic Firestore transaction
     return this.firestore.runTransaction(async (tx) => {
-      // 1. Check idempotency within transaction
       const isAlreadyProcessed = await tx.getProcessedEvent(eventId);
       if (isAlreadyProcessed) {
         return {
@@ -231,7 +209,6 @@ export class StripeServerService {
         };
       }
 
-      // 2. Handle checkout.session.completed
       if (event.type === 'checkout.session.completed') {
         const session = event.data.object as Stripe.Checkout.Session;
         const orderId = session.metadata?.order_id;
@@ -242,7 +219,6 @@ export class StripeServerService {
         const sessionId = session.id;
         const paymentIntentId = (session.payment_intent as string) || sessionId;
 
-        // Zero-trust validation gates
         if (paymentStatus !== 'paid') {
           return {
             status: 'UNPAID',
@@ -283,7 +259,6 @@ export class StripeServerService {
           };
         }
 
-        // Require existing order in Firestore
         const existingOrder = await tx.getOrder(orderId);
         if (!existingOrder) {
           return {
@@ -293,17 +268,15 @@ export class StripeServerService {
           };
         }
 
-        // Strict Session Binding: order.stripeSessionId must exist AND match session.id
         if (!existingOrder.stripeSessionId || existingOrder.stripeSessionId !== sessionId) {
           return {
             status: 'SESSION_MISMATCH',
             processed: false,
-            error: `Strict session binding mismatch for order ${orderId}. Expected ${existingOrder.stripeSessionId || 'none'}, received ${sessionId}`
+            error: `Strict session binding mismatch for order ${orderId}`
           };
         }
 
-        // Validate order state allows transition to PAYMENT_SUCCEEDED
-        const validInitialStates: MoneyTruthState[] = ['CUSTOMER_CREATED', 'CHECKOUT_CREATED', 'PAYMENT_PENDING'];
+        const validInitialStates = ['CUSTOMER_CREATED', 'CHECKOUT_CREATED', 'PAYMENT_PENDING'];
         if (!validInitialStates.includes(existingOrder.state) && existingOrder.state !== 'PAYMENT_SUCCEEDED') {
           return {
             status: 'INVALID_ORDER_STATE',
@@ -314,14 +287,12 @@ export class StripeServerService {
 
         const now = new Date().toISOString();
 
-        // Update Firestore order to PAYMENT_SUCCEEDED
         await tx.updateOrderState(orderId, 'PAYMENT_SUCCEEDED', {
           stripePaymentIntentId: paymentIntentId,
           stripeSessionId: sessionId,
           updatedAt: now
         });
 
-        // Create durable JobTicket with deterministic ID (never job_unknown)
         const jobId = `job_${orderId}`;
         const jobTicket: JobTicket = {
           ticketId: jobId,
@@ -341,12 +312,10 @@ export class StripeServerService {
 
         await tx.createJob(jobId, jobTicket);
 
-        // Map payment intent to orderId for durable refund correlation
         if (paymentIntentId) {
           await tx.setPaymentIntentMapping(paymentIntentId, orderId);
         }
 
-        // Durably record processed event in the same atomic transaction
         await tx.recordProcessedEvent(eventId, event.type, { orderId, jobId });
 
         return {
@@ -357,13 +326,11 @@ export class StripeServerService {
         };
       }
 
-      // 3. Handle charge.refunded
       if (event.type === 'charge.refunded') {
         const charge = event.data.object as Stripe.Charge;
         let orderId: string | undefined = charge.metadata?.order_id;
         const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : null;
 
-        // Correlate orderId from metadata or payment intent mapping
         if (!orderId && paymentIntentId) {
           const mapped = await tx.getOrderIdByPaymentIntent(paymentIntentId);
           if (mapped) {
@@ -380,7 +347,6 @@ export class StripeServerService {
           }
         }
 
-        // Record processed event
         await tx.recordProcessedEvent(eventId, event.type, {
           orderId: orderId || null,
           chargeId: charge.id
@@ -393,7 +359,6 @@ export class StripeServerService {
         };
       }
 
-      // 4. Handle other Stripe events
       await tx.recordProcessedEvent(eventId, event.type);
 
       return {

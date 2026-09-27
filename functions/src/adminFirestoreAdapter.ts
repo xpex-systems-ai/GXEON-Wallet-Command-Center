@@ -1,7 +1,61 @@
 import { getFirestore, Firestore, Transaction } from 'firebase-admin/firestore';
 import { initializeApp, getApps } from 'firebase-admin/app';
-import { CustomerOrder, JobTicket, MoneyTruthState } from '../features/sales/types';
-import { FirestoreStore, FirestoreTransactionContext } from './firestoreAdapter';
+
+export interface CustomerOrder {
+  id: string;
+  customerName: string;
+  customerEmail: string;
+  serviceId: string;
+  amountBrl: number;
+  state: string;
+  problemSummary: string;
+  repoOrCodeUrl?: string;
+  stripeSessionId?: string;
+  stripePaymentIntentId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JobTicket {
+  ticketId: string;
+  orderId: string;
+  service: string;
+  customerIntake: {
+    customerEmail: string;
+    customerName: string;
+    problemSummary: string;
+    repoOrCodeUrl?: string;
+  };
+  paymentReference?: string;
+  state: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FirestoreTransactionContext {
+  getOrder: (orderId: string) => Promise<CustomerOrder | null>;
+  setOrder: (orderId: string, order: CustomerOrder) => Promise<void>;
+  updateOrderState: (orderId: string, state: string, updates?: Partial<CustomerOrder>) => Promise<void>;
+  getProcessedEvent: (eventId: string) => Promise<boolean>;
+  recordProcessedEvent: (eventId: string, type: string, metadata?: Record<string, any>) => Promise<void>;
+  createJob: (jobId: string, job: JobTicket) => Promise<void>;
+  getJob: (jobId: string) => Promise<JobTicket | null>;
+  setPaymentIntentMapping: (paymentIntentId: string, orderId: string) => Promise<void>;
+  getOrderIdByPaymentIntent: (paymentIntentId: string) => Promise<string | null>;
+}
+
+export interface FirestoreStore {
+  getOrder: (orderId: string) => Promise<CustomerOrder | null>;
+  setOrder: (orderId: string, order: CustomerOrder) => Promise<void>;
+  updateOrderState: (orderId: string, state: string, updates?: Partial<CustomerOrder>) => Promise<void>;
+  getProcessedEvent: (eventId: string) => Promise<boolean>;
+  recordProcessedEvent: (eventId: string, type: string, metadata?: Record<string, any>) => Promise<void>;
+  createJob: (jobId: string, job: JobTicket) => Promise<void>;
+  getJob: (jobId: string) => Promise<JobTicket | null>;
+  setPaymentIntentMapping: (paymentIntentId: string, orderId: string) => Promise<void>;
+  getOrderIdByPaymentIntent: (paymentIntentId: string) => Promise<string | null>;
+  runTransaction: <T>(updateFunction: (tx: FirestoreTransactionContext) => Promise<T>) => Promise<T>;
+}
 
 export function getAdminFirestoreInstance(): Firestore {
   if (getApps().length === 0) {
@@ -10,14 +64,6 @@ export function getAdminFirestoreInstance(): Firestore {
   return getFirestore();
 }
 
-/**
- * Real Server-Side Production Firestore Adapter using official firebase-admin SDK.
- * Collections:
- * - orders/{orderId}
- * - stripe_events/{eventId}
- * - jobs/{jobId}
- * - payment_intent_mappings/{paymentIntentId}
- */
 export class AdminFirestoreAdapter implements FirestoreStore {
   private db: Firestore;
 
@@ -39,7 +85,7 @@ export class AdminFirestoreAdapter implements FirestoreStore {
 
   async updateOrderState(
     orderId: string,
-    state: MoneyTruthState,
+    state: string,
     updates?: Partial<CustomerOrder>
   ): Promise<void> {
     const docRef = this.db.collection('orders').doc(orderId);
@@ -103,7 +149,7 @@ export class AdminFirestoreAdapter implements FirestoreStore {
           const docRef = this.db.collection('orders').doc(orderId);
           transaction.set(docRef, order);
         },
-        updateOrderState: async (orderId: string, state: MoneyTruthState, updates?: Partial<CustomerOrder>) => {
+        updateOrderState: async (orderId: string, state: string, updates?: Partial<CustomerOrder>) => {
           const docRef = this.db.collection('orders').doc(orderId);
           transaction.update(docRef, {
             ...updates,

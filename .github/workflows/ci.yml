@@ -6,6 +6,7 @@ on:
     branches:
       - feat/gxeon-quantum-integration-v1-2
       - feat/gxeon-local-companion-v1
+      - feat/gxeon-dual-revenue-engine-v1
       - main
 
 permissions:
@@ -35,6 +36,12 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      - name: Build Functions
+        run: |
+          cd functions
+          npm ci
+          npm run build
 
       - name: Set up Python
         uses: actions/setup-python@v5
