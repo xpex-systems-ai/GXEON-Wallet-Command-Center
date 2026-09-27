@@ -1,15 +1,9 @@
 import Stripe from 'stripe';
 import { CustomerOrder, JobTicket, MoneyTruthState } from '../features/sales/types';
+import { FirestoreStore } from './firestoreAdapter';
 
-export interface FirestoreStore {
-  getOrder: (orderId: string) => Promise<CustomerOrder | null>;
-  setOrder: (orderId: string, order: CustomerOrder) => Promise<void>;
-  updateOrderState: (orderId: string, state: MoneyTruthState, updates?: Partial<CustomerOrder>) => Promise<void>;
-  getProcessedEvent: (eventId: string) => Promise<boolean>;
-  recordProcessedEvent: (eventId: string, type: string) => Promise<void>;
-  createJob: (jobId: string, job: JobTicket) => Promise<void>;
-  getJob: (jobId: string) => Promise<JobTicket | null>;
-}
+export type { FirestoreStore, FirestoreTransactionContext } from './firestoreAdapter';
+export { ProductionFirestoreAdapter, InMemoryFirestoreAdapter } from './firestoreAdapter';
 
 export interface CheckoutSessionInput {
   customerName: string;
@@ -21,26 +15,53 @@ export interface CheckoutSessionInput {
 export interface CheckoutSessionResult {
   orderId: string;
   checkoutUrl: string;
+  sessionId: string;
+}
+
+export interface WebhookResult {
+  status:
+    | 'PAYMENT_SUCCEEDED'
+    | 'DUPLICATE_IGNORED'
+    | 'REFUNDED'
+    | 'UNVERIFIED_SIGNATURE'
+    | 'UNPAID'
+    | 'AMOUNT_MISMATCH'
+    | 'CURRENCY_MISMATCH'
+    | 'SERVICE_MISMATCH'
+    | 'ORDER_NOT_FOUND'
+    | 'SESSION_MISMATCH'
+    | 'INVALID_ORDER_STATE'
+    | 'UNHANDLED_EVENT';
+  processed: boolean;
+  orderId?: string;
+  jobId?: string;
+  error?: string;
 }
 
 export class StripeServerService {
   private stripe: Stripe;
   private webhookSecret: string;
   private firestore: FirestoreStore;
+  private publicUrl: string;
 
   constructor(options: {
     stripeApiKey?: string;
     webhookSecret?: string;
     firestore: FirestoreStore;
     stripeInstance?: Stripe;
+    publicUrl?: string;
   }) {
-    this.webhookSecret = options.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET || '';
     this.firestore = options.firestore;
+    this.webhookSecret = options.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET || '';
+    this.publicUrl = (options.publicUrl || process.env.GXEON_PUBLIC_URL || 'https://gxeon.xpex.systems').replace(/\/$/, '');
 
     if (options.stripeInstance) {
       this.stripe = options.stripeInstance;
     } else {
-      const apiKey = options.stripeApiKey || process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder_for_typecheck';
+      const apiKey = options.stripeApiKey || process.env.STRIPE_SECRET_KEY;
+      if (!apiKey) {
+        throw new Error('STRIPE_SECRET_KEY is missing. StripeServerService fails closed in production.');
+      }
       this.stripe = new Stripe(apiKey, {
         apiVersion: '2025-02-24.acacia' as any
       });
@@ -50,10 +71,10 @@ export class StripeServerService {
   /**
    * Server-side Checkout Session creation.
    * Price is strictly hardcoded and server-enforced at 4900 BRL (R$ 49,00).
+   * Base URL is strictly server-controlled via GXEON_PUBLIC_URL.
    */
   async createCheckoutSession(
-    input: CheckoutSessionInput,
-    originUrl: string
+    input: CheckoutSessionInput
   ): Promise<CheckoutSessionResult> {
     if (!input.customerEmail || !input.problemSummary) {
       throw new Error('customerEmail and problemSummary are required');
@@ -78,7 +99,7 @@ export class StripeServerService {
     // 1. Persist initial order in Firestore
     await this.firestore.setOrder(orderId, order);
 
-    // 2. Create Stripe Checkout Session via official SDK
+    // 2. Create Stripe Checkout Session via official SDK with server-enforced price & payment_intent_data
     const session = await this.stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -106,40 +127,41 @@ export class StripeServerService {
         customer_email: input.customerEmail,
         customer_name: input.customerName || ''
       },
-      success_url: `${originUrl}/order/${orderId}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${originUrl}/order/${orderId}/cancel`
+      payment_intent_data: {
+        metadata: {
+          order_id: orderId,
+          service_id: 'gxeon_quick_fix_v1'
+        }
+      },
+      success_url: `${this.publicUrl}/order/${orderId}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${this.publicUrl}/order/${orderId}/cancel`
     });
 
-    if (!session.url) {
-      throw new Error('Failed to generate Stripe checkout URL');
+    if (!session.url || !session.id) {
+      throw new Error('Failed to generate Stripe checkout session');
     }
 
-    // Update order with session ID
+    // Update order with confirmed Stripe session ID
     await this.firestore.updateOrderState(orderId, 'CHECKOUT_CREATED', {
       stripeSessionId: session.id
     });
 
     return {
       orderId,
-      checkoutUrl: session.url
+      checkoutUrl: session.url,
+      sessionId: session.id
     };
   }
 
   /**
-   * Verified Stripe webhook processor.
+   * Verified Stripe webhook processor with atomic Firestore transaction idempotency.
    * Uses official Stripe constructEvent SDK for signature verification.
-   * Durable idempotency via Firestore stripe_events collection.
+   * Does NOT mark event processed until all database mutations are durably committed.
    */
   async handleWebhook(
     payload: string | Buffer,
     signatureHeader: string
-  ): Promise<{
-    status: string;
-    processed: boolean;
-    orderId?: string;
-    jobId?: string;
-    error?: string;
-  }> {
+  ): Promise<WebhookResult> {
     if (!signatureHeader || !this.webhookSecret) {
       return {
         status: 'UNVERIFIED_SIGNATURE',
@@ -161,108 +183,186 @@ export class StripeServerService {
 
     const eventId = event.id;
 
-    // Durable idempotency check in Firestore
-    const isAlreadyProcessed = await this.firestore.getProcessedEvent(eventId);
-    if (isAlreadyProcessed) {
-      return {
-        status: 'DUPLICATE_IGNORED',
-        processed: true
-      };
-    }
-
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const orderId = session.metadata?.order_id;
-      const paymentStatus = session.payment_status;
-      const amountTotal = session.amount_total;
-      const currency = session.currency?.toLowerCase();
-
-      // Zero-trust money gate: verify exact payment status
-      if (paymentStatus !== 'paid') {
+    // Run within atomic Firestore transaction
+    return this.firestore.runTransaction(async (tx) => {
+      // 1. Check idempotency within transaction
+      const isAlreadyProcessed = await tx.getProcessedEvent(eventId);
+      if (isAlreadyProcessed) {
         return {
-          status: 'UNPAID',
-          processed: false,
-          error: `Payment status is ${paymentStatus}, expected paid`
+          status: 'DUPLICATE_IGNORED',
+          processed: true
         };
       }
 
-      // Zero-trust money gate: verify exact amount and currency
-      if (amountTotal !== 4900 || currency !== 'brl') {
-        return {
-          status: 'AMOUNT_MISMATCH',
-          processed: false,
-          error: `Expected 4900 BRL, got ${amountTotal} ${currency}`
-        };
-      }
+      // 2. Handle checkout.session.completed
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const orderId = session.metadata?.order_id;
+        const serviceId = session.metadata?.service_id;
+        const paymentStatus = session.payment_status;
+        const amountTotal = session.amount_total;
+        const currency = session.currency?.toLowerCase();
+        const sessionId = session.id;
+        const paymentIntentId = (session.payment_intent as string) || sessionId;
 
-      // Record durable event ID in Firestore
-      await this.firestore.recordProcessedEvent(eventId, event.type);
+        // Zero-trust verification gates
+        if (paymentStatus !== 'paid') {
+          return {
+            status: 'UNPAID',
+            processed: false,
+            error: `Payment status is ${paymentStatus}, expected paid`
+          };
+        }
 
-      const now = new Date().toISOString();
+        if (amountTotal !== 4900) {
+          return {
+            status: 'AMOUNT_MISMATCH',
+            processed: false,
+            error: `Expected amount 4900, received ${amountTotal}`
+          };
+        }
 
-      // Update Firestore order to PAYMENT_SUCCEEDED
-      if (orderId) {
-        await this.firestore.updateOrderState(orderId, 'PAYMENT_SUCCEEDED', {
-          stripePaymentIntentId: (session.payment_intent as string) || session.id,
+        if (currency !== 'brl') {
+          return {
+            status: 'CURRENCY_MISMATCH',
+            processed: false,
+            error: `Expected currency brl, received ${currency}`
+          };
+        }
+
+        if (serviceId !== 'gxeon_quick_fix_v1') {
+          return {
+            status: 'SERVICE_MISMATCH',
+            processed: false,
+            error: `Expected service_id gxeon_quick_fix_v1, received ${serviceId}`
+          };
+        }
+
+        if (!orderId) {
+          return {
+            status: 'ORDER_NOT_FOUND',
+            processed: false,
+            error: 'Session metadata is missing order_id'
+          };
+        }
+
+        // Require existing order in Firestore
+        const existingOrder = await tx.getOrder(orderId);
+        if (!existingOrder) {
+          return {
+            status: 'ORDER_NOT_FOUND',
+            processed: false,
+            error: `Order ${orderId} does not exist in Firestore`
+          };
+        }
+
+        // Verify session ID matches order's recorded session ID if present
+        if (existingOrder.stripeSessionId && existingOrder.stripeSessionId !== sessionId) {
+          return {
+            status: 'SESSION_MISMATCH',
+            processed: false,
+            error: `Session ID mismatch for order ${orderId}`
+          };
+        }
+
+        // Validate order state allows transition to PAYMENT_SUCCEEDED
+        const validInitialStates: MoneyTruthState[] = ['CUSTOMER_CREATED', 'CHECKOUT_CREATED', 'PAYMENT_PENDING'];
+        if (!validInitialStates.includes(existingOrder.state) && existingOrder.state !== 'PAYMENT_SUCCEEDED') {
+          return {
+            status: 'INVALID_ORDER_STATE',
+            processed: false,
+            error: `Invalid order state transition from ${existingOrder.state}`
+          };
+        }
+
+        const now = new Date().toISOString();
+
+        // Update Firestore order
+        await tx.updateOrderState(orderId, 'PAYMENT_SUCCEEDED', {
+          stripePaymentIntentId: paymentIntentId,
+          stripeSessionId: sessionId,
           updatedAt: now
         });
+
+        // Create durable JobTicket with deterministic ID (never job_unknown)
+        const jobId = `job_${orderId}`;
+        const jobTicket: JobTicket = {
+          ticketId: jobId,
+          orderId: orderId,
+          service: 'gxeon_quick_fix_v1',
+          customerIntake: {
+            customerEmail: session.customer_details?.email || existingOrder.customerEmail,
+            customerName: session.customer_details?.name || existingOrder.customerName,
+            problemSummary: existingOrder.problemSummary,
+            repoOrCodeUrl: existingOrder.repoOrCodeUrl
+          },
+          paymentReference: paymentIntentId,
+          state: 'JOB_CREATED',
+          createdAt: now,
+          updatedAt: now
+        };
+
+        await tx.createJob(jobId, jobTicket);
+
+        // Map payment intent to orderId for robust refund lookup
+        if (paymentIntentId) {
+          await tx.setPaymentIntentMapping(paymentIntentId, orderId);
+        }
+
+        // Durably record processed event in the same transaction
+        await tx.recordProcessedEvent(eventId, event.type, { orderId, jobId });
+
+        return {
+          status: 'PAYMENT_SUCCEEDED',
+          processed: true,
+          orderId,
+          jobId
+        };
       }
 
-      // Create durable JobTicket in Firestore (no card information)
-      const jobId = `job_${orderId || Date.now()}`;
-      const existingOrder = orderId ? await this.firestore.getOrder(orderId) : null;
+      // 3. Handle charge.refunded
+      if (event.type === 'charge.refunded') {
+        const charge = event.data.object as Stripe.Charge;
+        let orderId: string | undefined = charge.metadata?.order_id;
+        const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : null;
 
-      const jobTicket: JobTicket = {
-        ticketId: jobId,
-        orderId: orderId || 'unknown',
-        service: 'gxeon_quick_fix_v1',
-        customerIntake: {
-          customerEmail: session.customer_details?.email || existingOrder?.customerEmail || '',
-          customerName: session.customer_details?.name || existingOrder?.customerName || '',
-          problemSummary: existingOrder?.problemSummary || 'GXEON Quick Fix request',
-          repoOrCodeUrl: existingOrder?.repoOrCodeUrl
-        },
-        paymentReference: (session.payment_intent as string) || session.id,
-        state: 'JOB_CREATED',
-        createdAt: now,
-        updatedAt: now
-      };
+        // Correlate orderId from metadata or payment intent mapping
+        if (!orderId && paymentIntentId) {
+          const mapped = await tx.getOrderIdByPaymentIntent(paymentIntentId);
+          if (mapped) {
+            orderId = mapped;
+          }
+        }
 
-      await this.firestore.createJob(jobId, jobTicket);
+        if (orderId) {
+          const order = await tx.getOrder(orderId);
+          if (order) {
+            await tx.updateOrderState(orderId, 'REFUNDED', {
+              updatedAt: new Date().toISOString()
+            });
+          }
+        }
 
-      return {
-        status: 'PAYMENT_SUCCEEDED',
-        processed: true,
-        orderId,
-        jobId
-      };
-    }
-
-    if (event.type === 'charge.refunded') {
-      const charge = event.data.object as Stripe.Charge;
-      const orderId = charge.metadata?.order_id;
-
-      await this.firestore.recordProcessedEvent(eventId, event.type);
-
-      if (orderId) {
-        await this.firestore.updateOrderState(orderId, 'REFUNDED', {
-          updatedAt: new Date().toISOString()
+        // Record processed event
+        await tx.recordProcessedEvent(eventId, event.type, {
+          orderId: orderId || null,
+          chargeId: charge.id
         });
+
+        return {
+          status: 'REFUNDED',
+          processed: true,
+          orderId
+        };
       }
 
+      // 4. Handle other Stripe events
+      await tx.recordProcessedEvent(eventId, event.type);
+
       return {
-        status: 'REFUNDED',
-        processed: true,
-        orderId
+        status: 'UNHANDLED_EVENT',
+        processed: true
       };
-    }
-
-    // Record other handled events
-    await this.firestore.recordProcessedEvent(eventId, event.type);
-
-    return {
-      status: 'UNHANDLED_EVENT',
-      processed: true
-    };
+    });
   }
 }
