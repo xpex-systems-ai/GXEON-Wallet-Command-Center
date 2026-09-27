@@ -192,7 +192,7 @@ function asDocument<T>(doc: FirestoreRestDocument): FirestoreDocument<T> {
 export class FirestoreRestClient {
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await firestoreFetch('?pageSize=1');
+      const response = await firestoreFetch('/payments?pageSize=1');
       return response.ok;
     } catch {
       return false;
