@@ -1,3 +1,20 @@
+/**
+ * SYNTHETIC WEBHOOK HANDLER TEST
+ *
+ * This script tests the webhook handler logic using locally constructed
+ * webhook events via stripe.webhooks.generateTestHeaderString().
+ *
+ * THIS IS NOT A REAL STRIPE-ORIGINATED E2E TEST.
+ * - The webhook event is fabricated locally, not sent by Stripe.
+ * - The event ID is generated locally, not by Stripe.
+ * - The signing secret is a local test secret, not from Stripe CLI.
+ *
+ * For true Stripe-originated E2E proof:
+ * 1. Use scripts/start_test_backend.ts
+ * 2. Run `stripe listen --forward-to ...`
+ * 3. Complete checkout in a real browser
+ * 4. Let Stripe deliver the real event
+ */
 import http from 'http';
 import Stripe from 'stripe';
 import { StripeServerService, InMemoryFirestoreAdapter } from '../src/server/stripeServerService';
@@ -196,7 +213,7 @@ async function main() {
   console.log(`STRIPE EVENT COUNT: ${memoryDb.stripeEvents.size}`);
   console.log(`RETRY SAME SESSION: ${retryPass ? 'PASS' : 'FAIL'}`);
   console.log(`REAL WEBHOOK REPLAY: ${whData2.status === 'DUPLICATE_IGNORED' ? 'DUPLICATE_IGNORED' : 'FAIL'}`);
-  console.log(`REAL STRIPE PAYMENT E2E: YES`);
+  console.log(`SYNTHETIC WEBHOOK HANDLER TEST: PASS (not a real Stripe-originated E2E)`);
   console.log(`LIVE: DISABLED`);
   console.log(`REAL REVENUE: R$0.00`);
 }
