@@ -3,13 +3,15 @@ import { CustomerOrder, JobTicket, MoneyTruthState } from '../features/sales/typ
 import { FirestoreStore } from './firestoreAdapter';
 
 export type { FirestoreStore, FirestoreTransactionContext } from './firestoreAdapter';
-export { ProductionFirestoreAdapter, InMemoryFirestoreAdapter } from './firestoreAdapter';
+export { InMemoryFirestoreAdapter } from './firestoreAdapter';
+export { AdminFirestoreAdapter } from './adminFirestoreAdapter';
 
 export interface CheckoutSessionInput {
   customerName: string;
   customerEmail: string;
   problemSummary: string;
   repoOrCodeUrl?: string;
+  customOrderId?: string;
 }
 
 export interface CheckoutSessionResult {
@@ -69,9 +71,10 @@ export class StripeServerService {
   }
 
   /**
-   * Server-side Checkout Session creation.
-   * Price is strictly hardcoded and server-enforced at 4900 BRL (R$ 49,00).
-   * Base URL is strictly server-controlled via GXEON_PUBLIC_URL.
+   * Server-side Checkout Session creation with Strict Idempotency and State Flow:
+   * 1. State: CUSTOMER_CREATED persisted before Stripe session creation.
+   * 2. Call Stripe with stable idempotencyKey: `cs_create_${orderId}`.
+   * 3. State: CHECKOUT_CREATED persisted only after Stripe session is confirmed.
    */
   async createCheckoutSession(
     input: CheckoutSessionInput
@@ -80,70 +83,82 @@ export class StripeServerService {
       throw new Error('customerEmail and problemSummary are required');
     }
 
-    const orderId = `ord_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const orderId = input.customOrderId || `ord_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date().toISOString();
 
-    const order: CustomerOrder = {
-      id: orderId,
-      customerName: input.customerName || 'Customer',
-      customerEmail: input.customerEmail,
-      serviceId: 'gxeon_quick_fix_v1',
-      amountBrl: 49.0,
-      state: 'CHECKOUT_CREATED',
-      problemSummary: input.problemSummary,
-      repoOrCodeUrl: input.repoOrCodeUrl,
-      createdAt: now,
-      updatedAt: now
-    };
+    const existingOrder = await this.firestore.getOrder(orderId);
+    let order: CustomerOrder;
 
-    // 1. Persist initial order in Firestore
-    await this.firestore.setOrder(orderId, order);
+    if (existingOrder) {
+      order = existingOrder;
+    } else {
+      order = {
+        id: orderId,
+        customerName: input.customerName || 'Customer',
+        customerEmail: input.customerEmail,
+        serviceId: 'gxeon_quick_fix_v1',
+        amountBrl: 49.0,
+        state: 'CUSTOMER_CREATED', // Starts strictly at CUSTOMER_CREATED
+        problemSummary: input.problemSummary,
+        repoOrCodeUrl: input.repoOrCodeUrl,
+        createdAt: now,
+        updatedAt: now
+      };
+      // Step 1: Persist initial order at CUSTOMER_CREATED
+      await this.firestore.setOrder(orderId, order);
+    }
 
-    // 2. Create Stripe Checkout Session via official SDK with server-enforced price & payment_intent_data
-    const session = await this.stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'brl',
-            unit_amount: 4900, // Exact R$ 49,00 server-enforced
-            product_data: {
-              name: 'GXEON Quick Fix',
-              description: 'Diagnóstico técnico especializado e implementação de 1 correção cirúrgica.',
-              metadata: {
-                service_id: 'gxeon_quick_fix_v1',
-                provider: 'GXEON AI Systems'
+    // Step 2: Create Stripe Checkout Session with durable idempotency key
+    const session = await this.stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'brl',
+              unit_amount: 4900, // Exact R$ 49,00 server-enforced
+              product_data: {
+                name: 'GXEON Quick Fix',
+                description: 'Diagnóstico técnico especializado e implementação de 1 correção cirúrgica.',
+                metadata: {
+                  service_id: 'gxeon_quick_fix_v1',
+                  provider: 'GXEON AI Systems'
+                }
               }
-            }
-          },
-          quantity: 1
-        }
-      ],
-      customer_email: input.customerEmail,
-      metadata: {
-        order_id: orderId,
-        service_id: 'gxeon_quick_fix_v1',
+            },
+            quantity: 1
+          }
+        ],
         customer_email: input.customerEmail,
-        customer_name: input.customerName || ''
-      },
-      payment_intent_data: {
         metadata: {
           order_id: orderId,
-          service_id: 'gxeon_quick_fix_v1'
-        }
+          service_id: 'gxeon_quick_fix_v1',
+          customer_email: input.customerEmail,
+          customer_name: input.customerName || ''
+        },
+        payment_intent_data: {
+          metadata: {
+            order_id: orderId,
+            service_id: 'gxeon_quick_fix_v1'
+          }
+        },
+        success_url: `${this.publicUrl}/order/${orderId}/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${this.publicUrl}/order/${orderId}/cancel`
       },
-      success_url: `${this.publicUrl}/order/${orderId}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${this.publicUrl}/order/${orderId}/cancel`
-    });
+      {
+        idempotencyKey: `cs_create_${orderId}`
+      }
+    );
 
     if (!session.url || !session.id) {
       throw new Error('Failed to generate Stripe checkout session');
     }
 
-    // Update order with confirmed Stripe session ID
+    // Step 3: Transition state to CHECKOUT_CREATED only after Stripe session is successfully generated
     await this.firestore.updateOrderState(orderId, 'CHECKOUT_CREATED', {
-      stripeSessionId: session.id
+      stripeSessionId: session.id,
+      updatedAt: new Date().toISOString()
     });
 
     return {
@@ -156,7 +171,7 @@ export class StripeServerService {
   /**
    * Verified Stripe webhook processor with atomic Firestore transaction idempotency.
    * Uses official Stripe constructEvent SDK for signature verification.
-   * Does NOT mark event processed until all database mutations are durably committed.
+   * Enforces strict session binding and does not mark event processed prematurely.
    */
   async handleWebhook(
     payload: string | Buffer,
@@ -183,7 +198,7 @@ export class StripeServerService {
 
     const eventId = event.id;
 
-    // Run within atomic Firestore transaction
+    // Run inside atomic Firestore transaction
     return this.firestore.runTransaction(async (tx) => {
       // 1. Check idempotency within transaction
       const isAlreadyProcessed = await tx.getProcessedEvent(eventId);
@@ -205,7 +220,7 @@ export class StripeServerService {
         const sessionId = session.id;
         const paymentIntentId = (session.payment_intent as string) || sessionId;
 
-        // Zero-trust verification gates
+        // Zero-trust validation gates
         if (paymentStatus !== 'paid') {
           return {
             status: 'UNPAID',
@@ -256,12 +271,12 @@ export class StripeServerService {
           };
         }
 
-        // Verify session ID matches order's recorded session ID if present
-        if (existingOrder.stripeSessionId && existingOrder.stripeSessionId !== sessionId) {
+        // Strict Session Binding: order.stripeSessionId must exist AND match session.id
+        if (!existingOrder.stripeSessionId || existingOrder.stripeSessionId !== sessionId) {
           return {
             status: 'SESSION_MISMATCH',
             processed: false,
-            error: `Session ID mismatch for order ${orderId}`
+            error: `Strict session binding mismatch for order ${orderId}. Expected ${existingOrder.stripeSessionId || 'none'}, received ${sessionId}`
           };
         }
 
@@ -277,7 +292,7 @@ export class StripeServerService {
 
         const now = new Date().toISOString();
 
-        // Update Firestore order
+        // Update Firestore order to PAYMENT_SUCCEEDED
         await tx.updateOrderState(orderId, 'PAYMENT_SUCCEEDED', {
           stripePaymentIntentId: paymentIntentId,
           stripeSessionId: sessionId,
@@ -304,12 +319,12 @@ export class StripeServerService {
 
         await tx.createJob(jobId, jobTicket);
 
-        // Map payment intent to orderId for robust refund lookup
+        // Map payment intent to orderId for durable refund correlation
         if (paymentIntentId) {
           await tx.setPaymentIntentMapping(paymentIntentId, orderId);
         }
 
-        // Durably record processed event in the same transaction
+        // Durably record processed event in the same atomic transaction
         await tx.recordProcessedEvent(eventId, event.type, { orderId, jobId });
 
         return {

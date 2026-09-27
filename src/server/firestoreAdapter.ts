@@ -238,64 +238,81 @@ export class InMemoryFirestoreAdapter implements FirestoreStore {
     return this.paymentIntentMappings.get(paymentIntentId) || null;
   }
 
-  async runTransaction<T>(updateFunction: (tx: FirestoreTransactionContext) => Promise<T>): Promise<T> {
-    // Stage updates in isolated transactional buffer
-    const stagedOrders = new Map(this.orders);
-    const stagedEvents = new Map(this.stripeEvents);
-    const stagedJobs = new Map(this.jobs);
-    const stagedMappings = new Map(this.paymentIntentMappings);
+  private transactionLock: Promise<void> = Promise.resolve();
 
-    const txContext: FirestoreTransactionContext = {
-      getOrder: async (orderId: string) => {
-        return stagedOrders.has(orderId) ? { ...stagedOrders.get(orderId)! } : null;
-      },
-      setOrder: async (orderId: string, order: CustomerOrder) => {
-        stagedOrders.set(orderId, { ...order });
-      },
-      updateOrderState: async (orderId: string, state: MoneyTruthState, updates?: Partial<CustomerOrder>) => {
-        const existing = stagedOrders.get(orderId);
-        if (existing) {
-          stagedOrders.set(orderId, {
-            ...existing,
-            ...updates,
-            state,
-            updatedAt: new Date().toISOString()
+  async runTransaction<T>(updateFunction: (tx: FirestoreTransactionContext) => Promise<T>): Promise<T> {
+    const execute = async () => {
+      // Stage updates in isolated transactional buffer from latest committed state
+      const stagedOrders = new Map(this.orders);
+      const stagedEvents = new Map(this.stripeEvents);
+      const stagedJobs = new Map(this.jobs);
+      const stagedMappings = new Map(this.paymentIntentMappings);
+
+      const txContext: FirestoreTransactionContext = {
+        getOrder: async (orderId: string) => {
+          return stagedOrders.has(orderId) ? { ...stagedOrders.get(orderId)! } : null;
+        },
+        setOrder: async (orderId: string, order: CustomerOrder) => {
+          stagedOrders.set(orderId, { ...order });
+        },
+        updateOrderState: async (orderId: string, state: MoneyTruthState, updates?: Partial<CustomerOrder>) => {
+          const existing = stagedOrders.get(orderId);
+          if (existing) {
+            stagedOrders.set(orderId, {
+              ...existing,
+              ...updates,
+              state,
+              updatedAt: new Date().toISOString()
+            });
+          }
+        },
+        getProcessedEvent: async (eventId: string) => {
+          return stagedEvents.has(eventId);
+        },
+        recordProcessedEvent: async (eventId: string, type: string, metadata?: Record<string, any>) => {
+          stagedEvents.set(eventId, {
+            eventId,
+            type,
+            processedAt: new Date().toISOString(),
+            metadata: metadata || {}
           });
+        },
+        createJob: async (jobId: string, job: JobTicket) => {
+          stagedJobs.set(jobId, { ...job });
+        },
+        getJob: async (jobId: string) => {
+          return stagedJobs.has(jobId) ? { ...stagedJobs.get(jobId)! } : null;
+        },
+        setPaymentIntentMapping: async (paymentIntentId: string, orderId: string) => {
+          stagedMappings.set(paymentIntentId, orderId);
+        },
+        getOrderIdByPaymentIntent: async (paymentIntentId: string) => {
+          return stagedMappings.get(paymentIntentId) || null;
         }
-      },
-      getProcessedEvent: async (eventId: string) => {
-        return stagedEvents.has(eventId);
-      },
-      recordProcessedEvent: async (eventId: string, type: string, metadata?: Record<string, any>) => {
-        stagedEvents.set(eventId, {
-          eventId,
-          type,
-          processedAt: new Date().toISOString(),
-          metadata: metadata || {}
-        });
-      },
-      createJob: async (jobId: string, job: JobTicket) => {
-        stagedJobs.set(jobId, { ...job });
-      },
-      getJob: async (jobId: string) => {
-        return stagedJobs.has(jobId) ? { ...stagedJobs.get(jobId)! } : null;
-      },
-      setPaymentIntentMapping: async (paymentIntentId: string, orderId: string) => {
-        stagedMappings.set(paymentIntentId, orderId);
-      },
-      getOrderIdByPaymentIntent: async (paymentIntentId: string) => {
-        return stagedMappings.get(paymentIntentId) || null;
-      }
+      };
+
+      const result = await updateFunction(txContext);
+
+      // Commit atomically
+      this.orders = stagedOrders;
+      this.stripeEvents = stagedEvents;
+      this.jobs = stagedJobs;
+      this.paymentIntentMappings = stagedMappings;
+
+      return result;
     };
 
-    const result = await updateFunction(txContext);
+    const prevLock = this.transactionLock;
+    let nextResolve: () => void;
+    this.transactionLock = new Promise<void>((resolve) => {
+      nextResolve = resolve;
+    });
 
-    // Commit only if updateFunction did not throw
-    this.orders = stagedOrders;
-    this.stripeEvents = stagedEvents;
-    this.jobs = stagedJobs;
-    this.paymentIntentMappings = stagedMappings;
-
-    return result;
+    try {
+      await prevLock;
+      return await execute();
+    } finally {
+      nextResolve!();
+    }
   }
 }

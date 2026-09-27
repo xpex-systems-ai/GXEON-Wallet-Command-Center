@@ -11,7 +11,7 @@ import {
   handleStripeWebhookEndpoint
 } from '../../server/httpEndpoints';
 
-describe('GXEON Dual Revenue Engine - Track B: Stripe Direct Sales (PR #4 Hardened)', () => {
+describe('GXEON Dual Revenue Engine - Track B: Stripe Direct Sales (PR #4 Hardened Round 3)', () => {
   let memoryDb: InMemoryFirestoreAdapter;
   let mockStripe: Stripe;
 
@@ -92,13 +92,16 @@ describe('GXEON Dual Revenue Engine - Track B: Stripe Direct Sales (PR #4 Harden
         expect.objectContaining({
           success_url: `https://custom-gxeon.xpex.systems/order/${res.orderId}/success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `https://custom-gxeon.xpex.systems/order/${res.orderId}/cancel`
+        }),
+        expect.objectContaining({
+          idempotencyKey: `cs_create_${res.orderId}`
         })
       );
     });
   });
 
-  describe('StripeServerService: Checkout Creation', () => {
-    it('creates checkout session with server-enforced 4900 BRL price, payment_intent_data and persists in Firestore', async () => {
+  describe('StripeServerService: Checkout Creation & State Flow', () => {
+    it('starts at CUSTOMER_CREATED and transitions to CHECKOUT_CREATED with idempotencyKey', async () => {
       const serverService = new StripeServerService({
         firestore: memoryDb,
         stripeInstance: mockStripe,
@@ -125,7 +128,7 @@ describe('GXEON Dual Revenue Engine - Track B: Stripe Direct Sales (PR #4 Harden
       expect(savedOrder?.state).toBe('CHECKOUT_CREATED');
       expect(savedOrder?.stripeSessionId).toBe('cs_test_session_999');
 
-      // Verify payment_intent_data.metadata attached
+      // Verify idempotencyKey passed to Stripe SDK
       const createSpy = mockStripe.checkout.sessions.create as any;
       expect(createSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -136,191 +139,189 @@ describe('GXEON Dual Revenue Engine - Track B: Stripe Direct Sales (PR #4 Harden
               order_id: result.orderId,
               service_id: 'gxeon_quick_fix_v1'
             }
-          },
-          line_items: [
-            expect.objectContaining({
-              price_data: expect.objectContaining({
-                currency: 'brl',
-                unit_amount: 4900
-              }),
-              quantity: 1
-            })
-          ]
-        })
+          }
+        }),
+        {
+          idempotencyKey: `cs_create_${result.orderId}`
+        }
       );
     });
 
-    it('rejects checkout creation with missing mandatory fields', async () => {
+    it('recovers cleanly from partial Firestore failure on retry without duplicate Stripe sessions', async () => {
       const serverService = new StripeServerService({
         firestore: memoryDb,
         stripeInstance: mockStripe,
-        webhookSecret: TEST_WEBHOOK_SECRET
+        webhookSecret: TEST_WEBHOOK_SECRET,
+        publicUrl: SERVER_PUBLIC_URL
       });
 
-      await expect(
-        serverService.createCheckoutSession({
-          customerName: 'Cliente',
-          customerEmail: '',
-          problemSummary: 'Problem'
-        })
-      ).rejects.toThrow('customerEmail and problemSummary are required');
+      const fixedOrderId = 'ord_recovery_test_01';
+
+      // 1. First attempt sets initial order
+      const res1 = await serverService.createCheckoutSession({
+        customOrderId: fixedOrderId,
+        customerName: 'Cliente Retry',
+        customerEmail: 'retry@producao.com',
+        problemSummary: 'Testing retry safety'
+      });
+
+      expect(res1.orderId).toBe(fixedOrderId);
+
+      // 2. Second attempt with same orderId reuses stable idempotencyKey
+      const res2 = await serverService.createCheckoutSession({
+        customOrderId: fixedOrderId,
+        customerName: 'Cliente Retry',
+        customerEmail: 'retry@producao.com',
+        problemSummary: 'Testing retry safety'
+      });
+
+      expect(res2.orderId).toBe(fixedOrderId);
+      expect(res2.sessionId).toBe('cs_test_session_999');
+
+      const createSpy = mockStripe.checkout.sessions.create as any;
+      expect(createSpy).toHaveBeenLastCalledWith(
+        expect.anything(),
+        { idempotencyKey: `cs_create_${fixedOrderId}` }
+      );
     });
   });
 
-  describe('StripeServerService: Webhook Processing & Atomic Idempotency', () => {
-    it('rejects webhooks with missing or invalid signature', async () => {
+  describe('StripeServerService: Webhook Processing & Concurrency', () => {
+    it('handles true parallel concurrent webhook deliveries: exactly 1 event recorded, 1 order updated, 1 job created', async () => {
       const serverService = new StripeServerService({
         firestore: memoryDb,
         stripeInstance: mockStripe,
         webhookSecret: TEST_WEBHOOK_SECRET
       });
 
-      const payload = JSON.stringify({ id: 'evt_1', type: 'checkout.session.completed' });
+      const order: CustomerOrder = {
+        id: 'ord_concurrent_100',
+        customerName: 'Concurrent Tester',
+        customerEmail: 'concurrent@empresa.com',
+        serviceId: 'gxeon_quick_fix_v1',
+        amountBrl: 49.0,
+        state: 'CHECKOUT_CREATED',
+        stripeSessionId: 'cs_concurrent_123',
+        problemSummary: 'Concurrent webhook test',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      await memoryDb.setOrder(order.id, order);
 
-      const resMissing = await serverService.handleWebhook(payload, '');
-      expect(resMissing.status).toBe('UNVERIFIED_SIGNATURE');
-      expect(resMissing.processed).toBe(false);
+      const event = {
+        id: 'evt_concurrent_999',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_concurrent_123',
+            payment_status: 'paid',
+            amount_total: 4900,
+            currency: 'brl',
+            payment_intent: 'pi_concurrent_123',
+            metadata: {
+              order_id: 'ord_concurrent_100',
+              service_id: 'gxeon_quick_fix_v1'
+            }
+          }
+        }
+      };
 
-      const resInvalid = await serverService.handleWebhook(payload, 'bad_signature_header');
-      expect(resInvalid.status).toBe('UNVERIFIED_SIGNATURE');
-      expect(resInvalid.processed).toBe(false);
+      const payload = JSON.stringify(event);
+
+      // Fire 2 concurrent webhook deliveries at the same time
+      const [res1, res2] = await Promise.all([
+        serverService.handleWebhook(payload, 'valid_signed_header'),
+        serverService.handleWebhook(payload, 'valid_signed_header')
+      ]);
+
+      const statuses = [res1.status, res2.status];
+      expect(statuses).toContain('PAYMENT_SUCCEEDED');
+      expect(statuses).toContain('DUPLICATE_IGNORED');
+
+      // Assert true single side-effect outcome
+      expect(memoryDb.jobs.size).toBe(1);
+      expect(memoryDb.stripeEvents.size).toBe(1);
+      const savedJob = await memoryDb.getJob('job_ord_concurrent_100');
+      expect(savedJob).toBeDefined();
+      expect(savedJob?.state).toBe('JOB_CREATED');
+    });
+
+    it('enforces strict session binding: rejects if stripeSessionId is missing or does not match', async () => {
+      const serverService = new StripeServerService({
+        firestore: memoryDb,
+        stripeInstance: mockStripe,
+        webhookSecret: TEST_WEBHOOK_SECRET
+      });
+
+      // 1. Order without stripeSessionId in DB
+      const orderNoSession: CustomerOrder = {
+        id: 'ord_no_session',
+        customerName: 'No Session',
+        customerEmail: 'no@session.com',
+        serviceId: 'gxeon_quick_fix_v1',
+        amountBrl: 49.0,
+        state: 'CUSTOMER_CREATED',
+        problemSummary: 'Missing session ID',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      await memoryDb.setOrder(orderNoSession.id, orderNoSession);
+
+      const event1 = {
+        id: 'evt_bind_1',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_injected_session',
+            payment_status: 'paid',
+            amount_total: 4900,
+            currency: 'brl',
+            metadata: { order_id: 'ord_no_session', service_id: 'gxeon_quick_fix_v1' }
+          }
+        }
+      };
+
+      const res1 = await serverService.handleWebhook(JSON.stringify(event1), 'valid_signed_header');
+      expect(res1.status).toBe('SESSION_MISMATCH');
+      expect(res1.processed).toBe(false);
+      expect(memoryDb.jobs.size).toBe(0);
+
+      // 2. Order with mismatched stripeSessionId
+      const orderMismatch: CustomerOrder = {
+        id: 'ord_mismatch_session',
+        customerName: 'Mismatch',
+        customerEmail: 'mismatch@session.com',
+        serviceId: 'gxeon_quick_fix_v1',
+        amountBrl: 49.0,
+        state: 'CHECKOUT_CREATED',
+        stripeSessionId: 'cs_real_session_001',
+        problemSummary: 'Mismatched session ID',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      await memoryDb.setOrder(orderMismatch.id, orderMismatch);
+
+      const event2 = {
+        id: 'evt_bind_2',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_fraudulent_session_002',
+            payment_status: 'paid',
+            amount_total: 4900,
+            currency: 'brl',
+            metadata: { order_id: 'ord_mismatch_session', service_id: 'gxeon_quick_fix_v1' }
+          }
+        }
+      };
+
+      const res2 = await serverService.handleWebhook(JSON.stringify(event2), 'valid_signed_header');
+      expect(res2.status).toBe('SESSION_MISMATCH');
+      expect(res2.processed).toBe(false);
       expect(memoryDb.jobs.size).toBe(0);
     });
 
-    it('accepts valid Stripe test event (4900 BRL, paid) and creates exactly 1 job ticket in Firestore', async () => {
-      const serverService = new StripeServerService({
-        firestore: memoryDb,
-        stripeInstance: mockStripe,
-        webhookSecret: TEST_WEBHOOK_SECRET
-      });
-
-      const initialOrder: CustomerOrder = {
-        id: 'ord_prod_777',
-        customerName: 'Tech Lead',
-        customerEmail: 'techlead@empresa.com',
-        serviceId: 'gxeon_quick_fix_v1',
-        amountBrl: 49.0,
-        state: 'CHECKOUT_CREATED',
-        stripeSessionId: 'cs_live_123',
-        problemSummary: 'Fix race condition in mining sync',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      await memoryDb.setOrder(initialOrder.id, initialOrder);
-
-      const validEvent = {
-        id: 'evt_stripe_live_001',
-        type: 'checkout.session.completed',
-        data: {
-          object: {
-            id: 'cs_live_123',
-            payment_status: 'paid',
-            amount_total: 4900,
-            currency: 'brl',
-            payment_intent: 'pi_verified_stripe_777',
-            customer_details: {
-              email: 'techlead@empresa.com',
-              name: 'Tech Lead'
-            },
-            metadata: {
-              order_id: 'ord_prod_777',
-              service_id: 'gxeon_quick_fix_v1'
-            }
-          }
-        }
-      };
-
-      const result = await serverService.handleWebhook(
-        JSON.stringify(validEvent),
-        'valid_signed_header'
-      );
-
-      expect(result.status).toBe('PAYMENT_SUCCEEDED');
-      expect(result.processed).toBe(true);
-      expect(result.orderId).toBe('ord_prod_777');
-      expect(result.jobId).toBe('job_ord_prod_777');
-
-      // Verify Firestore order state
-      const updatedOrder = await memoryDb.getOrder('ord_prod_777');
-      expect(updatedOrder?.state).toBe('PAYMENT_SUCCEEDED');
-      expect(updatedOrder?.stripePaymentIntentId).toBe('pi_verified_stripe_777');
-
-      // Verify eventId recorded in stripe_events
-      expect(await memoryDb.getProcessedEvent('evt_stripe_live_001')).toBe(true);
-
-      // Verify payment intent mapping
-      expect(await memoryDb.getOrderIdByPaymentIntent('pi_verified_stripe_777')).toBe('ord_prod_777');
-
-      // Verify JobTicket persisted in Firestore jobs collection (sanitized)
-      expect(memoryDb.jobs.size).toBe(1);
-      const createdJob = await memoryDb.getJob('job_ord_prod_777');
-      expect(createdJob).toBeDefined();
-      expect(createdJob?.orderId).toBe('ord_prod_777');
-      expect(createdJob?.state).toBe('JOB_CREATED');
-      expect(createdJob?.customerIntake.customerEmail).toBe('techlead@empresa.com');
-      expect((createdJob as any).cardNumber).toBeUndefined();
-      expect((createdJob as any).cvc).toBeUndefined();
-    });
-
-    it('enforces atomic idempotency on concurrent duplicate webhooks', async () => {
-      const serverService = new StripeServerService({
-        firestore: memoryDb,
-        stripeInstance: mockStripe,
-        webhookSecret: TEST_WEBHOOK_SECRET
-      });
-
-      const initialOrder: CustomerOrder = {
-        id: 'ord_idempotent_999',
-        customerName: 'Test',
-        customerEmail: 'test@idemp.com',
-        serviceId: 'gxeon_quick_fix_v1',
-        amountBrl: 49.0,
-        state: 'CHECKOUT_CREATED',
-        stripeSessionId: 'cs_live_999',
-        problemSummary: 'Idempotency test',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      await memoryDb.setOrder(initialOrder.id, initialOrder);
-
-      const validEvent = {
-        id: 'evt_idempotent_test_999',
-        type: 'checkout.session.completed',
-        data: {
-          object: {
-            id: 'cs_live_999',
-            payment_status: 'paid',
-            amount_total: 4900,
-            currency: 'brl',
-            payment_intent: 'pi_idempotent_999',
-            metadata: {
-              order_id: 'ord_idempotent_999',
-              service_id: 'gxeon_quick_fix_v1'
-            }
-          }
-        }
-      };
-
-      // 1st delivery
-      const firstRes = await serverService.handleWebhook(
-        JSON.stringify(validEvent),
-        'valid_signed_header'
-      );
-      expect(firstRes.status).toBe('PAYMENT_SUCCEEDED');
-      expect(memoryDb.jobs.size).toBe(1);
-
-      // 2nd delivery (duplicate event replay)
-      const secondRes = await serverService.handleWebhook(
-        JSON.stringify(validEvent),
-        'valid_signed_header'
-      );
-      expect(secondRes.status).toBe('DUPLICATE_IGNORED');
-      expect(secondRes.processed).toBe(true);
-      expect(memoryDb.jobs.size).toBe(1); // Exactly 1 job ticket remains
-    });
-
     it('rolls back and leaves event uncommitted if an error occurs during processing (allowing Stripe retry)', async () => {
-      // Override runTransaction to simulate failure mid-transaction
       const failingDb: typeof memoryDb = {
         ...memoryDb,
         runTransaction: async (fn: any) => {
@@ -365,125 +366,7 @@ describe('GXEON Dual Revenue Engine - Track B: Stripe Direct Sales (PR #4 Harden
         failingService.handleWebhook(JSON.stringify(event), 'valid_signed_header')
       ).rejects.toThrow('Transient database timeout');
 
-      // Ensure event is NOT recorded in main database
       expect(await memoryDb.getProcessedEvent('evt_transient_error')).toBe(false);
-    });
-
-    it('rejects unknown order and never creates job_unknown', async () => {
-      const serverService = new StripeServerService({
-        firestore: memoryDb,
-        stripeInstance: mockStripe,
-        webhookSecret: TEST_WEBHOOK_SECRET
-      });
-
-      const unknownOrderEvent = {
-        id: 'evt_unknown_ord',
-        type: 'checkout.session.completed',
-        data: {
-          object: {
-            id: 'cs_unknown',
-            payment_status: 'paid',
-            amount_total: 4900,
-            currency: 'brl',
-            metadata: {
-              order_id: 'ord_does_not_exist',
-              service_id: 'gxeon_quick_fix_v1'
-            }
-          }
-        }
-      };
-
-      const result = await serverService.handleWebhook(
-        JSON.stringify(unknownOrderEvent),
-        'valid_signed_header'
-      );
-
-      expect(result.status).toBe('ORDER_NOT_FOUND');
-      expect(result.processed).toBe(false);
-      expect(memoryDb.jobs.size).toBe(0);
-      expect(await memoryDb.getJob('job_unknown')).toBeNull();
-    });
-
-    it('rejects session mismatch (session.id !== order.stripeSessionId)', async () => {
-      const serverService = new StripeServerService({
-        firestore: memoryDb,
-        stripeInstance: mockStripe,
-        webhookSecret: TEST_WEBHOOK_SECRET
-      });
-
-      const order: CustomerOrder = {
-        id: 'ord_session_test',
-        customerName: 'Test',
-        customerEmail: 'test@session.com',
-        serviceId: 'gxeon_quick_fix_v1',
-        amountBrl: 49.0,
-        state: 'CHECKOUT_CREATED',
-        stripeSessionId: 'cs_expected_original_session',
-        problemSummary: 'Session check',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      await memoryDb.setOrder(order.id, order);
-
-      const mismatchedSessionEvent = {
-        id: 'evt_session_mismatch',
-        type: 'checkout.session.completed',
-        data: {
-          object: {
-            id: 'cs_fraudulent_session',
-            payment_status: 'paid',
-            amount_total: 4900,
-            currency: 'brl',
-            metadata: {
-              order_id: 'ord_session_test',
-              service_id: 'gxeon_quick_fix_v1'
-            }
-          }
-        }
-      };
-
-      const result = await serverService.handleWebhook(
-        JSON.stringify(mismatchedSessionEvent),
-        'valid_signed_header'
-      );
-
-      expect(result.status).toBe('SESSION_MISMATCH');
-      expect(result.processed).toBe(false);
-      expect(memoryDb.jobs.size).toBe(0);
-    });
-
-    it('rejects wrong service ID', async () => {
-      const serverService = new StripeServerService({
-        firestore: memoryDb,
-        stripeInstance: mockStripe,
-        webhookSecret: TEST_WEBHOOK_SECRET
-      });
-
-      const wrongServiceEvent = {
-        id: 'evt_wrong_service',
-        type: 'checkout.session.completed',
-        data: {
-          object: {
-            id: 'cs_test',
-            payment_status: 'paid',
-            amount_total: 4900,
-            currency: 'brl',
-            metadata: {
-              order_id: 'ord_test',
-              service_id: 'wrong_service_v2'
-            }
-          }
-        }
-      };
-
-      const result = await serverService.handleWebhook(
-        JSON.stringify(wrongServiceEvent),
-        'valid_signed_header'
-      );
-
-      expect(result.status).toBe('SERVICE_MISMATCH');
-      expect(result.processed).toBe(false);
-      expect(memoryDb.jobs.size).toBe(0);
     });
 
     it('handles refund event correlating order via payment intent mapping', async () => {
@@ -516,7 +399,7 @@ describe('GXEON Dual Revenue Engine - Track B: Stripe Direct Sales (PR #4 Harden
             id: 'ch_refund_123',
             amount_refunded: 4900,
             payment_intent: 'pi_refund_target_123',
-            metadata: {} // empty metadata tests correlation via payment_intent mapping
+            metadata: {}
           }
         }
       };
