@@ -20,6 +20,7 @@ export const QuickFixServiceCard: React.FC<QuickFixServiceCardProps> = ({
   const [customerEmail, setCustomerEmail] = useState('');
   const [problemSummary, setProblemSummary] = useState('');
   const [repoOrCodeUrl, setRepoOrCodeUrl] = useState('');
+  const [attemptRequestId, setAttemptRequestId] = useState<string>(() => `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [checkoutResult, setCheckoutResult] = useState<{ checkoutUrl: string; orderId: string } | null>(null);
@@ -32,6 +33,7 @@ export const QuickFixServiceCard: React.FC<QuickFixServiceCardProps> = ({
     setErrorMsg(null);
 
     const intakePayload = {
+      requestId: attemptRequestId,
       customerName,
       customerEmail,
       problemSummary,
@@ -215,7 +217,10 @@ export const QuickFixServiceCard: React.FC<QuickFixServiceCardProps> = ({
               💳 Ir para o Stripe Checkout
             </a>
             <button
-              onClick={() => setCheckoutResult(null)}
+              onClick={() => {
+                setAttemptRequestId(`req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`);
+                setCheckoutResult(null);
+              }}
               className="w-full sm:w-auto px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors text-sm"
             >
               Novo Pedido

@@ -32,6 +32,13 @@ describe('GXEON Dual Revenue Engine - Track B: Stripe Direct Sales (PR #4 Harden
               amount_total: params.line_items[0].price_data.unit_amount,
               currency: params.line_items[0].price_data.currency
             };
+          }),
+          retrieve: vi.fn().mockImplementation(async (sessionId: string) => {
+            return {
+              id: sessionId,
+              url: `https://checkout.stripe.com/c/pay/${sessionId}`,
+              payment_status: 'unpaid'
+            };
           })
         }
       },
@@ -525,6 +532,64 @@ describe('GXEON Dual Revenue Engine - Track B: Stripe Direct Sales (PR #4 Harden
       expect(parsed.status).toBe('PAYMENT_SUCCEEDED');
       expect(parsed.orderId).toBe('ord_http_webhook');
       expect(parsed.jobId).toBe('job_ord_http_webhook');
+    });
+
+    it('returns the same order and same Stripe session on repeated POST /api/checkout with same requestId', async () => {
+      const serverService = new StripeServerService({
+        firestore: memoryDb,
+        stripeInstance: mockStripe,
+        webhookSecret: TEST_WEBHOOK_SECRET,
+        publicUrl: SERVER_PUBLIC_URL
+      });
+
+      const fixedRequestId = 'req_stable_idempotent_123';
+      const checkoutPayload = {
+        requestId: fixedRequestId,
+        customerName: 'Cliente Idempotente',
+        customerEmail: 'idemp@empresa.com',
+        problemSummary: 'Form submission with network retry'
+      };
+
+      // 1st HTTP request
+      const req1: any = {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: checkoutPayload
+      };
+      let responseBody1 = '';
+      const res1: any = {
+        writeHead: vi.fn(),
+        end: (data: string) => {
+          responseBody1 = data;
+        }
+      };
+      await handleCheckoutEndpoint(req1, res1, serverService);
+      const data1 = JSON.parse(responseBody1);
+
+      // 2nd HTTP request (network timeout retry with same requestId)
+      const req2: any = {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: checkoutPayload
+      };
+      let responseBody2 = '';
+      const res2: any = {
+        writeHead: vi.fn(),
+        end: (data: string) => {
+          responseBody2 = data;
+        }
+      };
+      await handleCheckoutEndpoint(req2, res2, serverService);
+      const data2 = JSON.parse(responseBody2);
+
+      expect(data1.orderId).toBe(fixedRequestId);
+      expect(data2.orderId).toBe(fixedRequestId);
+      expect(data1.sessionId).toBe('cs_test_session_999');
+      expect(data2.sessionId).toBe('cs_test_session_999');
+      expect(data1.checkoutUrl).toBe(data2.checkoutUrl);
+
+      // Assert exactly one order stored in database
+      expect(memoryDb.orders.size).toBe(1);
     });
   });
 
