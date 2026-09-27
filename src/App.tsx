@@ -9,6 +9,7 @@ import { EarningsView } from './features/earnings/EarningsView';
 import { TransactionsView } from './features/transactions/TransactionsView';
 import { SecurityView } from './features/security/SecurityView';
 import { AuditLogView } from './features/audit/AuditLogView';
+import { SalesView } from './features/sales/SalesView';
 
 import {
   WalletItem,
@@ -159,6 +160,10 @@ export function App() {
               bountyStats={bountyStats}
               onNavigate={(tab) => setCurrentTab(tab)}
             />
+          )}
+
+          {currentTab === 'sales' && (
+            <SalesView />
           )}
 
           {currentTab === 'wallets' && (

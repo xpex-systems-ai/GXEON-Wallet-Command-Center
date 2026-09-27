@@ -112,5 +112,27 @@ service cloud.firestore {
       allow create: if isCreatingAsOwner() && hasNoSensitiveFields(request.resource.data);
       allow update, delete: if false; // Strictly append-only
     }
+
+    // Stripe Orders (Client read allowed for order customer; NO client writes)
+    match /orders/{orderId} {
+      allow read: if isDocOwner() || (isAuthenticated() && resource.data.customerEmail == request.auth.token.email);
+      allow write: if false; // Strictly backend server authority
+    }
+
+    // Stripe Webhook Events (Strictly internal server-only, never client accessible)
+    match /stripe_events/{eventId} {
+      allow read, write: if false; // Backend service account authority only
+    }
+
+    // Autonomous Jobs (Client read allowed for order customer; NO client writes)
+    match /jobs/{jobId} {
+      allow read: if isDocOwner() || (isAuthenticated() && resource.data.customerEmail == request.auth.token.email);
+      allow write: if false; // Strictly backend worker authority
+    }
+
+    // Payment Intent Mappings (Strictly internal server-only)
+    match /payment_intent_mappings/{mappingId} {
+      allow read, write: if false; // Backend service account authority only
+    }
   }
 }

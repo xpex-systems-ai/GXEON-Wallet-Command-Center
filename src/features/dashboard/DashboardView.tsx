@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ShieldCheck,
   Eye,
+  CreditCard,
 } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -61,6 +62,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => onNavigate('sales')}
+              className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-semibold text-xs font-mono rounded-lg transition-all flex items-center gap-2"
+            >
+              <CreditCard className="w-4 h-4" />
+              Stripe Sales (R$ 49)
+            </button>
             <button
               onClick={() => onNavigate('wallets')}
               className="px-4 py-2 bg-[#FF7A00] hover:bg-[#FF7A00]/90 text-black font-semibold text-xs font-mono rounded-lg transition-all shadow-glow-orange flex items-center gap-2"

@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Wallet,
   Coins,
+  CreditCard,
   History,
   ShieldAlert,
   FileText,
@@ -10,6 +11,7 @@ import {
 
 export type NavTab =
   | 'dashboard'
+  | 'sales'
   | 'wallets'
   | 'earnings'
   | 'transactions'
@@ -35,6 +37,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Command Center',
       icon: LayoutDashboard,
       badge: null,
+    },
+    {
+      id: 'sales' as NavTab,
+      label: 'Direct Sales (Stripe)',
+      icon: CreditCard,
+      badge: 'R$ 49',
+      badgeColor: 'bg-emerald-500/20 text-emerald-400',
     },
     {
       id: 'wallets' as NavTab,

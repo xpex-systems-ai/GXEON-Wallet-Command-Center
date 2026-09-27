@@ -1,0 +1,57 @@
+name: GXEON Integration & Security CI
+
+on:
+  push:
+    branches:
+      - main
+      - feat/gxeon-dual-revenue-engine-v1
+  pull_request:
+    branches:
+      - main
+      - feat/gxeon-dual-revenue-engine-v1
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python dependencies & Run pytest
+        run: |
+          pip install -r requirements.txt
+          pytest
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Type check (TypeScript)
+        run: npx tsc --noEmit
+
+      - name: Run Vitest Unit Tests
+        run: npm test -- --run
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Install and build Firebase Functions
+        run: |
+          cd functions
+          npm ci
+          npm run build
+
+      - name: Secret pattern guard
+        run: node scripts/verify_secret_patterns.js
