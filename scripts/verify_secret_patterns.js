@@ -5,7 +5,7 @@ console.log('[SECURITY] Verifying secret patterns in repository...');
 try {
   let skLiveResult = '';
   try {
-    skLiveResult = execSync('git grep -n "sk_live_" -- ":(exclude)*.lock" ":(exclude)package-lock.json"', { encoding: 'utf-8' }).trim();
+    skLiveResult = execSync('git grep -n "sk_live_" -- ":(exclude)*.lock" ":(exclude)package-lock.json" ":(exclude)scripts/verify_secret_patterns.js"', { encoding: 'utf-8' }).trim();
   } catch {
     skLiveResult = '';
   }
@@ -18,7 +18,7 @@ try {
 
   let skTestResult = '';
   try {
-    skTestResult = execSync('git grep -n "sk_test_51" -- ":(exclude)*.lock" ":(exclude)package-lock.json"', { encoding: 'utf-8' }).trim();
+    skTestResult = execSync('git grep -n "sk_test_51" -- ":(exclude)*.lock" ":(exclude)package-lock.json" ":(exclude)scripts/verify_secret_patterns.js"', { encoding: 'utf-8' }).trim();
   } catch {
     skTestResult = '';
   }
