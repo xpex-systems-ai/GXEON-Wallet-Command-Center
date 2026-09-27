@@ -101,7 +101,7 @@ export class FirestorePaymentStore implements PaymentStore {
 
   async createOrderIfAbsent(orderId: string, order: CustomerOrder): Promise<CustomerOrder> {
     const result = await this.db.createIfAbsent('orders', orderId, order as unknown as Record<string, unknown>);
-    return result.document.data as CustomerOrder;
+    return result.document.data as unknown as CustomerOrder;
   }
 
   async updateOrder(orderId: string, order: CustomerOrder): Promise<void> {
@@ -452,7 +452,7 @@ export class VercelStripeService {
 
     if (event.type === 'charge.refunded') {
       const charge = event.data.object as Stripe.Charge;
-      let orderId = charge.metadata?.order_id;
+      let orderId: string | undefined = charge.metadata?.order_id;
       const paymentIntentId =
         typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id || null;
 
