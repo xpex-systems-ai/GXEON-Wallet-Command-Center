@@ -1,13 +1,5 @@
 import { VercelStripeService, CheckoutSessionInput } from './_stripe.js';
-
-let service: VercelStripeService | null = null;
-
-function getService(): VercelStripeService {
-  if (!service) {
-    service = new VercelStripeService({});
-  }
-  return service;
-}
+import { getPaymentStore } from './_store.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -23,12 +15,10 @@ export default async function handler(req: any, res: any) {
       body = req.body;
     } else {
       let raw = '';
-      for await (const chunk of req) {
-        raw += chunk;
-      }
+      for await (const chunk of req) raw += chunk;
       body = JSON.parse(raw);
     }
-  } catch (err: any) {
+  } catch {
     res.statusCode = 400;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Invalid JSON body' }));
@@ -36,15 +26,16 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const s = getService();
-    const result = await s.createCheckoutSession(body);
+    const service = new VercelStripeService({ store: getPaymentStore() });
+    const result = await service.createCheckoutSession(body);
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(result));
   } catch (err: any) {
-    const status = err.message?.includes('required') ? 400 : 500;
+    const message = err instanceof Error ? err.message : 'Checkout failed';
+    const status = message.includes('required') || message.includes('not configured') ? 503 : 400;
     res.statusCode = status;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: err.message || 'Checkout failed' }));
+    res.end(JSON.stringify({ error: message }));
   }
 }
