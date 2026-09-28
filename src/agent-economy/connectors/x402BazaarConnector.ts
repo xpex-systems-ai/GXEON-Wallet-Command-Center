@@ -132,3 +132,94 @@ export async function fetchAndIngestX402Demand(
     return cachedOpportunities;
   }
 }
+
+export interface BazaarVisibilityResult {
+  visibility: 'FOUND' | 'NOT_FOUND' | 'ERROR';
+  payTo: string;
+  facilitatorUrl: string;
+  resourceCount: number;
+  resources: any[];
+  checkedAt: string;
+  error?: string;
+}
+
+export const FORBIDDEN_EXAMPLE_ADDRESS = '0x209693bc6afc0c5328ba36faf03c514ef312287c'.toLowerCase();
+
+/**
+ * Checks if a specific payTo wallet address has visible registered resources on the official x402 Bazaar.
+ * Requirement: BAZAAR_VISIBILITY=FOUND only when facilitator returns the GXEON resource.
+ */
+export async function checkBazaarVisibility(
+  payToAddress: string,
+  facilitatorUrl = process.env.GXEON_X402_FACILITATOR_URL || 'https://api.cdp.coinbase.com/platform/v2/x402'
+): Promise<BazaarVisibilityResult> {
+  const cleanPayTo = (payToAddress || '').trim().toLowerCase();
+  const checkedAt = new Date().toISOString();
+
+  if (!cleanPayTo || cleanPayTo === FORBIDDEN_EXAMPLE_ADDRESS) {
+    return {
+      visibility: 'NOT_FOUND',
+      payTo: cleanPayTo,
+      facilitatorUrl,
+      resourceCount: 0,
+      resources: [],
+      checkedAt,
+      error: 'Invalid or forbidden payTo address.',
+    };
+  }
+
+  const endpoint = `${facilitatorUrl.replace(/\/$/, '')}/discovery/resources?payTo=${encodeURIComponent(cleanPayTo)}`;
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'GXEON-Market-Radar/1.0',
+      },
+    });
+
+    if (!res.ok) {
+      return {
+        visibility: 'NOT_FOUND',
+        payTo: cleanPayTo,
+        facilitatorUrl,
+        resourceCount: 0,
+        resources: [],
+        checkedAt,
+        error: `Facilitator returned ${res.status}: ${res.statusText}`,
+      };
+    }
+
+    const data = (await res.json()) as any;
+    const items = data.resources || data.items || data.results || (Array.isArray(data) ? data : []);
+
+    const found = items.filter((item: any) => {
+      const hasPayTo =
+        item.payTo?.toLowerCase() === cleanPayTo ||
+        item.accepts?.some((acc: any) => acc.payTo?.toLowerCase() === cleanPayTo);
+      return hasPayTo;
+    });
+
+    return {
+      visibility: found.length > 0 ? 'FOUND' : 'NOT_FOUND',
+      payTo: cleanPayTo,
+      facilitatorUrl,
+      resourceCount: found.length,
+      resources: found,
+      checkedAt,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      visibility: 'ERROR',
+      payTo: cleanPayTo,
+      facilitatorUrl,
+      resourceCount: 0,
+      resources: [],
+      checkedAt,
+      error: msg,
+    };
+  }
+}
+

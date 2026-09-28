@@ -1,10 +1,17 @@
 import { getX402Price } from './pricing.js';
 import { getNetwork, getTreasuryStatus } from './networks.js';
-import { X402Challenge, X402PaymentProof, X402Receipt, X402SettlementRecord } from './types.js';
+import {
+  X402Challenge,
+  X402PaymentProof,
+  X402Receipt,
+  X402SettlementRecord,
+  X402PaymentPayload,
+  X402SettlementResponse,
+} from './types.js';
 import { verifyX402Settlement } from './settlementVerifier.js';
 import { createX402Receipt } from './receipt.js';
 import { executeUrlVerifyWorker, UrlVerifyInput } from '../workers/urlVerifyWorker.js';
-import { executeJsonValidateWorker, JsonValidateInput } from '../workers/jsonValidateWorker.js';
+import { executeJsonValidateWorker } from '../workers/jsonValidateWorker.js';
 import { getAgentEconomyStore } from '../store.js';
 import { Job } from '../types.js';
 
@@ -24,13 +31,13 @@ export async function handleX402CapabilityExecution(options: {
   const store = getAgentEconomyStore();
 
   // 1. Killswitch Check: Autonomous Selling Control
-  if (process.env.GXEON_AUTONOMOUS_SELLING_ENABLED === 'false') {
+  if (process.env.GXEON_AUTONOMOUS_SELLING_ENABLED !== 'true') {
     return {
       statusCode: 503,
       headers: { 'Content-Type': 'application/json' },
       body: {
         error: 'SELLING_DISABLED',
-        message: 'Autonomous capability selling is currently suspended by operator killswitch',
+        message: 'Autonomous capability selling is currently suspended by operator killswitch (GXEON_AUTONOMOUS_SELLING_ENABLED != true)',
       },
     };
   }
@@ -43,7 +50,7 @@ export async function handleX402CapabilityExecution(options: {
       headers: { 'Content-Type': 'application/json' },
       body: {
         error: 'TREASURY_NOT_CONFIGURED',
-        message: treasury.error || 'Treasury address has not passed operational verification gate',
+        message: treasury.error || 'Treasury address has not passed operational verification gate (GXEON_TREASURY_VERIFIED != true)',
       },
     };
   }
@@ -76,7 +83,7 @@ export async function handleX402CapabilityExecution(options: {
     };
   }
 
-  // 5. Extract Payment Proof / Signature from Headers or Body
+  // 5. Extract Payment Signature / Proof from Headers or Body
   const rawSignatureHeader =
     headers['payment-signature'] ||
     headers['PAYMENT-SIGNATURE'] ||
@@ -85,36 +92,38 @@ export async function handleX402CapabilityExecution(options: {
     headers['X-PAYMENT-PROOF'] ||
     headers['x-payment-txhash'];
 
-  let proof: X402PaymentProof | null = null;
+  let paymentData: X402PaymentPayload | X402PaymentProof | null = null;
   const rawSig = typeof rawSignatureHeader === 'string' ? rawSignatureHeader.trim() : '';
 
   if (rawSig) {
     try {
       if (rawSig.startsWith('{')) {
-        proof = JSON.parse(rawSig);
+        paymentData = JSON.parse(rawSig);
       } else if (rawSig.startsWith('ey') || rawSig.startsWith('ew')) {
-        // Base64 JSON
+        // Canonical Base64 encoded JSON
         const decoded = Buffer.from(rawSig, 'base64').toString('utf-8');
-        proof = JSON.parse(decoded);
+        paymentData = JSON.parse(decoded);
       } else {
-        // Raw transaction hash defaults to Base Mainnet
-        proof = {
+        // Plain transaction hash
+        paymentData = {
           network: 'eip155:8453',
           txHash: rawSig,
         };
       }
     } catch {
-      proof = {
+      paymentData = {
         network: 'eip155:8453',
         txHash: rawSig,
       };
     }
+  } else if (input && typeof input.paymentPayload === 'object') {
+    paymentData = input.paymentPayload as X402PaymentPayload;
   } else if (input && typeof input.paymentProof === 'object') {
-    proof = input.paymentProof as X402PaymentProof;
+    paymentData = input.paymentProof as X402PaymentProof;
   }
 
-  // 6. Challenge when Proof is Missing (HTTP 402 with Canonical V2 Headers)
-  if (!proof) {
+  // 6. Challenge when Payment is Missing (Canonical x402 V2 Transport)
+  if (!paymentData) {
     await store.recordSecurityEvent('paymentChallenges');
     const baseNetwork = getNetwork('eip155:8453')!;
 
@@ -132,21 +141,26 @@ export async function handleX402CapabilityExecution(options: {
           asset: baseNetwork.usdcAsset,
           amount: pricing.amountAtomic,
           payTo: baseNetwork.treasuryPayTo,
-          maxTimeoutSeconds: 300,
+          maxTimeoutSeconds: 60,
           resource: resourceUrl,
-          extra: { name: 'USD Coin', version: '2' },
+          extra: {
+            name: 'USD Coin',
+            version: '2',
+            assetTransferMethod: 'eip3009',
+          },
         },
       ],
     };
 
-    const paymentRequiredHeaderVal = JSON.stringify(challenge);
+    const challengeJson = JSON.stringify(challenge);
+    const challengeBase64 = Buffer.from(challengeJson, 'utf-8').toString('base64');
 
     return {
       statusCode: 402,
       headers: {
         'Content-Type': 'application/json',
-        'PAYMENT-REQUIRED': paymentRequiredHeaderVal,
-        'payment-required': paymentRequiredHeaderVal,
+        'PAYMENT-REQUIRED': challengeBase64,
+        'payment-required': challengeBase64,
         'X-402-Version': '2',
         'X-Accepts': JSON.stringify(challenge.accepts),
       },
@@ -154,8 +168,8 @@ export async function handleX402CapabilityExecution(options: {
     };
   }
 
-  // 7. Verify Settlement On-Chain (FAIL-CLOSED)
-  const verification = await verifyX402Settlement(proof, pricing.amountAtomic, serviceId);
+  // 7. Verify Settlement (EIP-3009 or Upfront On-Chain)
+  const verification = await verifyX402Settlement(paymentData, pricing.amountAtomic, serviceId);
   if (!verification.verified) {
     return {
       statusCode: 402,
@@ -166,7 +180,7 @@ export async function handleX402CapabilityExecution(options: {
       body: {
         status: 402,
         error: 'PAYMENT_VERIFICATION_FAILED',
-        message: verification.error || 'Payment proof verification failed on-chain',
+        message: verification.error || 'Payment proof verification failed',
         details: verification,
       },
     };
@@ -201,7 +215,7 @@ export async function handleX402CapabilityExecution(options: {
       body: {
         status: 409,
         error: 'REPLAY_BLOCKED',
-        message: 'Transaction hash has already been consumed and claimed by another execution',
+        message: 'Settlement nonce or transaction hash has already been consumed and claimed',
       },
     };
   }
@@ -215,7 +229,8 @@ export async function handleX402CapabilityExecution(options: {
     if (serviceId === 'gxeon_url_verify_v1') {
       workerResult = await executeUrlVerifyWorker(input as UrlVerifyInput);
     } else if (serviceId === 'gxeon_json_validate_v1') {
-      workerResult = executeJsonValidateWorker(input as JsonValidateInput);
+      const raw = typeof input?.rawJson === 'string' ? input.rawJson : JSON.stringify(input?.payload ?? input);
+      workerResult = executeJsonValidateWorker({ payload: raw });
     }
   } catch (err: unknown) {
     await store.updateX402Settlement(verification.txHash, { state: 'FAILED' });
@@ -227,7 +242,7 @@ export async function handleX402CapabilityExecution(options: {
     };
   }
 
-  // 10. Generate Immutable Cryptographic Receipt (Section 9)
+  // 10. Generate Canonical Cryptographic Receipt
   const receipt: X402Receipt = createX402Receipt({
     buyer: verification.payer,
     serviceId,
@@ -241,7 +256,7 @@ export async function handleX402CapabilityExecution(options: {
     result: workerResult,
   });
 
-  // 11. Persist Receipt and Real Machine Revenue BEFORE Responding (Section 9 & 10)
+  // 11. Persist Receipt and Machine Revenue Record BEFORE Responding
   const now = new Date().toISOString();
   await store.saveX402Receipt(receipt);
 
@@ -261,7 +276,7 @@ export async function handleX402CapabilityExecution(options: {
     receiptId: receipt.receiptId,
   });
 
-  // 12. Retention Agent Customer Logging (Section 31)
+  // 12. Retention Agent Customer Logging
   await store.recordMachineCustomerPurchase(verification.payer, serviceId, verification.amountUsdc);
 
   // 13. Persist Job Record & Update Settlement to DELIVERED
@@ -298,15 +313,28 @@ export async function handleX402CapabilityExecution(options: {
     console.warn('[X402] Failed to persist job ticket:', err);
   }
 
-  // 14. Return 200 OK with Canonical x402 V2 PAYMENT-RESPONSE Header & Result
-  const paymentResponseVal = JSON.stringify(receipt);
+  // 14. Canonical x402 V2 PAYMENT-RESPONSE Header (Base64)
+  const settlementResponse: X402SettlementResponse = {
+    x402Version: 2,
+    status: 'SUCCESS',
+    settlementId: receipt.settlementId,
+    txHash: receipt.txHash,
+    blockNumber: receipt.blockNumber,
+    receiptId: receipt.receiptId,
+    amountUsdc: receipt.amountUsdc,
+    serviceId,
+    timestamp: receipt.createdAt,
+  };
+
+  const responseJson = JSON.stringify(settlementResponse);
+  const responseBase64 = Buffer.from(responseJson, 'utf-8').toString('base64');
 
   return {
     statusCode: 200,
     headers: {
       'Content-Type': 'application/json',
-      'PAYMENT-RESPONSE': paymentResponseVal,
-      'payment-response': paymentResponseVal,
+      'PAYMENT-RESPONSE': responseBase64,
+      'payment-response': responseBase64,
       'X-402-Receipt': receipt.receiptId,
       'X-402-Settlement': receipt.settlementId,
     },
@@ -315,6 +343,7 @@ export async function handleX402CapabilityExecution(options: {
       serviceId,
       result: workerResult,
       receipt,
+      settlementResponse,
     },
   };
 }

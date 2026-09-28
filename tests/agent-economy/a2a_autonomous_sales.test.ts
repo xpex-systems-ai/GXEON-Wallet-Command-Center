@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { privateKeyToAccount } from 'viem/accounts';
 import {
   GxeonScout,
   GxeonQualifier,
@@ -12,15 +13,25 @@ import { handleX402CapabilityExecution } from '../../src/agent-economy/x402/midd
 import { getX402Price } from '../../src/agent-economy/x402/pricing.js';
 import { createX402Receipt } from '../../src/agent-economy/x402/receipt.js';
 import { resetAgentEconomyStoreForTesting, getAgentEconomyStore } from '../../src/agent-economy/store.js';
+import {
+  generateTreasuryChallenge,
+  verifyTreasurySignature,
+  FORBIDDEN_EXAMPLE_ADDRESS,
+} from '../../src/agent-economy/x402/treasuryVerifier.js';
+
+const TEST_OPERATOR_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as const;
+const testAccount = privateKeyToAccount(TEST_OPERATOR_KEY);
+const TEST_OPERATOR_ADDRESS = testAccount.address;
 
 describe('GXEON-GLOBAL-MACHINE-REVENUE-001 Autonomous Machine-to-Machine Sales Test Suite', () => {
   beforeEach(() => {
     resetAgentEconomyStoreForTesting();
     process.env.GXEON_X402_ALLOW_TEST_PROOFS = 'true';
-    process.env.GXEON_X402_BASE_PAYTO = '0x209693bc6afc0c5328ba36faf03c514ef312287c';
+    process.env.GXEON_X402_BASE_PAYTO = TEST_OPERATOR_ADDRESS;
     process.env.GXEON_TREASURY_VERIFIED = 'true';
     process.env.GXEON_AUTONOMOUS_SELLING_ENABLED = 'true';
   });
+
 
   describe('GXEON_QUALIFIER & Fit Scoring', () => {
     const qualifier = new GxeonQualifier();
@@ -222,7 +233,60 @@ describe('GXEON-GLOBAL-MACHINE-REVENUE-001 Autonomous Machine-to-Machine Sales T
       expect(Array.isArray(body.accepts)).toBe(true);
       expect(body.accepts[0].network).toBe('eip155:8453');
       expect(body.accepts[0].amount).toBe('10000'); // 0.01 USDC
-      expect(body.accepts[0].payTo).toBe('0x209693bc6afc0c5328ba36faf03c514ef312287c');
+      expect(body.accepts[0].payTo).toBe(TEST_OPERATOR_ADDRESS);
+
+      // Verify canonical Base64 transport
+      const decodedBase64 = JSON.parse(
+        Buffer.from(challengeRes.headers['PAYMENT-REQUIRED'], 'base64').toString('utf8')
+      );
+      expect(decodedBase64.status).toBe(402);
+      expect(decodedBase64.accepts[0].payTo).toBe(TEST_OPERATOR_ADDRESS);
+    });
+
+    it('cryptographically verifies treasury ownership and persists proof in store', async () => {
+      const challengeInfo = generateTreasuryChallenge(TEST_OPERATOR_ADDRESS);
+      expect(challengeInfo.challenge.startsWith('GXEON-TREASURY:')).toBe(true);
+      expect(challengeInfo.challengeHash).toBeDefined();
+
+      const signature = await testAccount.signMessage({
+        message: challengeInfo.challenge,
+      });
+
+      const verifyResult = await verifyTreasurySignature({
+        address: TEST_OPERATOR_ADDRESS,
+        challenge: challengeInfo.challenge,
+        signature,
+      });
+
+      expect(verifyResult.verified).toBe(true);
+      expect(verifyResult.recoveredAddress?.toLowerCase()).toBe(TEST_OPERATOR_ADDRESS.toLowerCase());
+
+      const store = getAgentEconomyStore();
+      const persisted = await store.getTreasuryVerification(TEST_OPERATOR_ADDRESS);
+      expect(persisted).toBeDefined();
+      expect(persisted?.signature).toBe(signature);
+    });
+
+    it('strictly forbids example address 0x209693bc6afc0c5328ba36faf03c514ef312287c', async () => {
+      expect(() => generateTreasuryChallenge(FORBIDDEN_EXAMPLE_ADDRESS)).toThrow(/SECURITY VIOLATION/);
+
+      const badVerify = await verifyTreasurySignature({
+        address: FORBIDDEN_EXAMPLE_ADDRESS,
+        challenge: 'GXEON-TREASURY:123:456',
+        signature: '0xmock',
+      });
+      expect(badVerify.verified).toBe(false);
+      expect(badVerify.error).toContain('forbidden');
+
+      process.env.GXEON_X402_BASE_PAYTO = FORBIDDEN_EXAMPLE_ADDRESS;
+      const res = await handleX402CapabilityExecution({
+        serviceId: 'gxeon_json_validate_v1',
+        input: { rawJson: '{"test":true}' },
+        headers: {},
+        resourceUrl: 'https://gxeon.ai/x402/json-validate',
+      });
+      expect(res.statusCode).toBe(503);
+      expect((res.body as any).error).toBe('TREASURY_NOT_CONFIGURED');
     });
 
     it('fails closed with 503 when treasury ownership is unverified', async () => {
@@ -238,6 +302,7 @@ describe('GXEON-GLOBAL-MACHINE-REVENUE-001 Autonomous Machine-to-Machine Sales T
       expect(res.statusCode).toBe(503);
       expect((res.body as any).error).toBe('TREASURY_NOT_CONFIGURED');
     });
+
 
     it('executes capability, claims settlement atomically, persists revenue and returns PAYMENT-RESPONSE header', async () => {
       const store = getAgentEconomyStore();

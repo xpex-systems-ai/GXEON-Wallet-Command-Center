@@ -1,10 +1,101 @@
 import { listAvailableServices } from '../../src/agent-economy/services/registry.js';
 import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
-import { sendJson, sendError } from './_helper.js';
+import {
+  generateTreasuryChallenge,
+  verifyTreasurySignature,
+  FORBIDDEN_EXAMPLE_ADDRESS,
+} from '../../src/agent-economy/x402/treasuryVerifier.js';
+import { checkBazaarVisibility } from '../../src/agent-economy/connectors/x402BazaarConnector.js';
+import { sendJson, sendError, parseBody } from './_helper.js';
 
 export default async function handler(req: any, res: any) {
+  const url = new URL(req.url, 'http://localhost');
+  const path = url.pathname.toLowerCase();
+  const view = url.searchParams.get('view') || '';
+
+  // POST /v1/treasury/verify or ?view=treasury-verify
+  if (path.endsWith('/treasury/verify') || view === 'treasury-verify') {
+    if (req.method !== 'POST') {
+      sendError(res, 405, 'INVALID_INPUT', 'Method Not Allowed. Use POST.');
+      return;
+    }
+    const body = await parseBody(req);
+    if (!body || !body.address || !body.challenge || !body.signature) {
+      sendError(
+        res,
+        400,
+        'INVALID_INPUT',
+        'Missing required fields: address, challenge, signature'
+      );
+      return;
+    }
+
+    const verification = await verifyTreasurySignature({
+      address: body.address,
+      challenge: body.challenge,
+      signature: body.signature,
+    });
+
+    if (!verification.verified) {
+      sendError(
+        res,
+        400,
+        'TREASURY_UNVERIFIED' as any,
+        verification.error || 'Treasury signature verification failed',
+        { recoveredAddress: verification.recoveredAddress }
+      );
+      return;
+    }
+
+    sendJson(res, 200, {
+      verified: true,
+      recoveredAddress: verification.recoveredAddress,
+      record: verification.record,
+      instructions:
+        'Treasury ownership successfully verified and persisted. Set GXEON_X402_BASE_PAYTO to this address and GXEON_TREASURY_VERIFIED=true in your environment to enable live x402 sales.',
+    });
+    return;
+  }
+
   if (req.method !== 'GET') {
     sendError(res, 405, 'INVALID_INPUT', 'Method Not Allowed');
+    return;
+  }
+
+  // GET /v1/treasury/challenge or ?view=treasury-challenge
+  if (path.endsWith('/treasury/challenge') || view === 'treasury-challenge') {
+    const address =
+      url.searchParams.get('address') || process.env.GXEON_X402_BASE_PAYTO || '';
+    if (!address) {
+      sendError(
+        res,
+        400,
+        'INVALID_INPUT',
+        'Missing address parameter (?address=0x...). Must be a valid Base wallet address.'
+      );
+      return;
+    }
+
+    try {
+      const challengeData = generateTreasuryChallenge(address);
+      sendJson(res, 200, {
+        ...challengeData,
+        instructions:
+          'Sign this challenge message with your personal Base wallet using personal_sign / signMessage. Then POST /v1/treasury/verify with { address, challenge, signature }.',
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendError(res, 400, 'SECURITY_VIOLATION' as any, msg);
+    }
+    return;
+  }
+
+  // GET /v1/bazaar/discovery or ?view=bazaar-discovery
+  if (path.endsWith('/bazaar/discovery') || view === 'bazaar-discovery') {
+    const payTo =
+      url.searchParams.get('payTo') || process.env.GXEON_X402_BASE_PAYTO || '';
+    const result = await checkBazaarVisibility(payTo);
+    sendJson(res, 200, result);
     return;
   }
 
@@ -14,13 +105,10 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const url = new URL(req.url, 'http://localhost');
-  const path = url.pathname.toLowerCase();
-  const view = url.searchParams.get('view') || '';
-
   // GET /v1/pricing
   if (path.endsWith('/pricing') || view === 'pricing') {
     sendJson(res, 200, {
+
       pricing: [
         {
           serviceId: 'gxeon_url_verify_v1',

@@ -5,6 +5,7 @@
  */
 
 import { TreasuryStatus } from './types.js';
+import { FORBIDDEN_EXAMPLE_ADDRESS } from './treasuryVerifier.js';
 
 export interface X402NetworkDef {
   networkId: string;
@@ -29,6 +30,14 @@ export function getTreasuryStatus(): {
       status: 'TREASURY_UNVERIFIED',
       treasuryPayTo: '',
       error: 'Treasury address GXEON_X402_BASE_PAYTO is not configured or malformed',
+    };
+  }
+
+  if (payTo.toLowerCase() === FORBIDDEN_EXAMPLE_ADDRESS) {
+    return {
+      status: 'TREASURY_UNVERIFIED',
+      treasuryPayTo: '',
+      error: 'CRITICAL SECURITY STOP-LOSS: Address 0x209693bc6afc0c5328ba36faf03c514ef312287c is an official specification example address and is strictly prohibited in GXEON production.',
     };
   }
 

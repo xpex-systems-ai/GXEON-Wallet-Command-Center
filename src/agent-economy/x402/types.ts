@@ -1,6 +1,6 @@
 /**
  * GXEON Native x402 Protocol Specification & Domain Types
- * Strict compliance with x402 v2 standard for machine-to-machine micropayments.
+ * Strict compliance with canonical x402 v2 standard for machine-to-machine micropayments.
  */
 
 export interface X402AcceptOption {
@@ -12,8 +12,9 @@ export interface X402AcceptOption {
   maxTimeoutSeconds: number;
   resource: string;
   extra?: {
-    name: string;
+    name?: string;
     version?: string;
+    assetTransferMethod?: 'eip3009' | 'transfer';
   };
 }
 
@@ -25,6 +26,44 @@ export interface X402Challenge {
   resource: string;
   serviceId: string;
   accepts: X402AcceptOption[];
+}
+
+export interface Eip3009Authorization {
+  from: string;
+  to: string;
+  value: string;
+  validAfter: number;
+  validBefore: number;
+  nonce: string;
+}
+
+export interface X402PaymentPayload {
+  x402Version: 2;
+  resource: {
+    url: string;
+    description?: string;
+    mimeType?: string;
+  };
+  accepted: {
+    scheme: 'exact';
+    network: string;
+    amount: string;
+    asset: string;
+    payTo: string;
+    maxTimeoutSeconds: number;
+    extra?: {
+      name?: string;
+      version?: string;
+      assetTransferMethod?: 'eip3009' | 'transfer';
+    };
+  };
+  payload: {
+    signature?: string;
+    authorization?: Eip3009Authorization;
+    paymentFlow?: 'upfront' | 'authorization';
+    txHash?: string;
+  };
+  extensions?: Record<string, unknown>;
 }
 
 export interface X402PaymentProof {
@@ -48,6 +87,8 @@ export interface X402SettlementVerification {
   blockNumber?: number;
   confirmations?: number;
   timestamp: string;
+  paymentFlow?: 'upfront' | 'authorization';
+  authorization?: Eip3009Authorization;
   error?: string;
 }
 
@@ -123,6 +164,18 @@ export interface MachineCustomerRecord {
   jobsPurchased: number;
   totalUsdcPaid: number;
   servicesUsed: string[];
+}
+
+export interface X402SettlementResponse {
+  x402Version: 2;
+  status: 'SUCCESS';
+  settlementId: string;
+  txHash?: string;
+  blockNumber?: number | string;
+  receiptId: string;
+  amountUsdc: string;
+  serviceId: string;
+  timestamp: string;
 }
 
 export type TreasuryStatus = 'TREASURY_VERIFIED' | 'TREASURY_UNVERIFIED';

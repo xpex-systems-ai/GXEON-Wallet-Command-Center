@@ -39,9 +39,22 @@
       "destination": "/api/v1/services?view=payment-methods"
     },
     {
+      "source": "/v1/treasury/challenge",
+      "destination": "/api/v1/services?view=treasury-challenge"
+    },
+    {
+      "source": "/v1/treasury/verify",
+      "destination": "/api/v1/services?view=treasury-verify"
+    },
+    {
+      "source": "/v1/bazaar/discovery",
+      "destination": "/api/v1/services?view=bazaar-discovery"
+    },
+    {
       "source": "/v1/(.*)",
       "destination": "/api/v1/$1"
     },
+
     {
       "source": "/api/(.*)",
       "destination": "/api/$1"

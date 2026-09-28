@@ -17,6 +17,7 @@ import {
   MachineRevenueRecord,
   MachineCustomerRecord,
 } from './x402/types.js';
+import { TreasuryVerificationRecord } from './x402/treasuryVerifier.js';
 import { FirestoreRestClient, isFirestoreRestConfigured } from '../../api/_firestoreRest.js';
 
 export interface IdempotencyRecord {
@@ -84,6 +85,8 @@ export interface IAgentEconomyStore {
     circuitBreakerEvents: number;
     paymentChallenges: number;
   }>;
+  saveTreasuryVerification(record: TreasuryVerificationRecord): Promise<void>;
+  getTreasuryVerification(address: string): Promise<TreasuryVerificationRecord | null>;
 }
 
 /**
@@ -113,6 +116,7 @@ export class MemoryAgentEconomyStore implements IAgentEconomyStore {
     circuitBreakerEvents: 0,
     paymentChallenges: 0,
   };
+  private treasuryVerifications = new Map<string, TreasuryVerificationRecord>();
   private nextFencingToken = 1;
 
   constructor() {
@@ -397,6 +401,14 @@ export class MemoryAgentEconomyStore implements IAgentEconomyStore {
     paymentChallenges: number;
   }> {
     return { ...this.securityMetrics };
+  }
+
+  async saveTreasuryVerification(record: TreasuryVerificationRecord): Promise<void> {
+    this.treasuryVerifications.set(record.treasury_address.toLowerCase(), { ...record });
+  }
+
+  async getTreasuryVerification(address: string): Promise<TreasuryVerificationRecord | null> {
+    return this.treasuryVerifications.get(address.toLowerCase()) || null;
   }
 }
 
@@ -767,6 +779,21 @@ export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
       circuitBreakerEvents: 0,
       paymentChallenges: 0,
     };
+  }
+
+  async saveTreasuryVerification(record: TreasuryVerificationRecord): Promise<void> {
+    const key = record.treasury_address.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    await this.client.set(
+      'treasury_verification',
+      key,
+      record as unknown as Record<string, unknown>
+    );
+  }
+
+  async getTreasuryVerification(address: string): Promise<TreasuryVerificationRecord | null> {
+    const key = address.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const doc = await this.client.get<TreasuryVerificationRecord>('treasury_verification', key);
+    return doc ? doc.data : null;
   }
 }
 
