@@ -41,6 +41,25 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
+    const isResultRequest =
+      url.searchParams.get('result') === 'true' ||
+      url.pathname.endsWith('/result') ||
+      req.query?.result === 'true';
+
+    if (isResultRequest) {
+      const result = await store.getJobResult(jobId);
+      if (!result) {
+        sendJson(res, 200, {
+          jobId,
+          state: job.state,
+          message: 'Job result is not yet available',
+        });
+        return;
+      }
+      sendJson(res, 200, result);
+      return;
+    }
+
     sendJson(res, 200, job);
     return;
   }

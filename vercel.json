@@ -3,16 +3,40 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/x402/(.*)",
+      "destination": "/api/x402?path=$1"
+    },
+    {
       "source": "/v1/billing/(.*)",
       "destination": "/api/v1/billing/$1"
     },
     {
       "source": "/v1/jobs/:jobId/result",
-      "destination": "/api/v1/result?jobId=:jobId"
+      "destination": "/api/v1/jobs?jobId=:jobId&result=true"
     },
     {
       "source": "/v1/jobs/:jobId",
       "destination": "/api/v1/jobs?jobId=:jobId"
+    },
+    {
+      "source": "/v1/offers",
+      "destination": "/api/v1/offers"
+    },
+    {
+      "source": "/v1/negotiate",
+      "destination": "/api/v1/offers?action=negotiate"
+    },
+    {
+      "source": "/v1/pricing",
+      "destination": "/api/v1/services?view=pricing"
+    },
+    {
+      "source": "/v1/capabilities",
+      "destination": "/api/v1/services?view=capabilities"
+    },
+    {
+      "source": "/v1/payment-methods",
+      "destination": "/api/v1/services?view=payment-methods"
     },
     {
       "source": "/v1/(.*)",
@@ -23,7 +47,7 @@
       "destination": "/api/$1"
     },
     {
-      "source": "/((?!api/|v1/|\\.well-known/|openapi\\.json).*)",
+      "source": "/((?!api/|v1/|x402/|\\.well-known/|openapi\\.json).*)",
       "destination": "/index.html"
     }
   ]
