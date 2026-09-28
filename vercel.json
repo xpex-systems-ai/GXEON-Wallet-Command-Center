@@ -3,14 +3,6 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/.well-known/gxeon-agent.json",
-      "destination": "/api/well-known-agent"
-    },
-    {
-      "source": "/openapi.json",
-      "destination": "/api/openapi"
-    },
-    {
       "source": "/v1/billing/(.*)",
       "destination": "/api/v1/billing/$1"
     },
