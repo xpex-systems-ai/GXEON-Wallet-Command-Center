@@ -1,0 +1,8 @@
+{
+  "name": "GXEON // Wallet Command Center",
+  "description": "Cyber-themed multi-chain Web3 wallet command center, watch-only portfolio tracker, and bounty manager.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
