@@ -7,10 +7,12 @@ import {
   History,
   ShieldAlert,
   FileText,
+  Bot,
 } from 'lucide-react';
 
 export type NavTab =
   | 'dashboard'
+  | 'agent-economy'
   | 'sales'
   | 'wallets'
   | 'mining'
@@ -38,6 +40,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Command Center',
       icon: LayoutDashboard,
       badge: null,
+    },
+    {
+      id: 'agent-economy' as NavTab,
+      label: 'Agent Economy V1',
+      icon: Bot,
+      badge: 'API',
+      badgeColor: 'bg-cyan-500/20 text-cyan-400',
     },
     {
       id: 'sales' as NavTab,

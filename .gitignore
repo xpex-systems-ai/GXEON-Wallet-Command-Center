@@ -38,6 +38,7 @@ local-state/
 
 # OS / IDE
 .DS_Store
+skills-lock.json
 Thumbs.db
 .idea/
 .vscode/
