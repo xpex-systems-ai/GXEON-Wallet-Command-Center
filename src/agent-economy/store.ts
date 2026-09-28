@@ -11,6 +11,12 @@ import {
   WorkerLease,
   OutboxJob,
 } from './types.js';
+import {
+  X402SettlementRecord,
+  X402Receipt,
+  MachineRevenueRecord,
+  MachineCustomerRecord,
+} from './x402/types.js';
 import { FirestoreRestClient, isFirestoreRestConfigured } from '../../api/_firestoreRest.js';
 
 export interface IdempotencyRecord {
@@ -58,6 +64,26 @@ export interface IAgentEconomyStore {
   getWorker(workerId: string): Promise<WorkerDefinition | null>;
   saveWorker(worker: WorkerDefinition): Promise<void>;
   listWorkers(): Promise<WorkerDefinition[]>;
+  claimX402Settlement(
+    settlement: X402SettlementRecord
+  ): Promise<{ claimed: boolean; record: X402SettlementRecord }>;
+  updateX402Settlement(txHash: string, updates: Partial<X402SettlementRecord>): Promise<void>;
+  getX402Settlement(txHash: string): Promise<X402SettlementRecord | null>;
+  saveX402Receipt(receipt: X402Receipt): Promise<void>;
+  getX402Receipt(receiptId: string): Promise<X402Receipt | null>;
+  saveMachineRevenue(revenue: MachineRevenueRecord): Promise<void>;
+  listMachineRevenue(): Promise<MachineRevenueRecord[]>;
+  recordMachineCustomerPurchase(payer: string, serviceId: string, amountUsdc: number): Promise<void>;
+  listMachineCustomers(): Promise<MachineCustomerRecord[]>;
+  recordSecurityEvent(
+    type: 'replaysBlocked' | 'invalidPaymentsBlocked' | 'circuitBreakerEvents' | 'paymentChallenges'
+  ): Promise<void>;
+  getSecurityMetrics(): Promise<{
+    replaysBlocked: number;
+    invalidPaymentsBlocked: number;
+    circuitBreakerEvents: number;
+    paymentChallenges: number;
+  }>;
 }
 
 /**
@@ -77,6 +103,16 @@ export class MemoryAgentEconomyStore implements IAgentEconomyStore {
   private leases = new Map<string, WorkerLease>();
   private outbox = new Map<string, OutboxJob>();
   private workers = new Map<string, WorkerDefinition>();
+  private x402Settlements = new Map<string, X402SettlementRecord>();
+  private x402Receipts = new Map<string, X402Receipt>();
+  private machineRevenue = new Map<string, MachineRevenueRecord>();
+  private machineCustomers = new Map<string, MachineCustomerRecord>();
+  private securityMetrics = {
+    replaysBlocked: 0,
+    invalidPaymentsBlocked: 0,
+    circuitBreakerEvents: 0,
+    paymentChallenges: 0,
+  };
   private nextFencingToken = 1;
 
   constructor() {
@@ -273,6 +309,94 @@ export class MemoryAgentEconomyStore implements IAgentEconomyStore {
 
   async listWorkers(): Promise<WorkerDefinition[]> {
     return Array.from(this.workers.values());
+  }
+
+  async claimX402Settlement(
+    settlement: X402SettlementRecord
+  ): Promise<{ claimed: boolean; record: X402SettlementRecord }> {
+    const key = settlement.txHash.toLowerCase();
+    const existing = this.x402Settlements.get(key);
+    if (existing) {
+      return { claimed: false, record: existing };
+    }
+    const claimedRecord: X402SettlementRecord = {
+      ...settlement,
+      state: 'CLAIMED',
+      claimedAt: new Date().toISOString(),
+    };
+    this.x402Settlements.set(key, claimedRecord);
+    return { claimed: true, record: claimedRecord };
+  }
+
+  async updateX402Settlement(txHash: string, updates: Partial<X402SettlementRecord>): Promise<void> {
+    const key = txHash.toLowerCase();
+    const existing = this.x402Settlements.get(key);
+    if (existing) {
+      this.x402Settlements.set(key, { ...existing, ...updates, updatedAt: new Date().toISOString() });
+    }
+  }
+
+  async getX402Settlement(txHash: string): Promise<X402SettlementRecord | null> {
+    return this.x402Settlements.get(txHash.toLowerCase()) || null;
+  }
+
+  async saveX402Receipt(receipt: X402Receipt): Promise<void> {
+    this.x402Receipts.set(receipt.receiptId, { ...receipt });
+  }
+
+  async getX402Receipt(receiptId: string): Promise<X402Receipt | null> {
+    return this.x402Receipts.get(receiptId) || null;
+  }
+
+  async saveMachineRevenue(revenue: MachineRevenueRecord): Promise<void> {
+    this.machineRevenue.set(revenue.revenueId, { ...revenue });
+  }
+
+  async listMachineRevenue(): Promise<MachineRevenueRecord[]> {
+    return Array.from(this.machineRevenue.values());
+  }
+
+  async recordMachineCustomerPurchase(payer: string, serviceId: string, amountUsdc: number): Promise<void> {
+    const key = payer.toLowerCase();
+    const now = new Date().toISOString();
+    const existing = this.machineCustomers.get(key);
+    if (existing) {
+      existing.lastPurchaseAt = now;
+      existing.jobsPurchased += 1;
+      existing.totalUsdcPaid += amountUsdc;
+      if (!existing.servicesUsed.includes(serviceId)) {
+        existing.servicesUsed.push(serviceId);
+      }
+    } else {
+      this.machineCustomers.set(key, {
+        machineCustomerId: `cust_${key.slice(-8)}`,
+        payerAddress: payer,
+        firstPurchaseAt: now,
+        lastPurchaseAt: now,
+        jobsPurchased: 1,
+        totalUsdcPaid: amountUsdc,
+        servicesUsed: [serviceId],
+      });
+    }
+  }
+
+  async listMachineCustomers(): Promise<MachineCustomerRecord[]> {
+    return Array.from(this.machineCustomers.values());
+  }
+
+  async recordSecurityEvent(
+    type: 'replaysBlocked' | 'invalidPaymentsBlocked' | 'circuitBreakerEvents' | 'paymentChallenges'
+  ): Promise<void> {
+    this.securityMetrics[type] += 1;
+  }
+
+  async getSecurityMetrics(): Promise<{
+    replaysBlocked: number;
+    invalidPaymentsBlocked: number;
+    circuitBreakerEvents: number;
+    paymentChallenges: number;
+  }> {
+    return { ...this.securityMetrics };
   }
 }
 
@@ -506,6 +630,143 @@ export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
 
   async listWorkers(): Promise<WorkerDefinition[]> {
     return [];
+  }
+
+  async claimX402Settlement(
+    settlement: X402SettlementRecord
+  ): Promise<{ claimed: boolean; record: X402SettlementRecord }> {
+    const key = settlement.txHash.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const claimedRecord: X402SettlementRecord = {
+      ...settlement,
+      state: 'CLAIMED',
+      claimedAt: new Date().toISOString(),
+    };
+    const res = await this.client.createIfAbsent(
+      'x402_settlements',
+      key,
+      claimedRecord as unknown as Record<string, unknown>
+    );
+    if (!res.created) {
+      return { claimed: false, record: res.document.data as unknown as X402SettlementRecord };
+    }
+    return { claimed: true, record: claimedRecord };
+  }
+
+  async updateX402Settlement(txHash: string, updates: Partial<X402SettlementRecord>): Promise<void> {
+    const key = txHash.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    await this.client.set('x402_settlements', key, {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    } as Record<string, unknown>);
+  }
+
+  async getX402Settlement(txHash: string): Promise<X402SettlementRecord | null> {
+    const key = txHash.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const doc = await this.client.get<X402SettlementRecord>('x402_settlements', key);
+    return doc ? doc.data : null;
+  }
+
+  async saveX402Receipt(receipt: X402Receipt): Promise<void> {
+    await this.client.set(
+      'x402_receipts',
+      receipt.receiptId,
+      receipt as unknown as Record<string, unknown>
+    );
+  }
+
+  async getX402Receipt(receiptId: string): Promise<X402Receipt | null> {
+    const doc = await this.client.get<X402Receipt>('x402_receipts', receiptId);
+    return doc ? doc.data : null;
+  }
+
+  async saveMachineRevenue(revenue: MachineRevenueRecord): Promise<void> {
+    await this.client.set(
+      'machine_revenue',
+      revenue.revenueId,
+      revenue as unknown as Record<string, unknown>
+    );
+  }
+
+  async listMachineRevenue(): Promise<MachineRevenueRecord[]> {
+    const docs = await this.client.list<MachineRevenueRecord>('machine_revenue');
+    return docs.map((d) => d.data);
+  }
+
+  async recordMachineCustomerPurchase(payer: string, serviceId: string, amountUsdc: number): Promise<void> {
+    const key = payer.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const now = new Date().toISOString();
+    const existing = await this.client.get<MachineCustomerRecord>('machine_customers', key);
+    if (existing) {
+      const data = existing.data;
+      data.lastPurchaseAt = now;
+      data.jobsPurchased += 1;
+      data.totalUsdcPaid += amountUsdc;
+      if (!data.servicesUsed.includes(serviceId)) {
+        data.servicesUsed.push(serviceId);
+      }
+      await this.client.set('machine_customers', key, data as unknown as Record<string, unknown>);
+    } else {
+      const record: MachineCustomerRecord = {
+        machineCustomerId: `cust_${key.slice(-8)}`,
+        payerAddress: payer,
+        firstPurchaseAt: now,
+        lastPurchaseAt: now,
+        jobsPurchased: 1,
+        totalUsdcPaid: amountUsdc,
+        servicesUsed: [serviceId],
+      };
+      await this.client.set('machine_customers', key, record as unknown as Record<string, unknown>);
+    }
+  }
+
+  async listMachineCustomers(): Promise<MachineCustomerRecord[]> {
+    const docs = await this.client.list<MachineCustomerRecord>('machine_customers');
+    return docs.map((d) => d.data);
+  }
+
+  async recordSecurityEvent(
+    type: 'replaysBlocked' | 'invalidPaymentsBlocked' | 'circuitBreakerEvents' | 'paymentChallenges'
+  ): Promise<void> {
+    try {
+      const doc = await this.client.get<Record<string, number>>('security_metrics', 'global');
+      const current = doc ? doc.data : {};
+      current[type] = (current[type] || 0) + 1;
+      await this.client.set('security_metrics', 'global', current as Record<string, unknown>);
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  async getSecurityMetrics(): Promise<{
+    replaysBlocked: number;
+    invalidPaymentsBlocked: number;
+    circuitBreakerEvents: number;
+    paymentChallenges: number;
+  }> {
+    try {
+      const doc = await this.client.get<{
+        replaysBlocked?: number;
+        invalidPaymentsBlocked?: number;
+        circuitBreakerEvents?: number;
+        paymentChallenges?: number;
+      }>('security_metrics', 'global');
+      if (doc) {
+        return {
+          replaysBlocked: doc.data.replaysBlocked || 0,
+          invalidPaymentsBlocked: doc.data.invalidPaymentsBlocked || 0,
+          circuitBreakerEvents: doc.data.circuitBreakerEvents || 0,
+          paymentChallenges: doc.data.paymentChallenges || 0,
+        };
+      }
+    } catch {
+      // Fallback
+    }
+    return {
+      replaysBlocked: 0,
+      invalidPaymentsBlocked: 0,
+      circuitBreakerEvents: 0,
+      paymentChallenges: 0,
+    };
   }
 }
 

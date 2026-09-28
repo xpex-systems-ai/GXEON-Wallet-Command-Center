@@ -1,84 +1,27 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "GXEON Agent Capability Market API",
-    "description": "Autonomous Agent-to-Agent capability market for discovery, quoting, execution, and verifiable telemetry.",
-    "version": "1.0.0"
+    "title": "GXEON Autonomous Agent Capability Market & x402 Gateway API",
+    "description": "Production Agent-to-Agent (A2A) machine capability marketplace and canonical x402 V2 micro-USDC payment gateway. Zero human checkout required.",
+    "version": "2.0.0"
   },
   "servers": [
     {
-      "url": "https://gxeon-wallet-command-center.vercel.app/api/v1",
+      "url": "https://gxeon-wallet-command-center.vercel.app",
       "description": "Production Server"
     },
     {
-      "url": "http://localhost:3000/api/v1",
+      "url": "http://localhost:3000",
       "description": "Local Development"
     }
   ],
-  "components": {
-    "securitySchemes": {
-      "ApiKeyAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "gxa_live_*"
-      }
-    },
-    "schemas": {
-      "ErrorResponse": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "object",
-            "properties": {
-              "code": { "type": "string" },
-              "message": { "type": "string" },
-              "requestId": { "type": "string" }
-            },
-            "required": ["code", "message"]
-          }
-        }
-      },
-      "Service": {
-        "type": "object",
-        "properties": {
-          "serviceId": { "type": "string" },
-          "version": { "type": "string" },
-          "name": { "type": "string" },
-          "description": { "type": "string" },
-          "unit": { "type": "string" },
-          "unitPriceCredits": { "type": "integer" },
-          "minimumChargeCredits": { "type": "integer" },
-          "maxBatch": { "type": "integer" },
-          "status": { "type": "string" }
-        }
-      },
-      "Quote": {
-        "type": "object",
-        "properties": {
-          "quoteId": { "type": "string" },
-          "serviceId": { "type": "string" },
-          "quantity": { "type": "integer" },
-          "unitPriceCredits": { "type": "integer" },
-          "totalCredits": { "type": "integer" },
-          "expiresAt": { "type": "string", "format": "date-time" },
-          "quoteHash": { "type": "string" }
-        }
-      }
-    }
-  },
-  "security": [
-    {
-      "ApiKeyAuth": []
-    }
-  ],
   "paths": {
-    "/services": {
+    "/v1/services": {
       "get": {
-        "summary": "List available capabilities",
-        "description": "Retrieve catalog of active agent capabilities",
+        "summary": "List available capabilities and service catalog",
         "responses": {
           "200": {
-            "description": "List of available services",
+            "description": "Array of available machine services",
             "content": {
               "application/json": {
                 "schema": {
@@ -96,51 +39,131 @@
         }
       }
     },
-    "/quote": {
-      "post": {
-        "summary": "Request authoritative quote",
-        "description": "Calculate exact credits required for a capability workload",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "schema": { "type": "string" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "serviceId": { "type": "string" },
-                  "quantity": { "type": "integer" }
-                },
-                "required": ["serviceId", "quantity"]
-              }
-            }
-          }
-        },
+    "/v1/capabilities": {
+      "get": {
+        "summary": "List active machine capabilities",
         "responses": {
           "200": {
-            "description": "Quote created",
+            "description": "List of capability identifiers",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/Quote" }
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "capabilities": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  }
+                }
               }
             }
           }
         }
       }
     },
-    "/jobs": {
+    "/v1/pricing": {
+      "get": {
+        "summary": "Get atomic micro-USDC and credit pricing per capability",
+        "responses": {
+          "200": {
+            "description": "Pricing catalog with billing rails",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payment-methods": {
+      "get": {
+        "summary": "List supported payment rails",
+        "responses": {
+          "200": {
+            "description": "Active payment rails",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "paymentRails": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/offers": {
       "post": {
-        "summary": "Submit capability job",
+        "summary": "Request an autonomous capability offer from GXEON Offer Agent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Machine-consumable capability offer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityOffer"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/negotiate": {
+      "post": {
+        "summary": "Negotiate volume pricing within operator guardrails",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NegotiationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Negotiation decision (ACCEPT, COUNTER, or REJECT)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NegotiationResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/x402/json-validate": {
+      "post": {
+        "summary": "Validate and lint JSON payloads with x402 payment rail",
         "parameters": [
           {
-            "name": "Idempotency-Key",
+            "name": "PAYMENT-SIGNATURE",
             "in": "header",
+            "description": "Base Mainnet USDC transaction hash or x402 payment proof",
             "schema": { "type": "string" }
           }
         ],
@@ -151,74 +174,276 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "quoteId": { "type": "string" },
-                  "input": { "type": "object" }
+                  "rawJson": { "type": "string" },
+                  "schema": { "type": "object" }
                 },
-                "required": ["quoteId", "input"]
+                "required": ["rawJson"]
               }
             }
           }
         },
         "responses": {
-          "202": {
-            "description": "Job accepted and queued"
-          }
-        }
-      }
-    },
-    "/jobs/{jobId}": {
-      "get": {
-        "summary": "Get job execution status",
-        "parameters": [
-          {
-            "name": "jobId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
           "200": {
-            "description": "Current job status"
+            "description": "Execution successful with cryptographic receipt",
+            "headers": {
+              "PAYMENT-RESPONSE": {
+                "schema": { "type": "string" },
+                "description": "Canonical x402 V2 receipt payload"
+              },
+              "X-402-Receipt": {
+                "schema": { "type": "string" },
+                "description": "Receipt ID"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/X402ExecutionSuccess"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment Required - challenge returned with Base USDC payment instructions",
+            "headers": {
+              "PAYMENT-REQUIRED": {
+                "schema": { "type": "string" },
+                "description": "Canonical x402 V2 challenge requirements"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/X402Challenge"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Replay Blocked - Transaction hash already consumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Treasury not configured or autonomous selling suspended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
     },
-    "/jobs/{jobId}/result": {
-      "get": {
-        "summary": "Get job execution result",
-        "parameters": [
-          {
-            "name": "jobId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Completed job result"
-          }
-        }
-      }
-    },
-    "/balance": {
-      "get": {
-        "summary": "Get credit balance",
-        "responses": {
-          "200": {
-            "description": "Account credit balance and reservation stats"
-          }
-        }
-      }
-    },
-    "/mcp": {
+    "/x402/url-verify": {
       "post": {
-        "summary": "MCP JSON-RPC 2.0 Gateway",
+        "summary": "Verify URL health, TLS certificate, and status code with x402 payment rail",
+        "parameters": [
+          {
+            "name": "PAYMENT-SIGNATURE",
+            "in": "header",
+            "description": "Base Mainnet USDC transaction hash or x402 payment proof",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "urls": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                },
+                "required": ["urls"]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "MCP response"
+            "description": "Execution successful with cryptographic receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/X402ExecutionSuccess"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment Required - challenge returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/X402Challenge"
+                }
+              }
+            }
           }
+        }
+      }
+    },
+    "/api/v1/mcp": {
+      "post": {
+        "summary": "Model Context Protocol (MCP) JSON-RPC 2.0 endpoint",
+        "description": "Exposes GXEON capabilities as MCP tools for Cursor, Claude, and autonomous agents.",
+        "responses": {
+          "200": {
+            "description": "MCP JSON-RPC response"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Service": {
+        "type": "object",
+        "properties": {
+          "serviceId": { "type": "string" },
+          "version": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "unit": { "type": "string" },
+          "unitPriceCredits": { "type": "integer" },
+          "unitPriceUsdc": { "type": "number" },
+          "minimumChargeCredits": { "type": "integer" },
+          "minimumChargeUsdc": { "type": "number" },
+          "status": { "type": "string" }
+        }
+      },
+      "PricingResponse": {
+        "type": "object",
+        "properties": {
+          "pricing": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Service" }
+          },
+          "billingRails": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "OfferRequest": {
+        "type": "object",
+        "required": ["buyerAgentId", "requestedCapability", "quantity"],
+        "properties": {
+          "buyerAgentId": { "type": "string" },
+          "requestedCapability": { "type": "string" },
+          "quantity": { "type": "integer" }
+        }
+      },
+      "CapabilityOffer": {
+        "type": "object",
+        "properties": {
+          "offerId": { "type": "string" },
+          "seller": { "type": "string", "example": "GXEON" },
+          "serviceId": { "type": "string" },
+          "quantity": { "type": "integer" },
+          "unitPrice": { "type": "number" },
+          "total": { "type": "number" },
+          "currency": { "type": "string" },
+          "expiresAt": { "type": "string" },
+          "paymentMethods": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "ttlSeconds": { "type": "integer" }
+        }
+      },
+      "NegotiationRequest": {
+        "type": "object",
+        "required": ["buyerAgentId", "requestedCapability", "requestedQuantity", "proposedUnitPriceCredits"],
+        "properties": {
+          "buyerAgentId": { "type": "string" },
+          "requestedCapability": { "type": "string" },
+          "requestedQuantity": { "type": "integer" },
+          "proposedUnitPriceCredits": { "type": "number" }
+        }
+      },
+      "NegotiationResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["ACCEPTED", "COUNTER", "REJECTED"] },
+          "negotiationId": { "type": "string" },
+          "acceptedPrice": { "type": "number" },
+          "counterPrice": { "type": "number" },
+          "reason": { "type": "string" }
+        }
+      },
+      "X402Challenge": {
+        "type": "object",
+        "properties": {
+          "x402Version": { "type": "integer", "example": 2 },
+          "status": { "type": "integer", "example": 402 },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "resource": { "type": "string" },
+          "serviceId": { "type": "string" },
+          "accepts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scheme": { "type": "string", "example": "exact" },
+                "network": { "type": "string", "example": "eip155:8453" },
+                "asset": { "type": "string", "example": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+                "amount": { "type": "string", "example": "10000" },
+                "payTo": { "type": "string" },
+                "maxTimeoutSeconds": { "type": "integer", "example": 300 }
+              }
+            }
+          }
+        }
+      },
+      "X402ExecutionSuccess": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "SUCCESS" },
+          "serviceId": { "type": "string" },
+          "result": { "type": "object" },
+          "receipt": { "$ref": "#/components/schemas/X402Receipt" }
+        }
+      },
+      "X402Receipt": {
+        "type": "object",
+        "properties": {
+          "receiptId": { "type": "string", "example": "rcpt_1790631300_ab12" },
+          "seller": { "type": "string", "example": "GXEON" },
+          "buyer": { "type": "string" },
+          "serviceId": { "type": "string" },
+          "quantity": { "type": "integer" },
+          "paymentRail": { "type": "string", "example": "x402" },
+          "currency": { "type": "string", "example": "USDC" },
+          "amountAtomic": { "type": "string", "example": "10000" },
+          "amountUsdc": { "type": "string", "example": "0.010000" },
+          "network": { "type": "string", "example": "eip155:8453" },
+          "settlementId": { "type": "string" },
+          "txHash": { "type": "string" },
+          "blockNumber": { "type": "integer" },
+          "jobId": { "type": "string" },
+          "resultHash": { "type": "string" },
+          "evidenceHash": { "type": "string" },
+          "createdAt": { "type": "string" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "message": { "type": "string" }
         }
       }
     }

@@ -3,6 +3,8 @@ import { createQuote } from './quoteEngine.js';
 import { getAccountBalance } from './ledger.js';
 import { getAgentEconomyStore } from './store.js';
 import { submitJobAdmission } from './admissionService.js';
+import { executeJsonValidateWorker } from './workers/jsonValidateWorker.js';
+import { executeUrlVerifyWorker } from './workers/urlVerifyWorker.js';
 
 export interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -86,6 +88,44 @@ const MCP_TOOLS = [
       type: 'object',
       properties: {},
       additionalProperties: false,
+    },
+  },
+  {
+    name: 'gxeon_json_validate_v1',
+    description: 'Validate and lint JSON payloads. Price: 0.01 USDC or 2 credits per payload.',
+    metadata: {
+      version: '1.0.0',
+      pricing: { credits: 2, usdc: 0.01, atomic: '10000' },
+      paymentRails: ['prepaid_credits', 'x402'],
+      executionLimits: { timeoutMs: 5000 },
+    },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        rawJson: { type: 'string', description: 'Raw JSON string to validate' },
+      },
+      required: ['rawJson'],
+    },
+  },
+  {
+    name: 'gxeon_url_verify_v1',
+    description: 'Perform URL health checks, status verification, and TLS validation. Price: 0.025 USDC or 5 credits per URL.',
+    metadata: {
+      version: '1.0.0',
+      pricing: { credits: 5, usdc: 0.025, atomic: '25000' },
+      paymentRails: ['prepaid_credits', 'x402'],
+      executionLimits: { timeoutMs: 10000, maxUrls: 50 },
+    },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        urls: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of URLs to verify',
+        },
+      },
+      required: ['urls'],
     },
   },
 ];
@@ -269,6 +309,91 @@ export async function handleMcpRpc(
             id,
             result: {
               content: [{ type: 'text', text: JSON.stringify(balance, null, 2) }],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'gxeon_json_validate_v1') {
+          const balance = await getAccountBalance(accountId);
+          const availableCredits = balance?.availableCredits ?? 0;
+          if (availableCredits < 2) {
+            return {
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify(
+                      {
+                        error: 'INSUFFICIENT_CREDITS',
+                        message: `Insufficient credits. Required: 2 credits. Available: ${availableCredits}`,
+                        x402Alternative: {
+                          endpoint: 'https://gxeon-wallet-command-center.vercel.app/x402/json-validate',
+                          priceUsdc: 0.01,
+                          network: 'eip155:8453',
+                        },
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+                isError: true,
+              },
+            };
+          }
+          const raw = (args.rawJson || args.payload || '') as string;
+          const execRes = executeJsonValidateWorker({ payload: raw });
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(execRes, null, 2) }],
+              isError: !execRes.valid,
+            },
+          };
+        }
+
+        if (toolName === 'gxeon_url_verify_v1') {
+          const urls = (args.urls as string[]) || [];
+          const requiredCredits = Math.max(1, urls.length) * 5;
+          const balance = await getAccountBalance(accountId);
+          const availableCredits = balance?.availableCredits ?? 0;
+          if (availableCredits < requiredCredits) {
+            return {
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify(
+                      {
+                        error: 'INSUFFICIENT_CREDITS',
+                        message: `Insufficient credits. Required: ${requiredCredits} credits. Available: ${availableCredits}`,
+                        x402Alternative: {
+                          endpoint: 'https://gxeon-wallet-command-center.vercel.app/x402/url-verify',
+                          priceUsdc: 0.025 * Math.max(1, urls.length),
+                          network: 'eip155:8453',
+                        },
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+                isError: true,
+              },
+            };
+          }
+          const execRes = await executeUrlVerifyWorker({ urls });
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(execRes, null, 2) }],
               isError: false,
             },
           };

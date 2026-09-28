@@ -31,11 +31,23 @@ export default async function handler(req: any, res: any) {
   let opportunitiesCount = 0;
   let qualifiedCount = 0;
   let x402SettledUsdc = 0;
+  let x402SettledCount = 0;
   let jobs: any[] = [];
+  let buyersCount = 0;
+  let repeatBuyersCount = 0;
+  let quotesCount = 0;
+  let offersCount = 0;
+
+  let replaysBlocked = 0;
+  let invalidPaymentsBlocked = 0;
+  let circuitBreakerEvents = 0;
+  let paymentChallenges = 0;
 
   if (firestoreConnected) {
     try {
       const client = new FirestoreRestClient();
+
+      // 1. Demand Opportunities
       const oppDocs = await client.list<any>('demand_opportunities');
       opportunitiesCount = oppDocs.length;
       for (const op of oppDocs) {
@@ -43,6 +55,8 @@ export default async function handler(req: any, res: any) {
           qualifiedCount++;
         }
       }
+
+      // 2. Stripe Events & Orders (BRL Rail)
       const events = await client.list<any>('stripe_events');
       const orders = await client.list<any>('orders');
       auditEvents = events.map((e) => e.data);
@@ -54,11 +68,6 @@ export default async function handler(req: any, res: any) {
           ? (orders.find((o) => (o.data as any).id === orderId)?.data as any)
           : null;
 
-        // Requirement 4:
-        // livemode = true
-        // amount = 4900
-        // currency = brl
-        // payment_status = paid
         const isLive =
           ev.data.livemode === true ||
           Boolean(matchingOrder?.stripeSessionId?.startsWith('cs_live_'));
@@ -93,13 +102,15 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      jobs = await client.list<{ state: string }>('jobs');
+      // 3. Jobs Execution Stats
+      jobs = await client.list<{ state: string; completedAt?: string; startedAt?: string }>('jobs');
       for (const j of jobs) {
         if (['DELIVERED', 'COMPLETED'].includes(j.data.state)) {
           jobsDelivered++;
         }
       }
 
+      // 4. Internal Credits Ledger
       const ledgerEntries = await client.list<{ type: string; amountCredits: number }>('credit_ledger');
       for (const entry of ledgerEntries) {
         if (entry.data.type === 'CREDIT') {
@@ -108,13 +119,52 @@ export default async function handler(req: any, res: any) {
           creditsConsumed += (entry.data.amountCredits || 0);
         }
       }
+
+      // 5. Machine Revenue (USDC Rail - Section 10)
+      const revenueDocs = await client.list<{ amountUsdc: number; status: string }>('machine_revenue');
+      for (const rev of revenueDocs) {
+        if (rev.data.status === 'SETTLED' && typeof rev.data.amountUsdc === 'number') {
+          x402SettledUsdc += rev.data.amountUsdc;
+          x402SettledCount++;
+        }
+      }
+
+      // 6. Machine Customers (Section 31 Retention)
+      const customerDocs = await client.list<{ jobsPurchased: number }>('machine_customers');
+      buyersCount = customerDocs.length;
+      for (const cust of customerDocs) {
+        if (cust.data.jobsPurchased > 1) {
+          repeatBuyersCount++;
+        }
+      }
+
+      // 7. Security Metrics
+      const secDoc = await client.get<any>('security_metrics', 'global');
+      if (secDoc) {
+        replaysBlocked = secDoc.data.replaysBlocked || 0;
+        invalidPaymentsBlocked = secDoc.data.invalidPaymentsBlocked || 0;
+        circuitBreakerEvents = secDoc.data.circuitBreakerEvents || 0;
+        paymentChallenges = secDoc.data.paymentChallenges || 0;
+      }
+
+      // 8. Quotes & Offers count
+      const quotesDocs = await client.list<any>('quotes');
+      quotesCount = quotesDocs.length;
+      const offersDocs = await client.list<any>('offers');
+      offersCount = offersDocs.length;
     } catch (e) {
       console.warn('Failed to aggregate revenue metrics from Firestore:', e);
     }
   }
 
-  const stripeNetRevenue = Math.max(0, stripeGrossRevenue - stripeRefunds);
-  const realRevenueStr = `R$${stripeNetRevenue.toFixed(2)}`;
+  const stripeNetRevenue = stripeGrossRevenue > stripeRefunds ? stripeGrossRevenue - stripeRefunds : 0;
+  const realStripeRevenueStr = `R$${stripeNetRevenue.toFixed(2)}`;
+  const realMachineRevenueStr = `$${x402SettledUsdc.toFixed(4)} USDC`;
+  const avgRevPerJobStr = x402SettledCount > 0 ? `$${(x402SettledUsdc / x402SettledCount).toFixed(4)} USDC` : '$0.0000 USDC';
+
+  const completedJobsCount = jobs.filter((j) => ['COMPLETED', 'DELIVERED'].includes(j.data.state)).length;
+  const failedJobsCount = jobs.filter((j) => j.data.state === 'FAILED').length;
+  const successRateStr = jobs.length > 0 ? `${((completedJobsCount / jobs.length) * 100).toFixed(1)}%` : 'UNAVAILABLE';
 
   res.statusCode = 200;
   res.setHeader('Content-Type', 'application/json');
@@ -126,14 +176,14 @@ export default async function handler(req: any, res: any) {
       firestoreConnected,
       storeMode: durableStoreConfigured ? 'FIRESTORE_REST_WIF' : 'UNAVAILABLE',
       liveMode: isLiveKey,
-      realRevenue: realRevenueStr,
+      realRevenue: realStripeRevenueStr,
       stripeEnvironment,
       livePaymentsConfigured: isLiveKey,
       liveWebhookConfigured: Boolean(process.env.STRIPE_LIVE_WEBHOOK_SECRET || (isLiveKey && process.env.STRIPE_WEBHOOK_SECRET)),
       metrics: {
         stripeGrossRevenue: `R$${stripeGrossRevenue.toFixed(2)}`,
         stripeRefunds: `R$${stripeRefunds.toFixed(2)}`,
-        stripeNetRevenue: realRevenueStr,
+        stripeNetRevenue: realStripeRevenueStr,
         successfulPayments,
         pendingPayments,
         failedPayments,
@@ -144,25 +194,34 @@ export default async function handler(req: any, res: any) {
         moneyTruth: 'REAL MONEY != INTERNAL CREDITS',
       },
       agentSales: {
-        agentsDiscovered: Math.max(3, opportunitiesCount),
-        qualifiedAgents: Math.max(1, qualifiedCount),
-        offersSent: 1,
-        quotesCreated: 2,
-        paymentsVerified: successfulPayments + (x402SettledUsdc > 0 ? 1 : 0),
-        jobsExecuted: jobs.length,
-        jobsDelivered,
-        repeatBuyers: 0,
-        finance: {
-          stripeRevenueBRL: realRevenueStr,
-          x402RevenueUSDC: `$${x402SettledUsdc.toFixed(4)} USDC`,
+        market: {
+          signalsDiscovered: opportunitiesCount,
+          qualifiedTargets: qualifiedCount,
         },
-        operational: {
-          avgExecutionMs: 125,
-          successRate: '99.8%',
-          marginPerCapability: {
-            gxeon_url_verify_v1: '40%',
-            gxeon_json_validate_v1: '50%',
-          },
+        sales: {
+          machineEngagements: quotesCount + offersCount,
+          paymentChallenges,
+          paymentsVerified: x402SettledCount,
+          buyers: buyersCount,
+          repeatBuyers: repeatBuyersCount,
+        },
+        execution: {
+          jobsStarted: jobs.length,
+          jobsCompleted: completedJobsCount,
+          jobsFailed: failedJobsCount,
+          avgExecutionMs: 0,
+          successRate: successRateStr,
+        },
+        finance: {
+          realMachineRevenueUSDC: realMachineRevenueStr,
+          settledPayments: x402SettledCount,
+          averageRevenuePerJob: avgRevPerJobStr,
+          realStripeRevenueBRL: realStripeRevenueStr,
+        },
+        security: {
+          replaysBlocked,
+          invalidPaymentsBlocked,
+          circuitBreakerEvents,
         },
       },
       audit: {

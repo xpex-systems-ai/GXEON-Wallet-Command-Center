@@ -10,8 +10,11 @@ export async function verifyX402Settlement(
   requiredAmountAtomic: string,
   _serviceId?: string
 ): Promise<X402SettlementVerification> {
+  const store = getAgentEconomyStore();
   const network = getNetwork(proof.network);
-  if (!network) {
+
+  if (!network || !network.operational) {
+    await store.recordSecurityEvent('invalidPaymentsBlocked');
     return {
       verified: false,
       settlementId: '',
@@ -23,11 +26,12 @@ export async function verifyX402Settlement(
       amountUsdc: 0,
       asset: proof.asset || '',
       timestamp: new Date().toISOString(),
-      error: `Unsupported network ${proof.network}`,
+      error: `Network ${proof.network} is unsupported or unverified`,
     };
   }
 
   if (!proof.txHash || typeof proof.txHash !== 'string' || proof.txHash.length < 10) {
+    await store.recordSecurityEvent('invalidPaymentsBlocked');
     return {
       verified: false,
       settlementId: '',
@@ -44,10 +48,12 @@ export async function verifyX402Settlement(
   }
 
   // 1. Replay Protection: Check if settlementId (txHash) has already been consumed
-  const store = getAgentEconomyStore();
+  const existingSettlement = await store.getX402Settlement(proof.txHash);
   const cleanId = proof.txHash.replace(/[^a-zA-Z0-9_]/g, '_');
   const existingJob = (await store.getJob(`job_x402_${cleanId}`)) || (await store.getJob(`x402_${cleanId}`));
-  if (existingJob) {
+
+  if (existingSettlement || existingJob) {
+    await store.recordSecurityEvent('replaysBlocked');
     return {
       verified: false,
       settlementId: proof.txHash,
@@ -75,6 +81,7 @@ export async function verifyX402Settlement(
       amountAtomic: requiredAmountAtomic,
       amountUsdc: Number(requiredAmountAtomic) / 1_000_000,
       asset: network.usdcAsset,
+      blockNumber: 12345678,
       timestamp: new Date().toISOString(),
     };
   }
@@ -113,6 +120,7 @@ export async function verifyX402Settlement(
 
       const receipt = json.result;
       if (!receipt) {
+        await store.recordSecurityEvent('invalidPaymentsBlocked');
         return {
           verified: false,
           settlementId: proof.txHash,
@@ -129,6 +137,7 @@ export async function verifyX402Settlement(
       }
 
       if (receipt.status !== '0x1') {
+        await store.recordSecurityEvent('invalidPaymentsBlocked');
         return {
           verified: false,
           settlementId: proof.txHash,
@@ -166,6 +175,7 @@ export async function verifyX402Settlement(
 
       const requiredBigInt = BigInt(requiredAmountAtomic);
       if (matchedAmountAtomic < requiredBigInt) {
+        await store.recordSecurityEvent('invalidPaymentsBlocked');
         return {
           verified: false,
           settlementId: proof.txHash,
@@ -181,6 +191,8 @@ export async function verifyX402Settlement(
         };
       }
 
+      const blockNumberParsed = parseInt(receipt.blockNumber, 16) || 0;
+
       return {
         verified: true,
         settlementId: proof.txHash,
@@ -191,11 +203,13 @@ export async function verifyX402Settlement(
         amountAtomic: matchedAmountAtomic.toString(),
         amountUsdc: Number(matchedAmountAtomic) / 1_000_000,
         asset: network.usdcAsset,
-        blockNumber: parseInt(receipt.blockNumber, 16),
+        blockNumber: blockNumberParsed,
+        confirmations: 1,
         timestamp: new Date().toISOString(),
       };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      await store.recordSecurityEvent('circuitBreakerEvents');
       return {
         verified: false,
         settlementId: proof.txHash,
@@ -207,7 +221,7 @@ export async function verifyX402Settlement(
         amountUsdc: 0,
         asset: network.usdcAsset,
         timestamp: new Date().toISOString(),
-        error: `Base RPC verification failed: ${msg}`,
+        error: `RPC verification failed: ${msg}`,
       };
     }
   }
@@ -223,6 +237,6 @@ export async function verifyX402Settlement(
     amountUsdc: 0,
     asset: network.usdcAsset,
     timestamp: new Date().toISOString(),
-    error: `On-chain verification for ${proof.network} is not configured`,
+    error: `Unsupported network verification for ${proof.network}`,
   };
 }

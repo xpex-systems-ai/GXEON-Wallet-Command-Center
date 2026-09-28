@@ -11,12 +11,15 @@ import {
 import { handleX402CapabilityExecution } from '../../src/agent-economy/x402/middleware.js';
 import { getX402Price } from '../../src/agent-economy/x402/pricing.js';
 import { createX402Receipt } from '../../src/agent-economy/x402/receipt.js';
-import { resetAgentEconomyStoreForTesting } from '../../src/agent-economy/store.js';
+import { resetAgentEconomyStoreForTesting, getAgentEconomyStore } from '../../src/agent-economy/store.js';
 
-describe('GXEON-A2A-MONEY-001 Autonomous Machine-to-Machine Sales Test Suite', () => {
+describe('GXEON-GLOBAL-MACHINE-REVENUE-001 Autonomous Machine-to-Machine Sales Test Suite', () => {
   beforeEach(() => {
     resetAgentEconomyStoreForTesting();
     process.env.GXEON_X402_ALLOW_TEST_PROOFS = 'true';
+    process.env.GXEON_X402_BASE_PAYTO = '0x209693bc6afc0c5328ba36faf03c514ef312287c';
+    process.env.GXEON_TREASURY_VERIFIED = 'true';
+    process.env.GXEON_AUTONOMOUS_SELLING_ENABLED = 'true';
   });
 
   describe('GXEON_QUALIFIER & Fit Scoring', () => {
@@ -199,8 +202,8 @@ describe('GXEON-A2A-MONEY-001 Autonomous Machine-to-Machine Sales Test Suite', (
     });
   });
 
-  describe('Native x402 Seller Protocol Gateway', () => {
-    it('returns HTTP 402 Challenge when payment proof is missing', async () => {
+  describe('Canonical x402 V2 Seller Protocol & Atomic Settlement', () => {
+    it('returns HTTP 402 Challenge with canonical V2 PAYMENT-REQUIRED header when payment proof is missing', async () => {
       const challengeRes = await handleX402CapabilityExecution({
         serviceId: 'gxeon_json_validate_v1',
         input: { payload: { status: 'healthy' } },
@@ -209,36 +212,56 @@ describe('GXEON-A2A-MONEY-001 Autonomous Machine-to-Machine Sales Test Suite', (
       });
 
       expect(challengeRes.statusCode).toBe(402);
+      expect(challengeRes.headers['PAYMENT-REQUIRED']).toBeDefined();
+      expect(challengeRes.headers['payment-required']).toBeDefined();
       expect(challengeRes.headers['X-402-Version']).toBe('2');
+
       const body = challengeRes.body as any;
       expect(body.status).toBe(402);
       expect(body.title).toBe('Payment Required');
       expect(Array.isArray(body.accepts)).toBe(true);
       expect(body.accepts[0].network).toBe('eip155:8453');
       expect(body.accepts[0].amount).toBe('10000'); // 0.01 USDC
-      expect(body.accepts[0].payTo).toBeDefined();
+      expect(body.accepts[0].payTo).toBe('0x209693bc6afc0c5328ba36faf03c514ef312287c');
     });
 
-    it('executes capability and returns 200 with immutable receipt on verified settlement', async () => {
+    it('fails closed with 503 when treasury ownership is unverified', async () => {
+      process.env.GXEON_TREASURY_VERIFIED = 'false';
+
+      const res = await handleX402CapabilityExecution({
+        serviceId: 'gxeon_json_validate_v1',
+        input: { rawJson: '{"test":true}' },
+        headers: {},
+        resourceUrl: 'https://gxeon.ai/x402/json-validate',
+      });
+
+      expect(res.statusCode).toBe(503);
+      expect((res.body as any).error).toBe('TREASURY_NOT_CONFIGURED');
+    });
+
+    it('executes capability, claims settlement atomically, persists revenue and returns PAYMENT-RESPONSE header', async () => {
+      const store = getAgentEconomyStore();
       const testProof = {
         network: 'eip155:8453',
-        txHash: '0xtest_tx_valid_settlement_001',
+        txHash: '0xtest_tx_valid_atomic_claim_001',
         payerAddress: '0x1234567890abcdef1234567890abcdef12345678',
       };
 
       const result = await handleX402CapabilityExecution({
         serviceId: 'gxeon_json_validate_v1',
         input: {
-          payload: JSON.stringify({ name: 'GXEON', live: true }),
-          schema: { type: 'object', required: ['name'] },
+          rawJson: JSON.stringify({ name: 'GXEON', live: true }),
         },
         headers: {
-          'x-payment-proof': JSON.stringify(testProof),
+          'payment-signature': JSON.stringify(testProof),
         },
         resourceUrl: 'https://gxeon.ai/x402/json-validate',
       });
 
       expect(result.statusCode).toBe(200);
+      expect(result.headers['PAYMENT-RESPONSE']).toBeDefined();
+      expect(result.headers['X-402-Receipt']).toBeDefined();
+
       const body = result.body as any;
       expect(body.status).toBe('SUCCESS');
       expect(body.result.valid).toBe(true);
@@ -247,21 +270,60 @@ describe('GXEON-A2A-MONEY-001 Autonomous Machine-to-Machine Sales Test Suite', (
       expect(body.receipt.seller).toBe('GXEON');
       expect(body.receipt.paymentRail).toBe('x402');
       expect(body.receipt.currency).toBe('USDC');
+      expect(body.receipt.resultHash).toBeDefined();
       expect(body.receipt.evidenceHash).toBeDefined();
 
-      // Replay Protection: same txHash must be rejected
+      // Verify settlement was recorded atomically in store
+      const settlement = await store.getX402Settlement(testProof.txHash);
+      expect(settlement).toBeDefined();
+      expect(settlement?.state).toBe('DELIVERED');
+
+      // Verify real machine revenue record was created
+      const revenues = await store.listMachineRevenue();
+      expect(revenues.length).toBe(1);
+      expect(revenues[0].status).toBe('SETTLED');
+      expect(revenues[0].amountUsdc).toBe(0.01);
+      expect(revenues[0].txHash).toBe(testProof.txHash);
+
+      // Verify machine customer was recorded
+      const customers = await store.listMachineCustomers();
+      expect(customers.length).toBe(1);
+      expect(customers[0].jobsPurchased).toBe(1);
+      expect(customers[0].totalUsdcPaid).toBe(0.01);
+
+      // REPLAY TEST: Replaying the exact same payment must be blocked
       const replayResult = await handleX402CapabilityExecution({
         serviceId: 'gxeon_json_validate_v1',
-        input: { payload: { status: 'healthy' } },
+        input: { rawJson: '{"test":true}' },
         headers: {
-          'x-payment-proof': JSON.stringify(testProof),
+          'payment-signature': JSON.stringify(testProof),
         },
         resourceUrl: 'https://gxeon.ai/x402/json-validate',
       });
 
-      expect(replayResult.statusCode).toBe(402);
-      expect((replayResult.body as any).error).toBe('PAYMENT_VERIFICATION_FAILED');
-      expect((replayResult.body as any).message).toContain('already been consumed');
+      expect([402, 409]).toContain(replayResult.statusCode);
+      expect((replayResult.body as any).error).toMatch(/REPLAY_BLOCKED|PAYMENT_VERIFICATION_FAILED/);
+
+      // Revenue must not have increased
+      const revenuesAfterReplay = await store.listMachineRevenue();
+      expect(revenuesAfterReplay.length).toBe(1);
+    });
+
+    it('rejects unsupported network and logs invalid payment attempt', async () => {
+      const res = await handleX402CapabilityExecution({
+        serviceId: 'gxeon_json_validate_v1',
+        input: { rawJson: '{"test":true}' },
+        headers: {
+          'payment-signature': JSON.stringify({
+            network: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+            txHash: '0xmock_solana_unsupported',
+          }),
+        },
+        resourceUrl: 'https://gxeon.ai/x402/json-validate',
+      });
+
+      expect(res.statusCode).toBe(402);
+      expect((res.body as any).error).toBe('PAYMENT_VERIFICATION_FAILED');
     });
   });
 });

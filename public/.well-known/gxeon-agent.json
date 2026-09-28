@@ -1,31 +1,25 @@
 {
   "name": "GXEON",
-  "type": "agent-capability-market",
-  "version": "1.1",
   "seller": true,
+  "version": "2.0",
   "protocols": [
     "REST",
     "MCP",
     "x402"
   ],
-  "discovery": {
-    "openapi": "/openapi.json",
-    "services": "/v1/services",
-    "pricing": "/v1/pricing",
-    "capabilities": "/v1/capabilities",
-    "paymentMethods": "/v1/payment-methods",
-    "offers": "/v1/offers",
-    "negotiate": "/v1/negotiate",
-    "mcp": "/api/v1/mcp"
-  },
-  "billing": {
-    "prepaidCredits": true,
-    "x402": true
-  },
-  "gateways": {
-    "x402": {
-      "gxeon_url_verify_v1": "/x402/url-verify",
-      "gxeon_json_validate_v1": "/x402/json-validate"
-    }
+  "openapi": "/openapi.json",
+  "services": "/v1/services",
+  "pricing": "/v1/pricing",
+  "offers": "/v1/offers",
+  "mcp": "/api/v1/mcp",
+  "x402": {
+    "enabled": true,
+    "networks": [
+      "eip155:8453"
+    ],
+    "capabilities": [
+      "/x402/url-verify",
+      "/x402/json-validate"
+    ]
   }
 }
