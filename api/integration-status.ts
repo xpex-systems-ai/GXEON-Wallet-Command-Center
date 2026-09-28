@@ -26,21 +26,56 @@ export default async function handler(req: any, res: any) {
   let jobsPaid = 0;
   let jobsDelivered = 0;
 
+  let auditEvents: any[] = [];
+  let auditOrders: any[] = [];
+
   if (firestoreConnected) {
     try {
       const client = new FirestoreRestClient();
-      const events = await client.list<{ type: string; metadata?: Record<string, unknown> }>('stripe_events');
+      const events = await client.list<any>('stripe_events');
+      const orders = await client.list<any>('orders');
+      auditEvents = events.map((e) => e.data);
+      auditOrders = orders.map((o) => o.data);
+
       for (const ev of events) {
-        if (ev.data.type === 'checkout.session.completed') {
+        const orderId = (ev.data.metadata as any)?.orderId;
+        const matchingOrder = orderId
+          ? (orders.find((o) => (o.data as any).id === orderId)?.data as any)
+          : null;
+
+        // Requirement 4:
+        // livemode = true
+        // amount = 4900
+        // currency = brl
+        // payment_status = paid
+        const isLive =
+          ev.data.livemode === true ||
+          Boolean(matchingOrder?.stripeSessionId?.startsWith('cs_live_'));
+        const isPaid =
+          ev.data.payment_status === 'paid' ||
+          matchingOrder?.state === 'PAYMENT_SUCCEEDED';
+        const isBrl =
+          (ev.data.currency || matchingOrder?.currency || '').toLowerCase() === 'brl';
+        const isAmount49 =
+          ev.data.amount === 4900 ||
+          ev.data.amount_total === 4900 ||
+          matchingOrder?.amountCents === 4900;
+
+        if (
+          ev.data.type === 'checkout.session.completed' &&
+          isLive &&
+          isPaid &&
+          isBrl &&
+          isAmount49
+        ) {
           successfulPayments++;
           stripeGrossRevenue += 49.00;
           jobsPaid++;
-        } else if (ev.data.type === 'charge.refunded') {
+        } else if (ev.data.type === 'charge.refunded' && isLive) {
           stripeRefunds += 49.00;
         }
       }
 
-      const orders = await client.list<{ state: string }>('orders');
       for (const ord of orders) {
         if (['CUSTOMER_CREATED', 'CHECKOUT_CREATED', 'PAYMENT_PENDING'].includes(ord.data.state)) {
           pendingPayments++;
@@ -96,6 +131,10 @@ export default async function handler(req: any, res: any) {
         jobsPaid,
         jobsDelivered,
         moneyTruth: 'REAL MONEY != INTERNAL CREDITS',
+      },
+      audit: {
+        events: auditEvents,
+        orders: auditOrders,
       },
     })
   );
