@@ -3,7 +3,6 @@ import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
 import {
   generateTreasuryChallenge,
   verifyTreasurySignature,
-  FORBIDDEN_EXAMPLE_ADDRESS,
 } from '../../src/agent-economy/x402/treasuryVerifier.js';
 import { checkBazaarVisibility } from '../../src/agent-economy/connectors/x402BazaarConnector.js';
 import { sendJson, sendError, parseBody } from './_helper.js';
