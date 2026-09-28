@@ -1,0 +1,15 @@
+{
+  "name": "GXEON",
+  "type": "agent-capability-market",
+  "version": "1.0",
+  "api": "https://gxeon-wallet-command-center.vercel.app/v1",
+  "openapi": "/openapi.json",
+  "services": "/v1/services",
+  "quote": "/v1/quote",
+  "jobs": "/v1/jobs",
+  "auth": "api_key",
+  "billing": [
+    "prepaid_credits",
+    "metered_account"
+  ]
+}

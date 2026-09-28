@@ -3,11 +3,27 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/v1/billing/(.*)",
+      "destination": "/api/v1/billing/$1"
+    },
+    {
+      "source": "/v1/jobs/:jobId/result",
+      "destination": "/api/v1/result?jobId=:jobId"
+    },
+    {
+      "source": "/v1/jobs/:jobId",
+      "destination": "/api/v1/jobs?jobId=:jobId"
+    },
+    {
+      "source": "/v1/(.*)",
+      "destination": "/api/v1/$1"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/((?!api/|v1/|\\.well-known/|openapi\\.json).*)",
       "destination": "/index.html"
     }
   ]

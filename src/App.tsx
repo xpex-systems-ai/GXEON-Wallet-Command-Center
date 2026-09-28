@@ -15,6 +15,7 @@ import { AuthGate } from './features/auth/AuthGate';
 import { QuickFixServiceCard } from './features/sales/QuickFixServiceCard';
 import { JobPipelineTracker } from './features/sales/JobPipelineTracker';
 import { CustomerOrder, JobTicket } from './features/sales/types';
+import { AgentEconomyView } from './features/agent-economy/AgentEconomyView';
 
 import {
   WalletItem,
@@ -300,6 +301,10 @@ export function App() {
               bountyStats={bountyStats}
               onNavigate={(tab) => setCurrentTab(tab)}
             />
+          )}
+
+          {currentTab === 'agent-economy' && (
+            <AgentEconomyView />
           )}
 
           {currentTab === 'sales' && (

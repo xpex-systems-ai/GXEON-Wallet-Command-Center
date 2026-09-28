@@ -1,0 +1,226 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "GXEON Agent Capability Market API",
+    "description": "Autonomous Agent-to-Agent capability market for discovery, quoting, execution, and verifiable telemetry.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://gxeon-wallet-command-center.vercel.app/api/v1",
+      "description": "Production Server"
+    },
+    {
+      "url": "http://localhost:3000/api/v1",
+      "description": "Local Development"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "gxa_live_*"
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "requestId": { "type": "string" }
+            },
+            "required": ["code", "message"]
+          }
+        }
+      },
+      "Service": {
+        "type": "object",
+        "properties": {
+          "serviceId": { "type": "string" },
+          "version": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "unit": { "type": "string" },
+          "unitPriceCredits": { "type": "integer" },
+          "minimumChargeCredits": { "type": "integer" },
+          "maxBatch": { "type": "integer" },
+          "status": { "type": "string" }
+        }
+      },
+      "Quote": {
+        "type": "object",
+        "properties": {
+          "quoteId": { "type": "string" },
+          "serviceId": { "type": "string" },
+          "quantity": { "type": "integer" },
+          "unitPriceCredits": { "type": "integer" },
+          "totalCredits": { "type": "integer" },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "quoteHash": { "type": "string" }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ],
+  "paths": {
+    "/services": {
+      "get": {
+        "summary": "List available capabilities",
+        "description": "Retrieve catalog of active agent capabilities",
+        "responses": {
+          "200": {
+            "description": "List of available services",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "services": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Service" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quote": {
+      "post": {
+        "summary": "Request authoritative quote",
+        "description": "Calculate exact credits required for a capability workload",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serviceId": { "type": "string" },
+                  "quantity": { "type": "integer" }
+                },
+                "required": ["serviceId", "quantity"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quote created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Quote" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "post": {
+        "summary": "Submit capability job",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "quoteId": { "type": "string" },
+                  "input": { "type": "object" }
+                },
+                "required": ["quoteId", "input"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job accepted and queued"
+          }
+        }
+      }
+    },
+    "/jobs/{jobId}": {
+      "get": {
+        "summary": "Get job execution status",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current job status"
+          }
+        }
+      }
+    },
+    "/jobs/{jobId}/result": {
+      "get": {
+        "summary": "Get job execution result",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Completed job result"
+          }
+        }
+      }
+    },
+    "/balance": {
+      "get": {
+        "summary": "Get credit balance",
+        "responses": {
+          "200": {
+            "description": "Account credit balance and reservation stats"
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "summary": "MCP JSON-RPC 2.0 Gateway",
+        "responses": {
+          "200": {
+            "description": "MCP response"
+          }
+        }
+      }
+    }
+  }
+}
