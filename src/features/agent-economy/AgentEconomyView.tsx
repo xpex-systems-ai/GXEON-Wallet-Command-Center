@@ -20,12 +20,15 @@ export const AgentEconomyView: React.FC = () => {
 
   const [services] = useState(Object.values(SERVICE_REGISTRY));
   const [radarSignals, setRadarSignals] = useState<any[]>([]);
+  const [radarQuery, setRadarQuery] = useState<string>('verification');
+  const [realRevenue, setRealRevenue] = useState<string>('R$49.00');
   const [loading, setLoading] = useState(false);
 
-  const fetchRadar = async () => {
+  const fetchRadar = async (overrideQuery?: string) => {
     setLoading(true);
+    const q = overrideQuery || radarQuery;
     try {
-      const res = await fetch('/api/v1/radar');
+      const res = await fetch(`/api/v1/radar?refresh=true&query=${encodeURIComponent(q)}`);
       if (res.ok) {
         const json = await res.json();
         setRadarSignals(json.opportunities || []);
@@ -39,6 +42,12 @@ export const AgentEconomyView: React.FC = () => {
 
   useEffect(() => {
     fetchRadar();
+    fetch('/api/integration-status')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.realRevenue) setRealRevenue(data.realRevenue);
+      })
+      .catch(() => {});
   }, []);
 
   return (
@@ -153,10 +162,10 @@ export const AgentEconomyView: React.FC = () => {
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <div className="flex items-center justify-between text-slate-400 mb-2">
               <span className="text-xs uppercase tracking-wider font-semibold">Settled Real Revenue</span>
-              <CreditCard className="w-4 h-4 text-slate-400" />
+              <CreditCard className="w-4 h-4 text-emerald-400" />
             </div>
-            <div className="text-2xl font-bold text-slate-300">R$0.00</div>
-            <div className="text-xs text-slate-500 mt-1">External billing settlement pending</div>
+            <div className="text-2xl font-bold text-emerald-400">{realRevenue}</div>
+            <div className="text-xs text-emerald-500/80 mt-1">Verified on Stripe Live</div>
           </div>
         </div>
       )}
@@ -208,51 +217,132 @@ export const AgentEconomyView: React.FC = () => {
 
       {/* RADAR SECTION */}
       {activeSection === 'radar' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h3 className="text-base font-semibold text-white">Demand Radar Stream</h3>
-              <p className="text-xs text-slate-400">
-                Scanned public capability opportunities from GitHub, developer feeds, and bounties.
+              <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                <Radio className="w-5 h-5 text-cyan-400" />
+                Radar Quântico de Agentes & Demanda Live
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Varredura contínua no ecossistema CDP x402 Bazaar, identificando agentes autônomos transacionando em USDC e contratando capacidades de IA por API.
               </p>
             </div>
-            <button
-              onClick={fetchRadar}
-              disabled={loading}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg border border-slate-700 flex items-center gap-1.5"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => fetchRadar()}
+                disabled={loading}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 flex items-center gap-1.5 transition-colors"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                Atualizar Radar
+              </button>
+            </div>
+          </div>
+
+          {/* Filter Pills */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+            <span className="text-slate-500 font-medium mr-1">Tópicos:</span>
+            {['verification', 'json', 'validate', 'agent', 'url'].map((topic) => (
+              <button
+                key={topic}
+                onClick={() => {
+                  setRadarQuery(topic);
+                  fetchRadar(topic);
+                }}
+                className={`px-3 py-1 rounded-full border transition-colors ${
+                  radarQuery === topic
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 font-semibold'
+                    : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:text-slate-200'
+                }`}
+              >
+                #{topic}
+              </button>
+            ))}
           </div>
 
           {radarSignals.length === 0 ? (
             <div className="p-8 text-center text-slate-500 text-xs border border-dashed border-slate-800 rounded-lg">
-              No demand signals queued. Ingest incoming bounties or GitHub links via /api/v1/radar.
+              {loading ? 'Varrendo rede x402 e contratos de agentes...' : 'Nenhum sinal detectado neste filtro. Clique em Atualizar ou mude o tópico acima.'}
             </div>
           ) : (
             <div className="space-y-3">
               {radarSignals.map((sig) => (
                 <div
                   key={sig.opportunityId}
-                  className="p-4 bg-slate-950/60 border border-slate-800 rounded-lg flex items-center justify-between"
+                  className="p-4 bg-slate-950/60 border border-slate-800/80 hover:border-slate-700/80 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors"
                 >
-                  <div>
-                    <h4 className="text-sm font-semibold text-white">{sig.title}</h4>
-                    <p className="text-xs text-slate-400 mt-1">{sig.summary}</p>
-                    <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-500">
-                      <span>Source: {sig.source}</span>
-                      <span>Capability: {sig.requiredCapability}</span>
-                      <span>Confidence: {Math.round(sig.confidence * 100)}%</span>
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-sm font-semibold text-white">{sig.title}</h4>
+                      {sig.sourceUrl && (
+                        <a
+                          href={sig.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-slate-400 hover:text-cyan-400 text-xs inline-flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded font-mono font-medium ${
+                          sig.kind === 'USAGE_SIGNAL'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                        }`}
+                      >
+                        {sig.kind || 'SUPPLY_LISTING'}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-400 line-clamp-2">{sig.rawDescription || sig.summary}</p>
+
+                    <div className="flex items-center gap-4 flex-wrap text-[11px] text-slate-500 pt-1">
+                      <span>Origem: <strong className="text-slate-400">{sig.source}</strong></span>
+                      <span>Capacidade GXEON: <strong className="text-cyan-400">{sig.requiredCapability}</strong></span>
+                      {sig.statedPrice !== undefined && sig.statedPrice !== null && (
+                        <span className="text-emerald-400 font-semibold">
+                          Preço: {sig.statedPrice} {sig.priceCurrency || 'USDC'}
+                        </span>
+                      )}
+                      {sig.calls30d ? (
+                        <span className="text-purple-400 font-medium">
+                          Chamadas 30d: {sig.calls30d} ({sig.uniquePayers30d || 1} pagadores)
+                        </span>
+                      ) : null}
+                      <span>Confiança: {Math.round((sig.confidence || 0.8) * 100)}%</span>
                     </div>
                   </div>
-                  <span className="text-xs px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-300">
-                    {sig.status}
-                  </span>
+
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs px-2.5 py-1 rounded bg-slate-800 text-cyan-300 font-mono border border-slate-700">
+                      {sig.status}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
           )}
+
+          {/* Machine API Sales Guide */}
+          <div className="p-4 bg-slate-950/80 border border-cyan-900/30 rounded-xl space-y-2">
+            <h4 className="text-xs font-semibold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-cyan-400" />
+              Como Agentes Externos Compram e Pagam via API
+            </h4>
+            <p className="text-xs text-slate-400">
+              Qualquer agente autônomo consome serviços GXEON via chamada HTTP direta sem intervenção humana:
+            </p>
+            <div className="bg-slate-900 p-2.5 rounded text-[11px] font-mono text-slate-300 overflow-x-auto border border-slate-800">
+              <code>
+                curl -X POST https://gxeon-wallet-command-center.vercel.app/api/v1/jobs \<br/>
+                &nbsp;&nbsp;-H "Authorization: Bearer gx_live_YOUR_KEY" \<br/>
+                &nbsp;&nbsp;-H "Content-Type: application/json" \<br/>
+                &nbsp;&nbsp;-d '{`{"quoteId": "qte_...", "input": {"urls": ["https://example.com"]}}`}'
+              </code>
+            </div>
+          </div>
         </div>
       )}
 

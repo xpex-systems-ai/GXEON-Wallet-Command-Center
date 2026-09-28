@@ -405,7 +405,8 @@ export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
   }
 
   async listOpportunities(): Promise<DemandOpportunity[]> {
-    return [];
+    const docs = await this.client.list<DemandOpportunity>('demand_opportunities');
+    return docs.map((d) => d.data);
   }
 
   async getIdempotencyRecord(

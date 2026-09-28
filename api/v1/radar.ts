@@ -17,11 +17,16 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'GET') {
     const url = new URL(req.url, 'http://localhost');
     const refresh = url.searchParams.get('refresh') === 'true';
+    const query = url.searchParams.get('query') || 'verification';
     let opportunities = await store.listOpportunities();
     if (opportunities.length === 0 || refresh) {
       try {
-        await fetchAndIngestX402Demand();
-        opportunities = await store.listOpportunities();
+        const liveOpps = await fetchAndIngestX402Demand({ query, limit: 15 });
+        if (liveOpps && liveOpps.length > 0) {
+          opportunities = liveOpps;
+        } else {
+          opportunities = await store.listOpportunities();
+        }
       } catch (err) {
         console.warn('[RADAR] Live x402 fetch error:', err);
       }
