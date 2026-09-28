@@ -1,3 +1,5 @@
+import { getVercelOidcToken } from '@vercel/oidc';
+
 export interface FirestoreDocument<T> {
   data: T;
   updateTime?: string;
@@ -33,8 +35,7 @@ function required(name: string): string {
 export function isFirestoreRestConfigured(): boolean {
   return Boolean(
     (process.env.FIREBASE_PROJECT_ID || process.env.GCP_PROJECT_ID) &&
-      process.env.GCP_WIF_AUDIENCE &&
-      process.env.VERCEL_OIDC_TOKEN
+      process.env.GCP_WIF_AUDIENCE
   );
 }
 
@@ -98,8 +99,15 @@ async function getGoogleAccessToken(): Promise<string> {
     return cachedGoogleAccessToken.token;
   }
 
-  const subjectToken = required('VERCEL_OIDC_TOKEN');
   const audience = required('GCP_WIF_AUDIENCE');
+
+  const subjectToken = await getVercelOidcToken({
+    audience,
+  });
+
+  if (!subjectToken) {
+    throw new Error('Dynamic Vercel OIDC token unavailable');
+  }
 
   const body = new URLSearchParams({
     grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
