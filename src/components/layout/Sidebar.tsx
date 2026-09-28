@@ -138,6 +138,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         );
       })}
+
+      <div className="hidden md:block mt-4 pt-4 border-t border-slate-800">
+        <div className="px-3 py-1 text-[10px] font-mono uppercase tracking-widest text-slate-500">
+          Canais Comerciais
+        </div>
+        <a
+          href="/fix"
+          className="flex items-center justify-between px-3.5 py-2 text-xs font-mono text-slate-400 hover:text-[#FF7A00] transition rounded hover:bg-[#152238]/40"
+        >
+          <span>Página /fix</span>
+          <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-bold">R$49</span>
+        </a>
+        <a
+          href="/credits"
+          className="flex items-center justify-between px-3.5 py-2 text-xs font-mono text-slate-400 hover:text-white transition rounded hover:bg-[#152238]/40"
+        >
+          <span>Página /credits</span>
+          <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded font-bold">BRL</span>
+        </a>
+        <a
+          href="/mcp"
+          className="flex items-center justify-between px-3.5 py-2 text-xs font-mono text-slate-400 hover:text-purple-400 transition rounded hover:bg-[#152238]/40"
+        >
+          <span>Docs /mcp</span>
+          <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-bold">MCP</span>
+        </a>
+      </div>
     </aside>
   );
 };

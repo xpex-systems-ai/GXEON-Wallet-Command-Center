@@ -16,6 +16,7 @@ import { WalletItem, BridgeHealthResponse, BridgeStatusResponse, MultiAssetEarni
 import { NavTab } from '../../components/layout/Sidebar';
 import { walletRegistry } from '../../wallets/registry';
 import { QuantumTreasuryView } from './QuantumTreasuryView';
+import { RealRevenuePanel } from './RealRevenuePanel';
 
 interface DashboardViewProps {
   wallets: WalletItem[];
@@ -87,6 +88,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Real Revenue & Money Truth */}
+      <RealRevenuePanel />
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

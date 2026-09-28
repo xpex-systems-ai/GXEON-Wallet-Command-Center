@@ -207,6 +207,18 @@ export class FirestoreRestClient {
     }
   }
 
+  async list<T>(collection: string): Promise<Array<FirestoreDocument<T>>> {
+    try {
+      const response = await firestoreFetch(`/${encodeURIComponent(collection)}?pageSize=100`);
+      if (!response.ok) return [];
+      const data = await response.json() as { documents?: FirestoreRestDocument[] };
+      const documents = data.documents || [];
+      return documents.map(asDocument<T>);
+    } catch {
+      return [];
+    }
+  }
+
   async get<T>(collection: string, id: string): Promise<FirestoreDocument<T> | null> {
     const response = await firestoreFetch(
       `/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`
