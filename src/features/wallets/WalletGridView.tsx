@@ -3,12 +3,15 @@ import {
   Plus,
   Wallet,
   Layers,
+  Terminal,
 } from 'lucide-react';
 import { WalletItem } from '../../types';
 import { WalletCard } from './WalletCard';
 import { WalletDetailModal } from './WalletDetailModal';
 import { AddWalletModal } from './AddWalletModal';
 import { ConnectWalletModal } from './ConnectWalletModal';
+import { ConnectCliModal } from './ConnectCliModal';
+import { UnifiedConnectModal } from './UnifiedConnectModal';
 import { walletRegistry } from '../../wallets/registry';
 import { Badge } from '../../components/common/Badge';
 
@@ -17,6 +20,7 @@ interface WalletGridViewProps {
   onAddWallet: (wallet: Omit<WalletItem, 'id'>) => void;
   onSyncWallet: (wallet: WalletItem) => void;
   isSyncing: boolean;
+  onNavigateToMining?: () => void;
 }
 
 export const WalletGridView: React.FC<WalletGridViewProps> = ({
@@ -24,10 +28,13 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
   onAddWallet,
   onSyncWallet,
   isSyncing,
+  onNavigateToMining,
 }) => {
   const [selectedWallet, setSelectedWallet] = useState<WalletItem | null>(null);
+  const [isUnifiedOpen, setIsUnifiedOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isConnectOpen, setIsConnectOpen] = useState(false);
+  const [isCliOpen, setIsCliOpen] = useState(false);
   const [filter, setFilter] = useState<'all' | 'watch_only' | 'verified' | 'unverified'>('all');
 
   const adapterInfos = walletRegistry.getAdapterInfos();
@@ -57,18 +64,25 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={() => setIsUnifiedOpen(true)}
+            className="px-4 py-2 bg-[#FF7A00] hover:bg-[#FF7A00]/90 text-black font-bold text-xs font-mono rounded-lg transition-colors shadow-glow-orange flex items-center gap-2"
+          >
+            <Wallet className="w-4 h-4" />
+            CONNECT TO GXEON
+          </button>
+          <button
+            onClick={() => setIsCliOpen(true)}
+            className="px-3.5 py-2 bg-[#00D4FF]/10 hover:bg-[#00D4FF]/20 text-[#00D4FF] border border-[#00D4FF]/40 text-xs font-mono font-bold rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+          >
+            <Terminal className="w-4 h-4" />
+            CLI Companion
+          </button>
+          <button
             onClick={() => setIsAddOpen(true)}
             className="px-3.5 py-2 bg-[#152238] hover:bg-[#1E314F] text-slate-200 hover:text-white border border-[#1E314F] text-xs font-mono rounded-lg transition-colors flex items-center gap-2"
           >
             <Plus className="w-4 h-4 text-[#FF7A00]" />
-            Add Watch-Only
-          </button>
-          <button
-            onClick={() => setIsConnectOpen(true)}
-            className="px-3.5 py-2 bg-[#FF7A00] hover:bg-[#FF7A00]/90 text-black font-bold text-xs font-mono rounded-lg transition-colors shadow-glow-orange flex items-center gap-2"
-          >
-            <Wallet className="w-4 h-4" />
-            Connect Web3 Provider
+            Watch-Only
           </button>
         </div>
       </div>
@@ -196,6 +210,12 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
       </div>
 
       {/* Modals */}
+      <UnifiedConnectModal
+        isOpen={isUnifiedOpen}
+        onClose={() => setIsUnifiedOpen(false)}
+        onConnected={onAddWallet}
+        onNavigateToMining={onNavigateToMining}
+      />
       <WalletDetailModal
         wallet={selectedWallet}
         onClose={() => setSelectedWallet(null)}
@@ -209,6 +229,11 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
         isOpen={isConnectOpen}
         onClose={() => setIsConnectOpen(false)}
         onConnected={onAddWallet}
+      />
+      <ConnectCliModal
+        isOpen={isCliOpen}
+        onClose={() => setIsCliOpen(false)}
+        onWalletImported={onAddWallet}
       />
     </div>
   );

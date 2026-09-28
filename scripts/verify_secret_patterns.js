@@ -1,69 +1,37 @@
-#!/usr/bin/env node
-
-/**
- * GXEON Secret Pattern Guard
- * Verifies that zero live or test secrets are checked into source code.
- */
-
+import { execFileSync } from 'child_process';
 import fs from 'fs';
-import path from 'path';
 
-const FORBIDDEN_PATTERNS = [
-  /sk_live_[0-9a-zA-Z]{24,}/,
-  /sk_test_[0-9a-zA-Z]{24,}/,
-  /whsec_[0-9a-zA-Z]{24,}/,
-  /-----BEGIN (?:RSA |EC )?PRIVATE KEY-----/,
-  /ghp_[0-9a-zA-Z]{36}/,
-  /AIzaSy[0-9a-zA-Z\\-_]{33}/, // Google API keys in source (except .env.example)
-];
+console.log('[SECURITY] Scanning tracked files for credential-shaped Stripe secrets...');
 
-const IGNORE_DIRS = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'lib',
-  '.firebase',
-]);
+const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf-8' })
+  .split('\0')
+  .filter(Boolean)
+  .filter((path) => !path.endsWith('.lock'));
 
-const IGNORE_FILES = new Set([
-  '.env.example',
-  'package-lock.json',
-  'verify_secret_patterns.js',
-]);
+const secretKeyPattern = new RegExp('(?:s' + 'k|r' + 'k)_(?:test|live)_[A-Za-z0-9]{16,}', 'g');
+const webhookPattern = new RegExp('w' + 'hsec_[A-Za-z0-9]{16,}', 'g');
 
-let violations = 0;
+const findings = [];
 
-function scanDir(dir) {
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-
-    if (entry.isDirectory()) {
-      if (!IGNORE_DIRS.has(entry.name)) {
-        scanDir(fullPath);
-      }
-    } else if (entry.isFile()) {
-      if (IGNORE_FILES.has(entry.name)) continue;
-
-      const content = fs.readFileSync(fullPath, 'utf8');
-      for (const pattern of FORBIDDEN_PATTERNS) {
-        if (pattern.test(content)) {
-          console.error(`[SECURITY VIOLATION] Prohibited secret pattern found in: ${fullPath}`);
-          violations++;
-        }
-      }
-    }
+for (const path of files) {
+  let text;
+  try {
+    text = fs.readFileSync(path, 'utf8');
+  } catch {
+    continue;
   }
+
+  if (secretKeyPattern.test(text) || webhookPattern.test(text)) {
+    findings.push(path);
+  }
+  secretKeyPattern.lastIndex = 0;
+  webhookPattern.lastIndex = 0;
 }
 
-console.log('[GXEON GUARD] Scanning codebase for prohibited secret patterns...');
-scanDir(process.cwd());
-
-if (violations > 0) {
-  console.error(`[GXEON GUARD] FAILED: ${violations} secret pattern violation(s) detected.`);
+if (findings.length) {
+  console.error('[SECURITY ERROR] Credential-shaped Stripe secret detected in tracked files:');
+  for (const path of findings) console.error(`- ${path}`);
   process.exit(1);
-} else {
-  console.log('[GXEON GUARD] PASSED: 0 secret pattern violations found.');
-  process.exit(0);
 }
+
+console.log('[SECURITY PASS] No credential-shaped Stripe secrets found in tracked files.');

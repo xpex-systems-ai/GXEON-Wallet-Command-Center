@@ -14,6 +14,7 @@ interface EarningsViewProps {
   wallets: WalletItem[];
   onAddBounty: (bounty: Omit<BountyItem, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onUpdateStatus: (id: string, status: BountyStatus) => void;
+  onVerifyPayout: (id: string, txHash: string) => Promise<void>;
 }
 
 export const EarningsView: React.FC<EarningsViewProps> = ({
@@ -21,8 +22,11 @@ export const EarningsView: React.FC<EarningsViewProps> = ({
   wallets,
   onAddBounty,
   onUpdateStatus,
+  onVerifyPayout,
 }) => {
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [txProofByBounty, setTxProofByBounty] = useState<Record<string, string>>({});
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('ALL');
 
   const getStatusBadgeVariant = (status: BountyStatus) => {
@@ -190,9 +194,31 @@ export const EarningsView: React.FC<EarningsViewProps> = ({
                         </button>
                       )}
                       {b.status === 'PAYOUT_PENDING' && (
-                        <span className="text-[10px] font-mono text-amber-400 flex items-center gap-1">
-                          <ShieldAlert className="w-3 h-3" /> Awaiting TX Proof
-                        </span>
+                        <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+                          <input
+                            value={txProofByBounty[b.id] || ''}
+                            onChange={(e) =>
+                              setTxProofByBounty((prev) => ({ ...prev, [b.id]: e.target.value.trim() }))
+                            }
+                            placeholder="Transaction hash"
+                            className="w-56 px-2 py-1 bg-[#0B1220] border border-[#1E314F] rounded text-[10px] text-slate-200"
+                          />
+                          <button
+                            disabled={!txProofByBounty[b.id] || verifyingId === b.id}
+                            onClick={async () => {
+                              setVerifyingId(b.id);
+                              try {
+                                await onVerifyPayout(b.id, txProofByBounty[b.id]);
+                              } finally {
+                                setVerifyingId(null);
+                              }
+                            }}
+                            className="px-2.5 py-1 bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 rounded text-[10px] disabled:opacity-40"
+                          >
+                            <ShieldAlert className="w-3 h-3 inline mr-1" />
+                            {verifyingId === b.id ? 'VERIFYING...' : 'VERIFY PAYMENT'}
+                          </button>
+                        </div>
                       )}
                       {b.status === 'PAID' && (
                         <span className="text-[10px] font-mono text-emerald-400">

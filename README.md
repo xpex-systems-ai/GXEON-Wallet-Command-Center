@@ -31,16 +31,16 @@ Financial and Web3 command center for the GXEON ecosystem.
 
 ## Quick Start
 
-### 1. Python Local Bridge & CLI (Python 3.11+)
+### 1. Python Local Companion & CLI (Python 3.9+)
 
 ```powershell
-# Install dependencies
-python -m pip install -r requirements.txt
+# Windows One-Click Launch:
+Start-GXEON-Companion.cmd
 
-# Run automated tests
-python -m pytest
+# Or PowerShell script:
+.\scripts\Start-GXEON-Companion.ps1
 
-# Launch Local Bridge daemon on 127.0.0.1:8790
+# Or manual daemon launch on 127.0.0.1:8790:
 python bridge.py
 ```
 
@@ -49,11 +49,16 @@ In a second terminal, use the CLI:
 ```powershell
 python gxeon_wallet.py health
 python gxeon_wallet.py status
-python gxeon_wallet.py list
-python gxeon_wallet.py show rustchain-main
-python gxeon_wallet.py adapters
-python gxeon_wallet.py capabilities
-python gxeon_wallet.py balance rustchain-main
+python gxeon_wallet.py pair
+python gxeon_wallet.py detect
+python gxeon_wallet.py wallets
+python gxeon_wallet.py mining status
+python gxeon_wallet.py mining start
+python gxeon_wallet.py mining stop
+python gxeon_wallet.py mining configure <miner_id> [--destination <addr>]
+python gxeon_wallet.py rustchain status
+python gxeon_wallet.py rustchain balance
+python gxeon_wallet.py rustchain history
 ```
 
 ### 2. Frontend Command Center (Node 18+)
@@ -76,10 +81,20 @@ npm run build
 
 ## Architecture & Documentation
 
+- [Quantum Core V1.2 Overview](docs/QUANTUM_CORE.md)
+- [ClawRTC Integration Guide](docs/CLAWRTC_INTEGRATION.md)
+- [RTC Mining & Operation](docs/RTC_MINING.md)
+- [Proof of Antiquity Specification](docs/PROOF_OF_ANTIQUITY.md)
+- [Quantum Event Bus Architecture](docs/QUANTUM_EVENTS.md)
+- [Payout Verification Engine](docs/PAYOUT_VERIFICATION.md)
 - [Architecture Overview](docs/ARCHITECTURE.md)
+- [Local Companion & Operation](docs/LOCAL_COMPANION.md)
+- [Pairing Protocol Handshake](docs/PAIRING_PROTOCOL.md)
+- [CLI Tool Detection Engine](docs/CLI_DETECTION.md)
+- [Windows Launcher Guide](docs/WINDOWS_LAUNCHER.md)
+- [RustChain Read-Only Specification](docs/RTC_READ_ONLY.md)
 - [Security Model & Invariants](docs/SECURITY_MODEL.md)
 - [Wallet Adapters & Capability Matrix](docs/WALLET_ADAPTERS.md)
-- [Local Bridge Reference](docs/LOCAL_BRIDGE.md)
 - [Firebase Deployment Guide](docs/FIREBASE_DEPLOY.md)
 
 ---

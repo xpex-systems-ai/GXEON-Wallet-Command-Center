@@ -2,17 +2,20 @@ import React from 'react';
 import {
   LayoutDashboard,
   Wallet,
+  Cpu,
   Coins,
-  CreditCard,
   History,
   ShieldAlert,
   FileText,
+  Bot,
 } from 'lucide-react';
 
 export type NavTab =
   | 'dashboard'
+  | 'agent-economy'
   | 'sales'
   | 'wallets'
+  | 'mining'
   | 'earnings'
   | 'transactions'
   | 'security'
@@ -39,10 +42,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: null,
     },
     {
+      id: 'agent-economy' as NavTab,
+      label: 'Agent Economy V1',
+      icon: Bot,
+      badge: 'API',
+      badgeColor: 'bg-cyan-500/20 text-cyan-400',
+    },
+    {
       id: 'sales' as NavTab,
-      label: 'Direct Sales (Stripe)',
-      icon: CreditCard,
-      badge: 'R$ 49',
+      label: 'Stripe Direct Sales',
+      icon: Coins,
+      badge: 'R$49',
       badgeColor: 'bg-emerald-500/20 text-emerald-400',
     },
     {
@@ -50,6 +60,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Wallets & Adapters',
       icon: Wallet,
       badge: walletsCount > 0 ? walletsCount.toString() : null,
+      badgeColor: 'bg-[#FF7A00]/20 text-[#FF7A00]',
+    },
+    {
+      id: 'mining' as NavTab,
+      label: 'ClawRTC & Mining',
+      icon: Cpu,
+      badge: 'PoA',
       badgeColor: 'bg-[#FF7A00]/20 text-[#FF7A00]',
     },
     {

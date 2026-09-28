@@ -1,5 +1,12 @@
 import { BountyItem, BountyStatus, PayoutVerification, MultiAssetEarningsStats } from '../types';
 import { auditService } from './auditService';
+import { payoutVerifier } from './payoutVerifier';
+import {
+  fetchBountiesFromFirestore,
+  saveBountyToFirestore,
+  updateBountyInFirestore,
+  deleteBountyFromFirestore,
+} from './firestore/bountyRepository';
 
 const BOUNTY_STORAGE_KEY = 'gxeon_bounties_v1';
 
@@ -21,7 +28,8 @@ export const ALLOWED_TRANSITIONS: Record<BountyStatus, BountyStatus[]> = {
 export function canTransitionBountyStatus(
   current: BountyStatus,
   target: BountyStatus,
-  verification?: PayoutVerification
+  verification?: PayoutVerification,
+  bounty?: BountyItem
 ): { allowed: boolean; reason?: string } {
   if (current === target) {
     return { allowed: true };
@@ -35,7 +43,7 @@ export function canTransitionBountyStatus(
     };
   }
 
-  // Strict check: transition to PAID requires confirmed on-chain verification
+  // Strict check: transition to PAID requires authentic confirmed on-chain verification
   if (target === 'PAID') {
     if (!verification) {
       return {
@@ -43,16 +51,11 @@ export function canTransitionBountyStatus(
         reason: 'Transition to PAID requires a valid PayoutVerification proof.',
       };
     }
-    if (verification.verificationStatus !== 'CONFIRMED') {
+    if (!payoutVerifier.isValidVerifiedReceipt(verification, bounty)) {
       return {
         allowed: false,
-        reason: `Transition to PAID requires verificationStatus=CONFIRMED, received ${verification.verificationStatus}.`,
-      };
-    }
-    if (!verification.txHash || verification.txHash.trim() === '') {
-      return {
-        allowed: false,
-        reason: 'Transition to PAID requires a confirmed transaction hash.',
+        reason:
+          'Transition to PAID requires an authentic, verified PayoutVerification issued by PayoutVerifier.verifyPayout(). Forged, legacy, or unverified proofs are strictly rejected.',
       };
     }
   }
@@ -90,51 +93,99 @@ export class BountyService {
     }
   }
 
+  async loadFromCloud(ownerUid: string): Promise<BountyItem[]> {
+    try {
+      const cloudItems = await fetchBountiesFromFirestore(ownerUid);
+      this.bounties = cloudItems;
+      this.saveToStorage();
+      return [...this.bounties];
+    } catch (err) {
+      console.warn('Failed to load bounties from Firestore:', err);
+      return this.getBounties();
+    }
+  }
+
   getBounties(): BountyItem[] {
     return [...this.bounties];
   }
 
-  addBounty(bounty: Omit<BountyItem, 'id' | 'createdAt' | 'updatedAt'>): BountyItem {
+  async addBounty(
+    bounty: Omit<BountyItem, 'id' | 'createdAt' | 'updatedAt'>,
+    ownerUid?: string
+  ): Promise<BountyItem> {
     // Initial status can never be initialized directly to PAID without verification
     const safeStatus: BountyStatus = bounty.status === 'PAID' ? 'SUBMITTED' : bounty.status;
 
+    const customId = `bounty-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const newBounty: BountyItem = {
       ...bounty,
+      ownerUid,
       status: safeStatus,
-      id: `bounty-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: customId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    if (ownerUid) {
+      try {
+        await saveBountyToFirestore(
+          { ...bounty, status: safeStatus, ownerUid },
+          ownerUid,
+          customId
+        );
+      } catch (err) {
+        console.warn('Failed to save bounty to Firestore:', err);
+      }
+    }
 
     this.bounties.push(newBounty);
     this.saveToStorage();
 
     auditService.recordEvent(
       'bounty_registered',
-      `Registered bounty "${newBounty.title}" with reward ${newBounty.expectedReward} ${newBounty.currency} (${newBounty.status})`
+      `Registered bounty "${newBounty.title}" with reward ${newBounty.expectedReward} ${newBounty.currency} (${newBounty.status})`,
+      'info',
+      ownerUid
     );
 
     return newBounty;
   }
 
-  updateBountyStatus(
+  async updateBountyStatus(
     id: string,
     newStatus: BountyStatus,
-    verification?: PayoutVerification
-  ): { success: boolean; error?: string } {
+    verification?: PayoutVerification,
+    ownerUid?: string
+  ): Promise<{ success: boolean; error?: string }> {
     const bounty = this.bounties.find((b) => b.id === id);
     if (!bounty) {
       return { success: false, error: 'Bounty not found' };
     }
 
-    const check = canTransitionBountyStatus(bounty.status, newStatus, verification);
+    const check = canTransitionBountyStatus(bounty.status, newStatus, verification, bounty);
     if (!check.allowed) {
       auditService.recordEvent(
         'bounty_status_rejected',
         `Blocked invalid status change for bounty ${id}: ${check.reason}`,
-        'warning'
+        'warning',
+        ownerUid
       );
       return { success: false, error: check.reason };
+    }
+
+    if (ownerUid) {
+      try {
+        await updateBountyInFirestore(
+          id,
+          {
+            status: newStatus,
+            payoutVerification: verification || bounty.payoutVerification,
+          },
+          ownerUid
+        );
+      } catch (err) {
+        console.warn('Failed to update bounty in Firestore:', err);
+      }
     }
 
     this.bounties = this.bounties.map((b) => {
@@ -152,10 +203,30 @@ export class BountyService {
     this.saveToStorage();
     auditService.recordEvent(
       'bounty_status_changed',
-      `Bounty ${id} transitioned from ${bounty.status} to ${newStatus}`
+      `Bounty ${id} transitioned from ${bounty.status} to ${newStatus}`,
+      'info',
+      ownerUid
     );
 
     return { success: true };
+  }
+
+  async deleteBounty(id: string, ownerUid?: string): Promise<boolean> {
+    if (ownerUid) {
+      try {
+        await deleteBountyFromFirestore(id, ownerUid);
+      } catch (err) {
+        console.warn('Failed to delete bounty from Firestore:', err);
+      }
+    }
+    const prevLen = this.bounties.length;
+    this.bounties = this.bounties.filter((b) => b.id !== id);
+    if (this.bounties.length < prevLen) {
+      this.saveToStorage();
+      auditService.recordEvent('bounty_deleted', `Deleted bounty ID ${id}`, 'info', ownerUid);
+      return true;
+    }
+    return false;
   }
 
   /**

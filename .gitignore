@@ -16,6 +16,7 @@ dist-ssr/
 .firebase/
 firebase-debug.log*
 firestore-debug.log*
+functions/lib/
 
 # Test / Coverage
 coverage/
@@ -37,6 +38,7 @@ local-state/
 
 # OS / IDE
 .DS_Store
+skills-lock.json
 Thumbs.db
 .idea/
 .vscode/
@@ -45,3 +47,7 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+.vercel
+.env*
+.agents
+

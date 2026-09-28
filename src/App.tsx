@@ -1,15 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { User } from 'firebase/auth';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar, NavTab } from './components/layout/Sidebar';
 import { Footer } from './components/layout/Footer';
 import { ToastContainer, ToastMessage } from './components/common/Toast';
 import { DashboardView } from './features/dashboard/DashboardView';
 import { WalletGridView } from './features/wallets/WalletGridView';
+import { MiningDashboardView } from './features/mining/MiningDashboardView';
 import { EarningsView } from './features/earnings/EarningsView';
 import { TransactionsView } from './features/transactions/TransactionsView';
 import { SecurityView } from './features/security/SecurityView';
 import { AuditLogView } from './features/audit/AuditLogView';
-import { SalesView } from './features/sales/SalesView';
+import { AuthGate } from './features/auth/AuthGate';
+import { QuickFixServiceCard } from './features/sales/QuickFixServiceCard';
+import { JobPipelineTracker } from './features/sales/JobPipelineTracker';
+import { CustomerOrder, JobTicket } from './features/sales/types';
+import { AgentEconomyView } from './features/agent-economy/AgentEconomyView';
 
 import {
   WalletItem,
@@ -21,13 +27,20 @@ import {
   BridgeStatusResponse,
 } from './types';
 
+import { isFirebaseConfigured } from './firebase/config';
+import { subscribeToAuthState, logoutUser } from './firebase/auth';
 import { bridgeService } from './services/bridgeService';
 import { walletService } from './services/walletService';
 import { bountyService } from './services/bountyService';
+import { payoutVerifier } from './services/payoutVerifier';
 import { transactionService } from './services/transactionService';
 import { auditService } from './services/auditService';
 
 export function App() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [bypassLocalMode, setBypassLocalMode] = useState(false);
+
   const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
   const [wallets, setWallets] = useState<WalletItem[]>([]);
   const [bounties, setBounties] = useState<BountyItem[]>([]);
@@ -39,6 +52,8 @@ export function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const isConfigured = isFirebaseConfigured();
 
   const addToast = (
     type: ToastMessage['type'],
@@ -56,8 +71,9 @@ export function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     setIsRefreshing(true);
+    const ownerUid = currentUser?.uid;
     try {
       // 1. Fetch Local Bridge
       const [health, status] = await Promise.all([
@@ -67,29 +83,63 @@ export function App() {
       setBridgeHealth(health);
       setBridgeStatus(status);
 
-      // 2. Fetch Wallets
-      const loadedWallets = await walletService.getAllWallets();
+      // 2. Fetch Wallets (cloud if ownerUid exists, plus bridge & local)
+      const loadedWallets = await walletService.getAllWallets(ownerUid);
       setWallets(loadedWallets);
 
-      // 3. Fetch Bounties & Transactions
-      setBounties(bountyService.getBounties());
-      setTransactions(transactionService.getTransactions());
-      setAuditEvents(auditService.getEvents());
+      // 3. Fetch Bounties, Transactions & Audit
+      if (ownerUid) {
+        const [cloudBounties, cloudTx, cloudAudit] = await Promise.all([
+          bountyService.loadFromCloud(ownerUid),
+          transactionService.loadFromCloud(ownerUid),
+          auditService.loadFromCloud(ownerUid),
+        ]);
+        setBounties(cloudBounties);
+        setTransactions(cloudTx);
+        setAuditEvents(cloudAudit);
+      } else {
+        setBounties(bountyService.getBounties());
+        setTransactions(transactionService.getTransactions());
+        setAuditEvents(auditService.getEvents());
+      }
     } catch (e) {
       console.error('Error loading data:', e);
-      addToast('error', 'Sync Failed', 'Unable to sync state with local services.');
+      addToast('error', 'Sync Failed', 'Unable to sync state with services.');
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [currentUser?.uid]);
+
+  // Firebase auth state subscription
+  useEffect(() => {
+    if (!isConfigured) {
+      setAuthChecked(true);
+      return;
+    }
+
+    const unsubscribe = subscribeToAuthState((user) => {
+      setCurrentUser(user);
+      setAuthChecked(true);
+    });
+
+    return () => unsubscribe();
+  }, [isConfigured]);
 
   useEffect(() => {
-    loadAllData();
-  }, []);
+    if (authChecked) {
+      loadAllData();
+    }
+  }, [authChecked, currentUser, loadAllData]);
+
+  const handleLogout = async () => {
+    await logoutUser();
+    setCurrentUser(null);
+    addToast('info', 'Logged Out', 'Signed out of Firebase Control Plane.');
+  };
 
   const handleAddWallet = async (wallet: Omit<WalletItem, 'id'>) => {
     try {
-      const created = await walletService.addWallet(wallet);
+      const created = await walletService.addWallet(wallet, currentUser?.uid);
       setWallets((prev) => [...prev, created]);
       setAuditEvents(auditService.getEvents());
       addToast('success', 'Wallet Registered', `Added ${wallet.name} (${wallet.mode})`);
@@ -100,26 +150,26 @@ export function App() {
 
   const handleSyncWallet = async (wallet: WalletItem) => {
     setIsSyncing(true);
-    auditService.recordEvent('sync_started', `Initiated sync for wallet ${wallet.id}`);
+    auditService.recordEvent('sync_started', `Initiated sync for wallet ${wallet.id}`, 'info', 'operator', currentUser?.uid);
     setAuditEvents(auditService.getEvents());
 
     setTimeout(async () => {
       setIsSyncing(false);
-      auditService.recordEvent('sync_completed', `Completed sync for wallet ${wallet.id}`);
+      auditService.recordEvent('sync_completed', `Completed sync for wallet ${wallet.id}`, 'info', 'operator', currentUser?.uid);
       setAuditEvents(auditService.getEvents());
       addToast('info', 'Sync Completed', `Synced ${wallet.name} (Watch-Only)`);
     }, 800);
   };
 
-  const handleAddBounty = (bounty: Omit<BountyItem, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const created = bountyService.addBounty(bounty);
+  const handleAddBounty = async (bounty: Omit<BountyItem, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const created = await bountyService.addBounty(bounty, currentUser?.uid);
     setBounties(bountyService.getBounties());
     setAuditEvents(auditService.getEvents());
     addToast('success', 'Bounty Registered', `Tracked "${created.title}"`);
   };
 
-  const handleUpdateBountyStatus = (id: string, status: BountyStatus) => {
-    const result = bountyService.updateBountyStatus(id, status);
+  const handleUpdateBountyStatus = async (id: string, status: BountyStatus) => {
+    const result = await bountyService.updateBountyStatus(id, status, undefined, currentUser?.uid);
     if (result.success) {
       setBounties(bountyService.getBounties());
       setAuditEvents(auditService.getEvents());
@@ -128,6 +178,94 @@ export function App() {
       addToast('warning', 'Transition Blocked', result.error || 'Invalid transition');
     }
   };
+
+  const handleVerifyBountyPayout = async (id: string, txHash: string) => {
+    const bounty = bountyService.getBounties().find((item) => item.id === id);
+    if (!bounty) {
+      addToast('error', 'Verification Failed', 'Bounty not found.');
+      return;
+    }
+    const wallet = wallets.find(
+      (w) => w.publicAddress.toLowerCase() === bounty.destinationWalletAddress.toLowerCase()
+    );
+    if (!wallet) {
+      addToast('warning', 'Wallet Required', 'Register/connect the destination wallet before verification.');
+      return;
+    }
+
+    const chainToNetwork: Record<string, string> = {
+      '1': 'ethereum',
+      '8453': 'base',
+      '137': 'polygon',
+      '42161': 'arbitrum',
+      '10': 'optimism',
+    };
+    const network =
+      wallet.network === 'evm'
+        ? chainToNetwork[String(wallet.chainId || '')]
+        : wallet.network;
+
+    if (!network) {
+      addToast('warning', 'Network Unknown', 'Destination wallet network/chainId is not known.');
+      return;
+    }
+
+    const verification = await payoutVerifier.verifyPayout({
+      bountyId: bounty.id,
+      network,
+      asset: bounty.asset || bounty.currency,
+      destinationWallet: bounty.destinationWalletAddress,
+      expectedAmount: bounty.expectedReward,
+      txHash,
+    });
+
+    if (verification.verificationStatus !== 'CONFIRMED') {
+      addToast(
+        'warning',
+        'Payment Not Confirmed',
+        `${verification.verificationStatus} via ${verification.verificationSource}`
+      );
+      return;
+    }
+
+    const result = await bountyService.updateBountyStatus(
+      bounty.id,
+      'PAID',
+      verification,
+      currentUser?.uid
+    );
+
+    if (result.success) {
+      setBounties(bountyService.getBounties());
+      setAuditEvents(auditService.getEvents());
+      addToast('success', 'Payment Confirmed', `${bounty.expectedReward} ${bounty.currency} verified on-chain.`);
+    } else {
+      addToast('warning', 'Paid Transition Blocked', result.error || 'Verification rejected.');
+    }
+  };
+
+  // Auth Gate check: If Firebase is configured and user is unauthenticated
+  const isDevMode = Boolean(import.meta.env.DEV);
+  const isBypassedInDev = isDevMode && bypassLocalMode;
+
+  if (isConfigured && !currentUser && !isBypassedInDev) {
+    if (!authChecked) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#0B1220] text-slate-400 font-mono text-xs">
+          INITIALIZING SECURE CONTROL PLANE...
+        </div>
+      );
+    }
+    return (
+      <AuthGate
+        onAuthenticated={() => {}}
+        onBypassLocal={isDevMode ? () => setBypassLocalMode(true) : undefined}
+      />
+    );
+  }
+
+  const [salesOrders, setSalesOrders] = useState<CustomerOrder[]>([]);
+  const [salesTickets, setSalesTickets] = useState<JobTicket[]>([]);
 
   const bountyStats = bountyService.getStats();
 
@@ -138,6 +276,9 @@ export function App() {
         bridgeHealth={bridgeHealth}
         onRefresh={loadAllData}
         isRefreshing={isRefreshing}
+        currentUserEmail={currentUser?.email}
+        isFirebaseActive={Boolean(currentUser)}
+        onLogout={currentUser ? handleLogout : undefined}
       />
 
       {/* Main Body Area */}
@@ -162,8 +303,41 @@ export function App() {
             />
           )}
 
+          {currentTab === 'agent-economy' && (
+            <AgentEconomyView />
+          )}
+
           {currentTab === 'sales' && (
-            <SalesView />
+            <div className="space-y-6">
+              <QuickFixServiceCard
+                onOrderCreated={(order) => {
+                  setSalesOrders((prev) => [order, ...prev]);
+                  addToast('success', 'Pedido Criado', `Pedido ${order.id} registrado com sucesso.`);
+                }}
+              />
+              <JobPipelineTracker
+                orders={salesOrders}
+                tickets={salesTickets}
+                onTriggerExecution={(ticketId) => {
+                  setSalesTickets((prev) =>
+                    prev.map((t) => (t.ticketId === ticketId ? { ...t, state: 'EXECUTING' } : t))
+                  );
+                  addToast('info', 'Execução Iniciada', 'Agente iniciou a análise técnica.');
+                }}
+                onTriggerQA={(ticketId) => {
+                  setSalesTickets((prev) =>
+                    prev.map((t) => (t.ticketId === ticketId ? { ...t, state: 'QA_PASSED' } : t))
+                  );
+                  addToast('info', 'QA Aprovado', 'Testes de validação concluídos com sucesso.');
+                }}
+                onDeliverJob={(ticketId) => {
+                  setSalesTickets((prev) =>
+                    prev.map((t) => (t.ticketId === ticketId ? { ...t, state: 'DELIVERED' } : t))
+                  );
+                  addToast('success', 'Job Entregue', 'Correção entregue ao cliente.');
+                }}
+              />
+            </div>
           )}
 
           {currentTab === 'wallets' && (
@@ -172,7 +346,12 @@ export function App() {
               onAddWallet={handleAddWallet}
               onSyncWallet={handleSyncWallet}
               isSyncing={isSyncing}
+              onNavigateToMining={() => setCurrentTab('mining')}
             />
+          )}
+
+          {currentTab === 'mining' && (
+            <MiningDashboardView onAddToast={addToast} />
           )}
 
           {currentTab === 'earnings' && (
@@ -181,6 +360,7 @@ export function App() {
               wallets={wallets}
               onAddBounty={handleAddBounty}
               onUpdateStatus={handleUpdateBountyStatus}
+              onVerifyPayout={handleVerifyBountyPayout}
             />
           )}
 

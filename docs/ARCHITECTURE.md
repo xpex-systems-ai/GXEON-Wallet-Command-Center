@@ -33,8 +33,9 @@ Every document in Firestore (`wallets`, `wallet_connections`, `transactions`, `b
 
 ---
 
-## 3. Local Signing Plane & Production Considerations
+## 3. Local Signing Plane & Local Companion V1.1
 
-- **Local Daemon:** `bridge.py` runs on `127.0.0.1:8790`.
-- **CORS & Mixed Content:** In local development, the frontend accesses `http://127.0.0.1:8790` directly. In production deployment via HTTPS Firebase Hosting, modern browsers block HTTP mixed content from HTTPS origins. Therefore, the production frontend defaults to local standalone mode unless a secure local proxy/tunnel or native sidecar is active.
-- **Safety Guards:** Endpoints `/prepare-transaction`, `/sign-transaction`, and `/broadcast` return `403 Forbidden` in V1.
+- **Local Companion Daemon:** `bridge.py` runs on `127.0.0.1:8790` strictly bound to localhost.
+- **Pairing Handshake:** Ephemeral 6-digit challenge creates a short-lived bearer session token (TTL 1 hour) stored solely in client `sessionStorage`.
+- **Private Network Access (PNA):** The bridge provides `Access-Control-Allow-Private-Network: true` headers and preflight handling, permitting HTTPS production web applications to securely interact with the localhost daemon.
+- **Safety Guards:** Endpoints `/send`, `/sign`, and `/broadcast` return `403 Forbidden` in V1.1. No private keys are ever stored or exposed.

@@ -46,7 +46,8 @@ service cloud.firestore {
 
     // Users collection (isolated to matching user ID)
     match /users/{userId} {
-      allow read, write: if isOwner(userId) && hasNoSensitiveFields(request.resource.data);
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && hasNoSensitiveFields(request.resource.data);
     }
 
     // Wallets collection (Owner-isolated Control Plane metadata & public addresses only)
@@ -111,28 +112,6 @@ service cloud.firestore {
       allow read: if isDocOwner();
       allow create: if isCreatingAsOwner() && hasNoSensitiveFields(request.resource.data);
       allow update, delete: if false; // Strictly append-only
-    }
-
-    // Stripe Orders (Client read allowed for order customer; NO client writes)
-    match /orders/{orderId} {
-      allow read: if isDocOwner() || (isAuthenticated() && resource.data.customerEmail == request.auth.token.email);
-      allow write: if false; // Strictly backend server authority
-    }
-
-    // Stripe Webhook Events (Strictly internal server-only, never client accessible)
-    match /stripe_events/{eventId} {
-      allow read, write: if false; // Backend service account authority only
-    }
-
-    // Autonomous Jobs (Client read allowed for order customer; NO client writes)
-    match /jobs/{jobId} {
-      allow read: if isDocOwner() || (isAuthenticated() && resource.data.customerEmail == request.auth.token.email);
-      allow write: if false; // Strictly backend worker authority
-    }
-
-    // Payment Intent Mappings (Strictly internal server-only)
-    match /payment_intent_mappings/{mappingId} {
-      allow read, write: if false; // Backend service account authority only
     }
   }
 }

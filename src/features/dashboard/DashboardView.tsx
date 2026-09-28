@@ -8,13 +8,14 @@ import {
   AlertTriangle,
   ShieldCheck,
   Eye,
-  CreditCard,
+  Cpu,
 } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { WalletItem, BridgeHealthResponse, BridgeStatusResponse, MultiAssetEarningsStats } from '../../types';
 import { NavTab } from '../../components/layout/Sidebar';
 import { walletRegistry } from '../../wallets/registry';
+import { QuantumTreasuryView } from './QuantumTreasuryView';
 
 interface DashboardViewProps {
   wallets: WalletItem[];
@@ -63,17 +64,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => onNavigate('sales')}
-              className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-semibold text-xs font-mono rounded-lg transition-all flex items-center gap-2"
+              onClick={() => onNavigate('mining')}
+              className="px-4 py-2 bg-[#FF7A00] hover:bg-[#FF7A00]/90 text-black font-semibold text-xs font-mono rounded-lg transition-all shadow-glow-orange flex items-center gap-2"
             >
-              <CreditCard className="w-4 h-4" />
-              Stripe Sales (R$ 49)
+              <Cpu className="w-4 h-4" />
+              ClawRTC Mining
             </button>
             <button
               onClick={() => onNavigate('wallets')}
-              className="px-4 py-2 bg-[#FF7A00] hover:bg-[#FF7A00]/90 text-black font-semibold text-xs font-mono rounded-lg transition-all shadow-glow-orange flex items-center gap-2"
+              className="px-4 py-2 bg-[#152238] hover:bg-[#1E314F] border border-[#1E314F] text-slate-200 text-xs font-mono rounded-lg transition-all flex items-center gap-2"
             >
-              <Wallet className="w-4 h-4" />
+              <Wallet className="w-4 h-4 text-[#00D4FF]" />
               Manage Wallets
             </button>
             <button
@@ -282,6 +283,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Multi-Asset Quantum Treasury Breakdown */}
+      <QuantumTreasuryView
+        wallets={wallets}
+        bountyStats={bountyStats}
+        onNavigateToWallets={() => onNavigate('wallets')}
+        onNavigateToEarnings={() => onNavigate('earnings')}
+      />
     </div>
   );
 };

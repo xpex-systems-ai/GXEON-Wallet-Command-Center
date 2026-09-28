@@ -1,57 +1,65 @@
-name: GXEON Integration & Security CI
+name: GXEON CI
 
 on:
+  pull_request:
   push:
     branches:
-      - main
+      - feat/gxeon-quantum-integration-v1-2
+      - feat/gxeon-local-companion-v1
       - feat/gxeon-dual-revenue-engine-v1
-  pull_request:
-    branches:
       - main
-      - feat/gxeon-dual-revenue-engine-v1
+
+permissions:
+  contents: read
 
 jobs:
-  validate:
+  test:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js 22
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: 'npm'
+          node-version: '20'
+          cache: npm
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install Python dependencies & Run pytest
-        run: |
-          pip install -r requirements.txt
-          pytest
-
-      - name: Install root dependencies
+      - name: Install Node dependencies
         run: npm ci
 
-      - name: Type check (TypeScript)
+      - name: TypeScript
         run: npx tsc --noEmit
 
-      - name: Run Vitest Unit Tests
+      - name: Vitest
         run: npm test -- --run
 
-      - name: Build frontend
+      - name: Production build
         run: npm run build
 
-      - name: Install and build Firebase Functions
+      - name: Build Functions
         run: |
           cd functions
           npm ci
           npm run build
 
-      - name: Secret pattern guard
-        run: node scripts/verify_secret_patterns.js
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Pytest
+        run: python -m pytest
+
+      - name: Secret-pattern guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -nEi '(BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|mnemonic[[:space:]]*=[[:space:]]*["'\''"][^"'\'']+|seed_phrase[[:space:]]*=|private_key[[:space:]]*=[[:space:]]*["'\''"][^"'\'']+)' -- . ':!package-lock.json' ':!docs/**'; then
+            echo "Potential secret material detected."
+            exit 1
+          fi
+          echo "No obvious private-key/seed patterns detected."
