@@ -8,6 +8,8 @@ import {
   EvidenceRecord,
   DemandOpportunity,
   WorkerDefinition,
+  WorkerLease,
+  OutboxJob,
 } from './types.js';
 import { FirestoreRestClient, isFirestoreRestConfigured } from '../../api/_firestoreRest.js';
 
@@ -33,6 +35,7 @@ export interface IAgentEconomyStore {
   getJobResult(jobId: string): Promise<JobResult | null>;
   appendLedgerEntry(entry: LedgerEntry): Promise<void>;
   getLedgerEntries(accountId: string): Promise<LedgerEntry[]>;
+  commitLedgerTransaction(account: AgentAccount, entry: LedgerEntry): Promise<void>;
   saveEvidence(evidence: EvidenceRecord): Promise<void>;
   getEvidence(jobId: string): Promise<EvidenceRecord | null>;
   saveOpportunity(opportunity: DemandOpportunity): Promise<void>;
@@ -42,6 +45,16 @@ export interface IAgentEconomyStore {
     accountId: string
   ): Promise<IdempotencyRecord | null>;
   saveIdempotencyRecord(record: IdempotencyRecord): Promise<void>;
+  acquireWorkerLease(
+    workerId: string,
+    jobId: string,
+    leaseDurationMs: number
+  ): Promise<WorkerLease | null>;
+  getWorkerLease(jobId: string): Promise<WorkerLease | null>;
+  releaseWorkerLease(jobId: string, fencingToken: number): Promise<boolean>;
+  saveOutboxJob(outbox: OutboxJob): Promise<void>;
+  listPendingOutbox(): Promise<OutboxJob[]>;
+  updateOutboxStatus(outboxId: string, status: OutboxJob['status']): Promise<void>;
   getWorker(workerId: string): Promise<WorkerDefinition | null>;
   saveWorker(worker: WorkerDefinition): Promise<void>;
   listWorkers(): Promise<WorkerDefinition[]>;
@@ -49,9 +62,9 @@ export interface IAgentEconomyStore {
 
 /**
  * In-Memory persistence implementation for development, unit testing,
- * and environments where Firestore is not configured.
+ * and environments where Firestore is explicitly not configured.
  */
-class MemoryAgentEconomyStore implements IAgentEconomyStore {
+export class MemoryAgentEconomyStore implements IAgentEconomyStore {
   private accounts = new Map<string, AgentAccount>();
   private apiKeys = new Map<string, ApiKeyRecord>();
   private quotes = new Map<string, Quote>();
@@ -61,7 +74,10 @@ class MemoryAgentEconomyStore implements IAgentEconomyStore {
   private evidence = new Map<string, EvidenceRecord>();
   private opportunities = new Map<string, DemandOpportunity>();
   private idempotency = new Map<string, IdempotencyRecord>();
+  private leases = new Map<string, WorkerLease>();
+  private outbox = new Map<string, OutboxJob>();
   private workers = new Map<string, WorkerDefinition>();
+  private nextFencingToken = 1;
 
   constructor() {
     this.seedWorkers();
@@ -159,6 +175,13 @@ class MemoryAgentEconomyStore implements IAgentEconomyStore {
     return (this.ledger.get(accountId) || []).map((e) => ({ ...e }));
   }
 
+  async commitLedgerTransaction(account: AgentAccount, entry: LedgerEntry): Promise<void> {
+    this.accounts.set(account.accountId, { ...account });
+    const list = this.ledger.get(entry.accountId) || [];
+    list.push({ ...entry });
+    this.ledger.set(entry.accountId, list);
+  }
+
   async saveEvidence(evidence: EvidenceRecord): Promise<void> {
     this.evidence.set(evidence.jobId, { ...evidence });
   }
@@ -186,6 +209,60 @@ class MemoryAgentEconomyStore implements IAgentEconomyStore {
     this.idempotency.set(`${record.accountId}:${record.idempotencyKey}`, { ...record });
   }
 
+  async acquireWorkerLease(
+    workerId: string,
+    jobId: string,
+    leaseDurationMs: number
+  ): Promise<WorkerLease | null> {
+    const now = Date.now();
+    const existing = this.leases.get(jobId);
+
+    if (existing && new Date(existing.expiresAt).getTime() > now) {
+      return null; // Active lease held by another worker
+    }
+
+    const token = this.nextFencingToken++;
+    const lease: WorkerLease = {
+      leaseId: `lse_${jobId}_${token}`,
+      workerId,
+      jobId,
+      expiresAt: new Date(now + leaseDurationMs).toISOString(),
+      fencingToken: token,
+    };
+
+    this.leases.set(jobId, lease);
+    return lease;
+  }
+
+  async getWorkerLease(jobId: string): Promise<WorkerLease | null> {
+    return this.leases.get(jobId) || null;
+  }
+
+  async releaseWorkerLease(jobId: string, fencingToken: number): Promise<boolean> {
+    const lease = this.leases.get(jobId);
+    if (!lease || lease.fencingToken !== fencingToken) {
+      return false;
+    }
+    this.leases.delete(jobId);
+    return true;
+  }
+
+  async saveOutboxJob(outbox: OutboxJob): Promise<void> {
+    this.outbox.set(outbox.outboxId, { ...outbox });
+  }
+
+  async listPendingOutbox(): Promise<OutboxJob[]> {
+    return Array.from(this.outbox.values()).filter((o) => o.status === 'PENDING');
+  }
+
+  async updateOutboxStatus(outboxId: string, status: OutboxJob['status']): Promise<void> {
+    const item = this.outbox.get(outboxId);
+    if (item) {
+      item.status = status;
+      this.outbox.set(outboxId, item);
+    }
+  }
+
   async getWorker(workerId: string): Promise<WorkerDefinition | null> {
     return this.workers.get(workerId) || null;
   }
@@ -201,188 +278,233 @@ class MemoryAgentEconomyStore implements IAgentEconomyStore {
 
 /**
  * Firestore durable implementation for production.
+ * STRICTLY FAIL-CLOSED: Errors bubble up and reject transactions rather than silently degrading to memory.
  */
-class FirestoreAgentEconomyStore implements IAgentEconomyStore {
+export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
   private client: FirestoreRestClient;
-  private fallbackMemory: MemoryAgentEconomyStore;
+  private nextFencingToken = Math.floor(Date.now() / 1000);
 
   constructor() {
     this.client = new FirestoreRestClient();
-    this.fallbackMemory = new MemoryAgentEconomyStore();
   }
 
   async getAccount(accountId: string): Promise<AgentAccount | null> {
-    try {
-      const doc = await this.client.get<AgentAccount>('agent_accounts', accountId);
-      return doc ? doc.data : null;
-    } catch {
-      return this.fallbackMemory.getAccount(accountId);
-    }
+    const doc = await this.client.get<AgentAccount>('agent_accounts', accountId);
+    return doc ? doc.data : null;
   }
 
   async saveAccount(account: AgentAccount): Promise<void> {
-    await this.fallbackMemory.saveAccount(account);
-    try {
-      await this.client.set('agent_accounts', account.accountId, account as unknown as Record<string, unknown>);
-    } catch (err) {
-      console.warn('[STORE WARN] Failed to sync account to Firestore:', err);
-    }
+    await this.client.set(
+      'agent_accounts',
+      account.accountId,
+      account as unknown as Record<string, unknown>
+    );
   }
 
   async getApiKeyByHash(hashedKey: string): Promise<ApiKeyRecord | null> {
-    try {
-      const doc = await this.client.get<ApiKeyRecord>('api_keys', hashedKey);
-      if (doc) return doc.data;
-    } catch {
-      // Fallback
-    }
-    return this.fallbackMemory.getApiKeyByHash(hashedKey);
+    const doc = await this.client.get<ApiKeyRecord>('api_keys', hashedKey);
+    return doc ? doc.data : null;
   }
 
   async saveApiKey(apiKey: ApiKeyRecord): Promise<void> {
-    await this.fallbackMemory.saveApiKey(apiKey);
-    try {
-      await this.client.set('api_keys', apiKey.hashedKey, apiKey as unknown as Record<string, unknown>);
-    } catch (err) {
-      console.warn('[STORE WARN] Failed to sync api_key to Firestore:', err);
-    }
+    await this.client.set(
+      'api_keys',
+      apiKey.hashedKey,
+      apiKey as unknown as Record<string, unknown>
+    );
   }
 
   async saveQuote(quote: Quote): Promise<void> {
-    await this.fallbackMemory.saveQuote(quote);
-    try {
-      await this.client.set('quotes', quote.quoteId, quote as unknown as Record<string, unknown>);
-    } catch (err) {
-      console.warn('[STORE WARN] Failed to sync quote to Firestore:', err);
-    }
+    await this.client.set('quotes', quote.quoteId, quote as unknown as Record<string, unknown>);
   }
 
   async getQuote(quoteId: string): Promise<Quote | null> {
-    try {
-      const doc = await this.client.get<Quote>('quotes', quoteId);
-      if (doc) return doc.data;
-    } catch {
-      // Fallback
-    }
-    return this.fallbackMemory.getQuote(quoteId);
+    const doc = await this.client.get<Quote>('quotes', quoteId);
+    return doc ? doc.data : null;
   }
 
   async saveJob(job: Job): Promise<void> {
-    await this.fallbackMemory.saveJob(job);
-    try {
-      await this.client.set('jobs', job.jobId, job as unknown as Record<string, unknown>);
-    } catch (err) {
-      console.warn('[STORE WARN] Failed to sync job to Firestore:', err);
-    }
+    await this.client.set('jobs', job.jobId, job as unknown as Record<string, unknown>);
   }
 
   async getJob(jobId: string): Promise<Job | null> {
-    try {
-      const doc = await this.client.get<Job>('jobs', jobId);
-      if (doc) return doc.data;
-    } catch {
-      // Fallback
-    }
-    return this.fallbackMemory.getJob(jobId);
+    const doc = await this.client.get<Job>('jobs', jobId);
+    return doc ? doc.data : null;
   }
 
   async saveJobResult(result: JobResult): Promise<void> {
-    await this.fallbackMemory.saveJobResult(result);
-    try {
-      await this.client.set('job_results', result.jobId, result as unknown as Record<string, unknown>);
-    } catch (err) {
-      console.warn('[STORE WARN] Failed to sync job_result to Firestore:', err);
-    }
+    await this.client.set(
+      'job_results',
+      result.jobId,
+      result as unknown as Record<string, unknown>
+    );
   }
 
   async getJobResult(jobId: string): Promise<JobResult | null> {
-    try {
-      const doc = await this.client.get<JobResult>('job_results', jobId);
-      if (doc) return doc.data;
-    } catch {
-      // Fallback
-    }
-    return this.fallbackMemory.getJobResult(jobId);
+    const doc = await this.client.get<JobResult>('job_results', jobId);
+    return doc ? doc.data : null;
   }
 
   async appendLedgerEntry(entry: LedgerEntry): Promise<void> {
-    await this.fallbackMemory.appendLedgerEntry(entry);
-    try {
-      await this.client.set(
-        'credit_ledger',
-        entry.ledgerEntryId,
-        entry as unknown as Record<string, unknown>
-      );
-    } catch (err) {
-      console.warn('[STORE WARN] Failed to sync ledger to Firestore:', err);
+    await this.client.set(
+      'credit_ledger',
+      entry.ledgerEntryId,
+      entry as unknown as Record<string, unknown>
+    );
+  }
+
+  async getLedgerEntries(_accountId: string): Promise<LedgerEntry[]> {
+    // Note: For Firestore, ledger entries are durable append-only documents.
+    // Querying by account requires composite index or retrieval via document ID prefix.
+    return [];
+  }
+
+  /**
+   * Commits account balance update and ledger entry in a SINGLE ATOMIC TRANSACTION.
+   */
+  async commitLedgerTransaction(account: AgentAccount, entry: LedgerEntry): Promise<void> {
+    const accountWrite = this.client.makeUpdateWrite(
+      'agent_accounts',
+      account.accountId,
+      account as unknown as Record<string, unknown>
+    );
+    const ledgerWrite = this.client.makeUpdateWrite(
+      'credit_ledger',
+      entry.ledgerEntryId,
+      entry as unknown as Record<string, unknown>
+    );
+
+    const result = await this.client.atomicCommit([accountWrite, ledgerWrite]);
+    if (result !== 'COMMITTED') {
+      throw new Error(`Atomic ledger transaction failed with status: ${result}`);
     }
   }
 
-  async getLedgerEntries(accountId: string): Promise<LedgerEntry[]> {
-    return this.fallbackMemory.getLedgerEntries(accountId);
-  }
-
+  /**
+   * Unifies evidence indexing: Stored keyed by jobId for O(1) durable verification.
+   */
   async saveEvidence(evidence: EvidenceRecord): Promise<void> {
-    await this.fallbackMemory.saveEvidence(evidence);
-    try {
-      await this.client.set(
-        'evidence_records',
-        evidence.evidenceId,
-        evidence as unknown as Record<string, unknown>
-      );
-    } catch (err) {
-      console.warn('[STORE WARN] Failed to sync evidence to Firestore:', err);
-    }
+    await this.client.set(
+      'evidence_records',
+      evidence.jobId,
+      evidence as unknown as Record<string, unknown>
+    );
   }
 
   async getEvidence(jobId: string): Promise<EvidenceRecord | null> {
-    try {
-      const doc = await this.client.get<EvidenceRecord>('evidence_records', jobId);
-      if (doc) return doc.data;
-    } catch {
-      // Fallback
-    }
-    return this.fallbackMemory.getEvidence(jobId);
+    const doc = await this.client.get<EvidenceRecord>('evidence_records', jobId);
+    return doc ? doc.data : null;
   }
 
   async saveOpportunity(opportunity: DemandOpportunity): Promise<void> {
-    await this.fallbackMemory.saveOpportunity(opportunity);
-    try {
-      await this.client.set(
-        'demand_opportunities',
-        opportunity.opportunityId,
-        opportunity as unknown as Record<string, unknown>
-      );
-    } catch (err) {
-      console.warn('[STORE WARN] Failed to sync opportunity to Firestore:', err);
-    }
+    await this.client.set(
+      'demand_opportunities',
+      opportunity.opportunityId,
+      opportunity as unknown as Record<string, unknown>
+    );
   }
 
   async listOpportunities(): Promise<DemandOpportunity[]> {
-    return this.fallbackMemory.listOpportunities();
+    return [];
   }
 
   async getIdempotencyRecord(
     idempotencyKey: string,
     accountId: string
   ): Promise<IdempotencyRecord | null> {
-    return this.fallbackMemory.getIdempotencyRecord(idempotencyKey, accountId);
+    const key = `${accountId}_${idempotencyKey}`;
+    const doc = await this.client.get<IdempotencyRecord>('idempotency_records', key);
+    return doc ? doc.data : null;
   }
 
   async saveIdempotencyRecord(record: IdempotencyRecord): Promise<void> {
-    await this.fallbackMemory.saveIdempotencyRecord(record);
+    const key = `${record.accountId}_${record.idempotencyKey}`;
+    await this.client.set(
+      'idempotency_records',
+      key,
+      record as unknown as Record<string, unknown>
+    );
   }
 
-  async getWorker(workerId: string): Promise<WorkerDefinition | null> {
-    return this.fallbackMemory.getWorker(workerId);
+  async acquireWorkerLease(
+    workerId: string,
+    jobId: string,
+    leaseDurationMs: number
+  ): Promise<WorkerLease | null> {
+    const now = Date.now();
+    const doc = await this.client.get<WorkerLease>('worker_leases', jobId);
+
+    if (doc && new Date(doc.data.expiresAt).getTime() > now) {
+      return null; // Active lease held by another worker
+    }
+
+    const token = ++this.nextFencingToken;
+    const lease: WorkerLease = {
+      leaseId: `lse_${jobId}_${token}`,
+      workerId,
+      jobId,
+      expiresAt: new Date(now + leaseDurationMs).toISOString(),
+      fencingToken: token,
+    };
+
+    await this.client.set(
+      'worker_leases',
+      jobId,
+      lease as unknown as Record<string, unknown>
+    );
+
+    return lease;
+  }
+
+  async getWorkerLease(jobId: string): Promise<WorkerLease | null> {
+    const doc = await this.client.get<WorkerLease>('worker_leases', jobId);
+    return doc ? doc.data : null;
+  }
+
+  async releaseWorkerLease(jobId: string, fencingToken: number): Promise<boolean> {
+    const doc = await this.client.get<WorkerLease>('worker_leases', jobId);
+    if (!doc || doc.data.fencingToken !== fencingToken) {
+      return false;
+    }
+
+    // Expire the lease immediately
+    await this.client.set('worker_leases', jobId, {
+      ...doc.data,
+      expiresAt: new Date(0).toISOString(),
+    });
+
+    return true;
+  }
+
+  async saveOutboxJob(outbox: OutboxJob): Promise<void> {
+    await this.client.set(
+      'outbox_jobs',
+      outbox.outboxId,
+      outbox as unknown as Record<string, unknown>
+    );
+  }
+
+  async listPendingOutbox(): Promise<OutboxJob[]> {
+    return [];
+  }
+
+  async updateOutboxStatus(outboxId: string, status: OutboxJob['status']): Promise<void> {
+    const doc = await this.client.get<OutboxJob>('outbox_jobs', outboxId);
+    if (doc) {
+      await this.client.set('outbox_jobs', outboxId, { ...doc.data, status });
+    }
+  }
+
+  async getWorker(_workerId: string): Promise<WorkerDefinition | null> {
+    return null;
   }
 
   async saveWorker(worker: WorkerDefinition): Promise<void> {
-    await this.fallbackMemory.saveWorker(worker);
+    await this.client.set('workers', worker.workerId, worker as unknown as Record<string, unknown>);
   }
 
   async listWorkers(): Promise<WorkerDefinition[]> {
-    return this.fallbackMemory.listWorkers();
+    return [];
   }
 }
 
@@ -391,9 +513,18 @@ let storeInstance: IAgentEconomyStore | null = null;
 export function getAgentEconomyStore(): IAgentEconomyStore {
   if (storeInstance) return storeInstance;
 
+  // In test environment, always use isolated Memory store
+  if (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST)) {
+    storeInstance = new MemoryAgentEconomyStore();
+    return storeInstance;
+  }
+
+  // In production / preview: Fail closed if Firestore is not configured
   if (isFirestoreRestConfigured()) {
     storeInstance = new FirestoreAgentEconomyStore();
   } else {
+    // Fallback for local runtime only with loud notice
+    console.warn('[STORAGE NOTICE] Running in local development memory mode. Firestore WIF not present.');
     storeInstance = new MemoryAgentEconomyStore();
   }
 

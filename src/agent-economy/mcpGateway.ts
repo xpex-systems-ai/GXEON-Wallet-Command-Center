@@ -1,10 +1,8 @@
 import { listAvailableServices } from './services/registry.js';
 import { createQuote } from './quoteEngine.js';
-import { reserveCredits, getAccountBalance } from './ledger.js';
-import { getGxeonCommander } from './commander.js';
+import { getAccountBalance } from './ledger.js';
 import { getAgentEconomyStore } from './store.js';
-import { Job } from './types.js';
-import crypto from 'node:crypto';
+import { submitJobAdmission } from './admissionService.js';
 
 export interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -24,6 +22,74 @@ export interface JsonRpcResponse {
   };
 }
 
+const MCP_TOOLS = [
+  {
+    name: 'list_services',
+    description: 'List all active GXEON capability services, pricing models, and input schemas',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_quote',
+    description: 'Obtain a signed price quote for requested service units before execution',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        serviceId: { type: 'string', description: 'ID of the capability service' },
+        quantity: { type: 'integer', minimum: 1, description: 'Number of units' },
+      },
+      required: ['serviceId', 'quantity'],
+    },
+  },
+  {
+    name: 'submit_job',
+    description: 'Submit a job to be executed against an active quote, reserving credits and running validation',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        quoteId: { type: 'string', description: 'The accepted quoteId' },
+        input: { type: 'object', description: 'Input payload matching service inputSchema' },
+        idempotencyKey: { type: 'string', description: 'Optional unique idempotency key' },
+      },
+      required: ['quoteId', 'input'],
+    },
+  },
+  {
+    name: 'get_job',
+    description: 'Check status and lifecycle state of a submitted job',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: { type: 'string', description: 'Job ID' },
+      },
+      required: ['jobId'],
+    },
+  },
+  {
+    name: 'get_result',
+    description: 'Retrieve structured results, summary, and cryptographic QA evidence for a completed job',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: { type: 'string', description: 'Job ID' },
+      },
+      required: ['jobId'],
+    },
+  },
+  {
+    name: 'get_balance',
+    description: 'Retrieve current credit balance, reserved credits, and available funds for the account',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+];
+
 export async function handleMcpRpc(
   req: JsonRpcRequest,
   accountId: string
@@ -33,6 +99,23 @@ export async function handleMcpRpc(
 
   try {
     switch (method) {
+      case 'initialize': {
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            protocolVersion: '2026-07-28',
+            capabilities: {
+              tools: {},
+            },
+            serverInfo: {
+              name: 'gxeon-capability-market',
+              version: '1.0.0',
+            },
+          },
+        };
+      }
+
       case 'tools/list':
       case 'gxeon.list_services': {
         const services = listAvailableServices();
@@ -40,13 +123,163 @@ export async function handleMcpRpc(
           jsonrpc: '2.0',
           id,
           result: {
-            tools: services.map((s) => ({
-              name: s.serviceId,
-              description: s.description,
-              inputSchema: s.inputSchema,
-              unitPriceCredits: s.unitPriceCredits,
-            })),
+            tools: MCP_TOOLS,
             services,
+          },
+        };
+      }
+
+      case 'tools/call': {
+        const toolName = (params.name as string) || '';
+        const args = (params.arguments || {}) as Record<string, unknown>;
+
+        if (toolName === 'list_services') {
+          const services = listAvailableServices();
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(services, null, 2) }],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'get_quote') {
+          const { serviceId, quantity } = args as { serviceId: string; quantity: number };
+          const quoteRes = await createQuote({
+            accountId,
+            serviceId,
+            quantity: Number(quantity),
+          });
+          if (!quoteRes.success || !quoteRes.quote) {
+            return {
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{ type: 'text', text: JSON.stringify(quoteRes, null, 2) }],
+                isError: true,
+              },
+            };
+          }
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(quoteRes.quote, null, 2) }],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'submit_job') {
+          const { quoteId, input, idempotencyKey } = args as {
+            quoteId: string;
+            input: Record<string, unknown>;
+            idempotencyKey?: string;
+          };
+          const admission = await submitJobAdmission({
+            accountId,
+            quoteId,
+            input,
+            idempotencyKey,
+            waitForExecution: true,
+          });
+          if (!admission.success) {
+            return {
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{ type: 'text', text: JSON.stringify(admission.error, null, 2) }],
+                isError: true,
+              },
+            };
+          }
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(admission.result || admission.job, null, 2),
+                },
+              ],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'get_job') {
+          const { jobId } = args as { jobId: string };
+          const job = await store.getJob(jobId);
+          if (!job || job.accountId !== accountId) {
+            return {
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{ type: 'text', text: `Job ${jobId} not found or unauthorized` }],
+                isError: true,
+              },
+            };
+          }
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(job, null, 2) }],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'get_result') {
+          const { jobId } = args as { jobId: string };
+          const job = await store.getJob(jobId);
+          if (!job || job.accountId !== accountId) {
+            return {
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{ type: 'text', text: `Job ${jobId} not found or unauthorized` }],
+                isError: true,
+              },
+            };
+          }
+          const result = await store.getJobResult(jobId);
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(result || { jobId, state: job.state, message: 'Result not ready' }, null, 2),
+                },
+              ],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'get_balance') {
+          const balance = await getAccountBalance(accountId);
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{ type: 'text', text: JSON.stringify(balance, null, 2) }],
+              isError: false,
+            },
+          };
+        }
+
+        return {
+          jsonrpc: '2.0',
+          id,
+          error: {
+            code: -32601,
+            message: `Unknown tool: ${toolName}`,
           },
         };
       }
@@ -79,72 +312,39 @@ export async function handleMcpRpc(
       }
 
       case 'gxeon.submit_job': {
-        const { quoteId, input } = params as {
+        const { quoteId, input, idempotencyKey } = params as {
           quoteId: string;
           input: Record<string, unknown>;
+          idempotencyKey?: string;
         };
 
-        const quote = await store.getQuote(quoteId);
-        if (!quote || quote.accountId !== accountId) {
-          return {
-            jsonrpc: '2.0',
-            id,
-            error: {
-              code: -32602,
-              message: 'Invalid quote or quote belongs to another account',
-            },
-          };
-        }
-
-        const reserveRes = await reserveCredits(
+        const admission = await submitJobAdmission({
           accountId,
-          quote.totalCredits,
-          `pending_${Date.now()}`,
-          quote.quoteId
-        );
-
-        if (!reserveRes.success) {
-          return {
-            jsonrpc: '2.0',
-            id,
-            error: {
-              code: -32000,
-              message: 'Insufficient credits',
-              data: reserveRes.error,
-            },
-          };
-        }
-
-        const jobId = `job_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
-        const now = new Date().toISOString();
-
-        const job: Job = {
-          jobId,
-          accountId,
-          serviceId: quote.serviceId,
-          quoteId: quote.quoteId,
-          state: 'QUEUED',
-          financialState: 'CREDITS_RESERVED',
+          quoteId,
           input,
-          createdAt: now,
-          updatedAt: now,
-        };
-
-        await store.saveJob(job);
-
-        // Execute in background
-        const commander = getGxeonCommander();
-        commander.processJob(jobId).catch((err) => {
-          console.error(`[COMMANDER ERROR] Job ${jobId} failed:`, err);
+          idempotencyKey,
+          waitForExecution: false,
         });
+
+        if (!admission.success) {
+          return {
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: admission.statusCode === 402 ? -32000 : -32602,
+              message: admission.error?.error.message || 'Job submission failed',
+              data: admission.error,
+            },
+          };
+        }
 
         return {
           jsonrpc: '2.0',
           id,
           result: {
-            jobId,
-            state: 'QUEUED',
-            totalCreditsReserved: quote.totalCredits,
+            jobId: admission.job!.jobId,
+            state: admission.job!.state,
+            totalCreditsReserved: admission.totalCreditsReserved,
           },
         };
       }

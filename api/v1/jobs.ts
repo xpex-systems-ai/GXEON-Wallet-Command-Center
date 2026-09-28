@@ -1,12 +1,7 @@
-import crypto from 'node:crypto';
 import { authenticateMachineRequest, checkRateLimit } from '../../src/agent-economy/auth.js';
-import { validateQuote } from '../../src/agent-economy/quoteEngine.js';
-import { reserveCredits } from '../../src/agent-economy/ledger.js';
-import { checkIdempotency, recordIdempotency } from '../../src/agent-economy/idempotency.js';
+import { submitJobAdmission } from '../../src/agent-economy/admissionService.js';
 import { getAgentEconomyStore } from '../../src/agent-economy/store.js';
-import { getGxeonCommander } from '../../src/agent-economy/commander.js';
 import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
-import { Job } from '../../src/agent-economy/types.js';
 import { sendJson, sendError, parseBody } from './_helper.js';
 
 export default async function handler(req: any, res: any) {
@@ -92,92 +87,28 @@ export default async function handler(req: any, res: any) {
     const idempotencyKey =
       req.headers['idempotency-key'] || req.headers['Idempotency-Key'];
 
-    // Check Idempotency
-    const idemCheck = await checkIdempotency(idempotencyKey, account.accountId, body);
-    if (idemCheck.hasConflict) {
-      sendError(
-        res,
-        409,
-        'IDEMPOTENCY_CONFLICT',
-        idemCheck.conflictError?.error.message || 'Idempotency conflict detected'
-      );
-      return;
-    }
-    if (idemCheck.isExisting && idemCheck.cachedResponse) {
-      sendJson(res, idemCheck.cachedResponse.statusCode, idemCheck.cachedResponse.body);
-      return;
-    }
-
-    const { quoteId, input } = body;
-    if (!quoteId || typeof quoteId !== 'string') {
-      sendError(res, 400, 'INVALID_INPUT', 'Missing or invalid quoteId');
-      return;
-    }
-    if (!input || typeof input !== 'object') {
-      sendError(res, 400, 'INVALID_INPUT', 'Missing or invalid input object');
-      return;
-    }
-
-    // Validate quote
-    const quoteCheck = await validateQuote(quoteId, account.accountId);
-    if (!quoteCheck.valid || !quoteCheck.quote) {
-      const code = quoteCheck.errorCode || 'QUOTE_INVALID';
-      sendError(res, 400, code, quoteCheck.message || 'Invalid quote');
-      return;
-    }
-
-    const quote = quoteCheck.quote;
-    const jobId = `job_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
-
-    // Atomically reserve credits
-    const reserveResult = await reserveCredits(
-      account.accountId,
-      quote.totalCredits,
-      jobId,
-      quote.quoteId
-    );
-
-    if (!reserveResult.success) {
-      sendError(
-        res,
-        402,
-        'INSUFFICIENT_CREDITS',
-        reserveResult.error?.error.message || 'Insufficient credits for job'
-      );
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const job: Job = {
-      jobId,
+    const admission = await submitJobAdmission({
       accountId: account.accountId,
-      serviceId: quote.serviceId,
-      quoteId: quote.quoteId,
-      state: 'QUEUED',
-      financialState: 'CREDITS_RESERVED',
-      input,
-      createdAt: now,
-      updatedAt: now,
+      quoteId: body.quoteId,
+      input: body.input,
       idempotencyKey,
-    };
-
-    const store = getAgentEconomyStore();
-    await store.saveJob(job);
-
-    // Asynchronously dispatch to Commander
-    const commander = getGxeonCommander();
-    commander.processJob(jobId).catch((err) => {
-      console.error(`[COMMANDER DISPATCH ERROR] Job ${jobId}:`, err);
+      waitForExecution: false,
     });
 
-    const responsePayload = {
-      jobId,
-      state: 'QUEUED',
-      totalCreditsReserved: quote.totalCredits,
-    };
+    if (!admission.success) {
+      const err = admission.error?.error || {
+        code: 'ADMISSION_FAILED',
+        message: 'Job admission failed',
+      };
+      sendError(res, admission.statusCode, err.code, err.message);
+      return;
+    }
 
-    await recordIdempotency(idempotencyKey, account.accountId, body, responsePayload, 202);
-    sendJson(res, 202, responsePayload);
+    sendJson(res, admission.statusCode, {
+      jobId: admission.job!.jobId,
+      state: admission.job!.state,
+      totalCreditsReserved: admission.totalCreditsReserved,
+    });
     return;
   }
 

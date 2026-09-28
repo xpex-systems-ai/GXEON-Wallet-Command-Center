@@ -106,7 +106,7 @@ export async function createQuote(params: CreateQuoteParams): Promise<QuoteResul
 export interface ValidateQuoteResult {
   valid: boolean;
   quote?: Quote;
-  errorCode?: 'QUOTE_INVALID' | 'QUOTE_EXPIRED';
+  errorCode?: 'QUOTE_INVALID' | 'QUOTE_EXPIRED' | 'QUANTITY_MISMATCH';
   message?: string;
 }
 
@@ -166,7 +166,7 @@ export async function validateQuote(
   if (expectedQuantity !== undefined && expectedQuantity > quote.quantity) {
     return {
       valid: false,
-      errorCode: 'QUOTE_INVALID',
+      errorCode: 'QUANTITY_MISMATCH',
       message: `Input quantity (${expectedQuantity}) exceeds quoted quantity (${quote.quantity})`,
     };
   }

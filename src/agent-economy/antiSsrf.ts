@@ -1,5 +1,7 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import http from 'node:http';
+import https from 'node:https';
 
 /**
  * GXEON Strict Anti-SSRF Defense Engine
@@ -250,97 +252,120 @@ export async function safeHttpRequest(
       throw new Error(`SSRF Blocked on hop ${redirectCount} (${currentUrl}): ${val.reason}`);
     }
 
+    const pinnedIp = val.resolvedIps?.[0] || val.urlObj.hostname;
     if (val.resolvedIps) {
       allResolvedIps.push(...val.resolvedIps);
     }
 
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+    const isHttps = val.urlObj.protocol === 'https:';
+    const client = isHttps ? https : http;
 
-    try {
-      const response = await fetch(currentUrl, {
-        method: 'GET',
-        redirect: 'manual', // Strictly manual redirect handling
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'GXEON-Capability-Worker/1.0 (+https://gxeon.com/agent)',
-          Accept: '*/*',
-          ...(options.headers || {}),
+    const hopResult = await new Promise<
+      { isRedirect: true; nextUrl: string } | { isRedirect: false; result: SafeFetchResult }
+    >((resolve, reject) => {
+      let timedOut = false;
+      const req = client.request(
+        {
+          hostname: val.urlObj!.hostname,
+          port: val.urlObj!.port || (isHttps ? 443 : 80),
+          path: val.urlObj!.pathname + val.urlObj!.search,
+          method: 'GET',
+          headers: {
+            Host: val.urlObj!.host,
+            'User-Agent': 'GXEON-Capability-Worker/1.0 (+https://gxeon.com/agent)',
+            Accept: '*/*',
+            ...(options.headers || {}),
+          },
+          // DNS PINNING: Socket connects ONLY to the pre-validated IP address.
+          // Prevents DNS Rebinding attacks.
+          lookup: (_hostname, _opts, cb) => {
+            cb(null, pinnedIp, net.isIPv6(pinnedIp) ? 6 : 4);
+          },
+          timeout: timeoutMs,
+          rejectUnauthorized: true,
+          servername: isHttps ? val.urlObj!.hostname : undefined,
         },
-      });
+        (res) => {
+          const statusCode = res.statusCode || 0;
+          const statusText = res.statusMessage || '';
+          const isRedirect = [301, 302, 303, 307, 308].includes(statusCode);
 
-      clearTimeout(timeoutHandle);
+          if (isRedirect) {
+            const location = res.headers.location;
+            res.resume(); // Drain and close stream
+            if (!location) {
+              reject(new Error(`Redirect HTTP ${statusCode} missing Location header`));
+              return;
+            }
+            const nextUrl = new URL(location, currentUrl).toString();
+            resolve({ isRedirect: true, nextUrl });
+            return;
+          }
 
-      // Check if redirect
-      const isRedirect = [301, 302, 303, 307, 308].includes(response.status);
-      if (isRedirect) {
-        const location = response.headers.get('location');
-        if (!location) {
-          throw new Error(`Redirect HTTP ${response.status} missing Location header`);
-        }
-
-        // Resolve relative redirects against current URL
-        const nextUrl = new URL(location, currentUrl).toString();
-        currentUrl = nextUrl;
-        redirectCount++;
-        continue;
-      }
-
-      // Normal response
-      const latencyMs = Date.now() - startTime;
-      const headersRecord: Record<string, string> = {};
-      response.headers.forEach((v, k) => {
-        headersRecord[k.toLowerCase()] = v;
-      });
-
-      // Read bounded body
-      let bodySnippet = '';
-      if (response.body) {
-        const reader = response.body.getReader();
-        let received = 0;
-        const chunks: Uint8Array[] = [];
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) {
-            received += value.length;
-            if (received <= maxBytes) {
-              chunks.push(value);
-            } else {
-              reader.cancel();
-              break;
+          const headersRecord: Record<string, string> = {};
+          for (const [k, v] of Object.entries(res.headers)) {
+            if (v !== undefined) {
+              headersRecord[k.toLowerCase()] = Array.isArray(v) ? v.join(', ') : v;
             }
           }
+
+          let receivedBytes = 0;
+          const chunks: Buffer[] = [];
+
+          res.on('data', (chunk: Buffer) => {
+            receivedBytes += chunk.length;
+            if (receivedBytes <= maxBytes) {
+              chunks.push(chunk);
+            } else {
+              res.destroy(); // Cancel stream if response exceeds maxBytes limit
+            }
+          });
+
+          res.on('end', () => {
+            const latencyMs = Date.now() - startTime;
+            const fullBuf = Buffer.concat(chunks);
+            const bodySnippet = fullBuf.toString('utf8', 0, 4096);
+
+            resolve({
+              isRedirect: false,
+              result: {
+                finalUrl: currentUrl,
+                statusCode,
+                statusText,
+                headers: headersRecord,
+                redirectCount,
+                latencyMs,
+                tlsValid: isHttps,
+                dnsResolved: true,
+                resolvedIps: Array.from(new Set(allResolvedIps)),
+                bodySnippet,
+              },
+            });
+          });
+
+          res.on('error', (err) => reject(err));
         }
+      );
 
-        const totalBuf = new Uint8Array(chunks.reduce((acc, c) => acc + c.length, 0));
-        let offset = 0;
-        for (const c of chunks) {
-          totalBuf.set(c, offset);
-          offset += c.length;
-        }
-        bodySnippet = new TextDecoder().decode(totalBuf).slice(0, 4096);
-      }
+      req.on('timeout', () => {
+        timedOut = true;
+        req.destroy(new Error(`Request timed out after ${timeoutMs}ms`));
+      });
 
-      const tlsValid = val.urlObj.protocol === 'https:';
+      req.on('error', (err) => {
+        if (!timedOut) reject(err);
+      });
 
-      return {
-        finalUrl: currentUrl,
-        statusCode: response.status,
-        statusText: response.statusText,
-        headers: headersRecord,
-        redirectCount,
-        latencyMs,
-        tlsValid,
-        dnsResolved: true,
-        resolvedIps: Array.from(new Set(allResolvedIps)),
-        bodySnippet,
-      };
-    } catch (err: unknown) {
-      clearTimeout(timeoutHandle);
-      throw err;
+      req.end();
+    });
+
+    if (hopResult.isRedirect) {
+      currentUrl = hopResult.nextUrl;
+      redirectCount++;
+      continue;
     }
+
+    return hopResult.result;
   }
 
   throw new Error(`Exceeded max redirects limit of ${maxRedirects}`);

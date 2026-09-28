@@ -1,5 +1,6 @@
 import { authenticateMachineRequest } from '../../src/agent-economy/auth.js';
 import { ingestDemandSignal, RawDemandSignal } from '../../src/agent-economy/demandRadar.js';
+import { fetchAndIngestX402Demand } from '../../src/agent-economy/connectors/x402BazaarConnector.js';
 import { getAgentEconomyStore } from '../../src/agent-economy/store.js';
 import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
 import { sendJson, sendError, parseBody } from './_helper.js';
@@ -14,7 +15,17 @@ export default async function handler(req: any, res: any) {
   const store = getAgentEconomyStore();
 
   if (req.method === 'GET') {
-    const opportunities = await store.listOpportunities();
+    const url = new URL(req.url, 'http://localhost');
+    const refresh = url.searchParams.get('refresh') === 'true';
+    let opportunities = await store.listOpportunities();
+    if (opportunities.length === 0 || refresh) {
+      try {
+        await fetchAndIngestX402Demand();
+        opportunities = await store.listOpportunities();
+      } catch (err) {
+        console.warn('[RADAR] Live x402 fetch error:', err);
+      }
+    }
     sendJson(res, 200, {
       total: opportunities.length,
       opportunities,

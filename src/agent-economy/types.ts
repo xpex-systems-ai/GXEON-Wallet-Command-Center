@@ -155,6 +155,16 @@ export interface WorkerLease {
   workerId: string;
   jobId: string;
   expiresAt: string;
+  fencingToken: number;
+}
+
+export interface OutboxJob {
+  outboxId: string;
+  jobId: string;
+  status: 'PENDING' | 'DISPATCHED' | 'FAILED' | 'COMPLETED';
+  attemptCount: number;
+  lastAttemptAt?: string;
+  createdAt: string;
 }
 
 export interface EvidenceRecord {
@@ -177,19 +187,34 @@ export type OpportunityStatus =
   | 'WATCHING'
   | 'READY_FOR_OPERATOR';
 
+export type DemandSignalKind =
+  | 'SUPPLY_LISTING'
+  | 'USAGE_SIGNAL'
+  | 'DEMAND_LEAD'
+  | 'FUNDED_JOB';
+
 export interface DemandOpportunity {
   opportunityId: string;
   source: string;
+  sourceRecordId?: string;
   sourceUrl: string;
+  observedAt: string;
+  kind: DemandSignalKind;
   title: string;
   summary: string;
   requiredCapability: string;
-  estimatedValue: number;
+  priceCurrency?: string;
+  statedPrice?: number;
+  calls30d?: number;
+  uniquePayers30d?: number;
+  estimatedValue: number | null;
   fitScore: number;
   effortScore: number;
   riskScore: number;
   confidence: number;
+  evidenceRef?: string;
   discoveredAt: string;
+  expiresAt?: string;
   status: OpportunityStatus;
 }
 
@@ -203,6 +228,7 @@ export type GxeonErrorCode =
   | 'INVALID_INPUT'
   | 'QUOTE_EXPIRED'
   | 'QUOTE_INVALID'
+  | 'QUANTITY_MISMATCH'
   | 'INSUFFICIENT_CREDITS'
   | 'ACCOUNT_SUSPENDED'
   | 'JOB_NOT_FOUND'

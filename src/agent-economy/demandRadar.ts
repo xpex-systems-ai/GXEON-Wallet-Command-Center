@@ -2,16 +2,26 @@ import crypto from 'node:crypto';
 import {
   DemandOpportunity,
   OpportunityStatus,
+  DemandSignalKind,
 } from './types.js';
 import { getAgentEconomyStore } from './store.js';
 import { getService } from './services/registry.js';
 
 export interface RawDemandSignal {
   source: string;
+  sourceRecordId?: string;
   sourceUrl: string;
+  kind?: DemandSignalKind;
   title: string;
   rawDescription: string;
-  suggestedReward?: number;
+  suggestedReward?: number | null;
+  priceCurrency?: string;
+  statedPrice?: number;
+  calls30d?: number;
+  uniquePayers30d?: number;
+  observedAt?: string;
+  expiresAt?: string;
+  evidenceRef?: string;
 }
 
 export interface ScoreFactors {
@@ -130,20 +140,30 @@ export function scoreDemandSignal(signal: RawDemandSignal): ScoreFactors {
 export async function ingestDemandSignal(signal: RawDemandSignal): Promise<DemandOpportunity> {
   const scoring = scoreDemandSignal(signal);
   const opportunityId = `opp_${crypto.randomBytes(8).toString('hex')}`;
+  const now = new Date().toISOString();
 
   const opportunity: DemandOpportunity = {
     opportunityId,
     source: signal.source,
+    sourceRecordId: signal.sourceRecordId,
     sourceUrl: signal.sourceUrl,
+    observedAt: signal.observedAt || now,
+    kind: signal.kind || 'DEMAND_LEAD',
     title: signal.title,
     summary: signal.rawDescription.slice(0, 280),
     requiredCapability: scoring.matchedCapability,
-    estimatedValue: signal.suggestedReward ?? 25.0,
+    priceCurrency: signal.priceCurrency,
+    statedPrice: signal.statedPrice,
+    calls30d: signal.calls30d,
+    uniquePayers30d: signal.uniquePayers30d,
+    estimatedValue: signal.suggestedReward !== undefined ? signal.suggestedReward : null,
     fitScore: scoring.fitScore,
     effortScore: scoring.effortScore,
     riskScore: scoring.riskScore,
     confidence: scoring.confidence,
-    discoveredAt: new Date().toISOString(),
+    evidenceRef: signal.evidenceRef,
+    discoveredAt: now,
+    expiresAt: signal.expiresAt,
     status: scoring.status,
   };
 

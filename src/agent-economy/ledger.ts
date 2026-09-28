@@ -63,8 +63,7 @@ export async function creditAccount(
     idempotencyKey,
   };
 
-  await store.appendLedgerEntry(entry);
-  await store.saveAccount(account);
+  await store.commitLedgerTransaction(account, entry);
 
   return { success: true, entry, account };
 }
@@ -130,8 +129,7 @@ export async function reserveCredits(
     timestamp: new Date().toISOString(),
   };
 
-  await store.appendLedgerEntry(entry);
-  await store.saveAccount(account);
+  await store.commitLedgerTransaction(account, entry);
 
   return { success: true, entry, account };
 }
@@ -174,8 +172,7 @@ export async function settleCredits(
     timestamp: new Date().toISOString(),
   };
 
-  await store.appendLedgerEntry(entry);
-  await store.saveAccount(account);
+  await store.commitLedgerTransaction(account, entry);
 
   return { success: true, entry, account };
 }
@@ -216,8 +213,7 @@ export async function releaseCredits(
     timestamp: new Date().toISOString(),
   };
 
-  await store.appendLedgerEntry(entry);
-  await store.saveAccount(account);
+  await store.commitLedgerTransaction(account, entry);
 
   return { success: true, entry, account };
 }

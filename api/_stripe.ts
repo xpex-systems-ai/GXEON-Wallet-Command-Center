@@ -363,17 +363,40 @@ export class VercelStripeService {
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
-      const orderId = session.metadata?.order_id;
       const serviceId = session.metadata?.service_id;
 
       if (session.payment_status !== 'paid') {
         return { status: 'UNPAID', processed: false, error: 'Stripe session is not paid' };
       }
-      if (session.amount_total !== 4900) {
-        return { status: 'AMOUNT_MISMATCH', processed: false, error: 'Stripe amount mismatch' };
-      }
       if (session.currency?.toLowerCase() !== 'brl') {
         return { status: 'CURRENCY_MISMATCH', processed: false, error: 'Stripe currency mismatch' };
+      }
+
+      if (serviceId === 'agent_credit_topup') {
+        const accountId = session.metadata?.account_id;
+        const credits = parseInt(session.metadata?.credits || '0', 10);
+        if (!accountId || credits <= 0) {
+          return { status: 'INVALID_ORDER_STATE', processed: false, error: 'Missing or invalid account_id or credits in metadata' };
+        }
+
+        const { creditAccount } = await import('../src/agent-economy/ledger.js');
+        const creditRes = await creditAccount(accountId, credits, `stripe_${event.id}`);
+        if (!creditRes.success) {
+          return { status: 'INVALID_ORDER_STATE', processed: false, error: creditRes.error?.error.message || 'Failed to credit account' };
+        }
+
+        await this.store.recordEventIfAbsent(event.id, event.type);
+        return {
+          status: 'PAYMENT_SUCCEEDED',
+          processed: true,
+          orderId: `topup_${event.id}`,
+          jobId: `topup_acc_${accountId}`,
+        };
+      }
+
+      const orderId = session.metadata?.order_id;
+      if (session.amount_total !== 4900) {
+        return { status: 'AMOUNT_MISMATCH', processed: false, error: 'Stripe amount mismatch' };
       }
       if (serviceId !== 'gxeon_quick_fix_v1') {
         return { status: 'SERVICE_MISMATCH', processed: false, error: 'Stripe service mismatch' };

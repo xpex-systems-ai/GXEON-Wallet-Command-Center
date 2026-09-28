@@ -3,12 +3,16 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/.well-known/(.*)",
-      "destination": "/.well-known/$1"
+      "source": "/.well-known/gxeon-agent.json",
+      "destination": "/api/well-known-agent"
     },
     {
       "source": "/openapi.json",
-      "destination": "/openapi.json"
+      "destination": "/api/openapi"
+    },
+    {
+      "source": "/v1/billing/(.*)",
+      "destination": "/api/v1/billing/$1"
     },
     {
       "source": "/v1/jobs/:jobId/result",
