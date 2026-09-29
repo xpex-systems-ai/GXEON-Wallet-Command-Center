@@ -207,9 +207,10 @@ export class FirestoreRestClient {
     }
   }
 
-  async list<T>(collection: string): Promise<Array<FirestoreDocument<T>>> {
+  async list<T>(collection: string, pageSize = 100): Promise<Array<FirestoreDocument<T>>> {
     try {
-      const response = await firestoreFetch(`/${encodeURIComponent(collection)}?pageSize=100`);
+      const safePageSize = Math.max(1, Math.min(500, Math.floor(pageSize)));
+      const response = await firestoreFetch(`/${encodeURIComponent(collection)}?pageSize=${safePageSize}`);
       if (!response.ok) return [];
       const data = await response.json() as { documents?: FirestoreRestDocument[] };
       const documents = data.documents || [];
