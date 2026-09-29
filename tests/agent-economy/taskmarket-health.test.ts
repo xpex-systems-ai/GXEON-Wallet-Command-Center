@@ -35,6 +35,14 @@ describe('background radar freshness', () => {
 });
 
 describe('identity must match the current registry and chain', () => {
+  it('does not infer zero execution spend from a free provider action', () => {
+    const result = qualifyTask(taskFixture(), { funding: fundingFixture(), legal: legalFixture,
+      requester: reputationFixture, identity: identityFixture });
+    expect(result.externalSpendUsdc).toBeNull();
+    expect(result.requiresSpend).toBeNull();
+    expect(result.blockers).toContain('EXTERNAL_SPEND_UNKNOWN');
+    expect(result.maximumNetIfAcceptedUsdc).toBeNull();
+  });
   it.each([true, false])('requires current identity cache (cacheFresh=%s)', async cacheFresh => {
     const fetcher = vi.fn<typeof fetch>(async url => {
       const path = String(url);
