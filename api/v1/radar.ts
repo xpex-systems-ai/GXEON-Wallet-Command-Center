@@ -1,6 +1,7 @@
 import { authenticateMachineRequest } from '../../src/agent-economy/auth.js';
 import { ingestDemandSignal, RawDemandSignal } from '../../src/agent-economy/demandRadar.js';
 import { fetchAndIngestX402Demand } from '../../src/agent-economy/connectors/x402BazaarConnector.js';
+import { fetchPaidBountyRadar } from '../../src/agent-economy/connectors/paidBountyConnector.js';
 import { getAgentEconomyStore } from '../../src/agent-economy/store.js';
 import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
 import { sendJson, sendError, parseBody } from './_helper.js';
@@ -31,9 +32,28 @@ export default async function handler(req: any, res: any) {
         console.warn('[RADAR] Live x402 fetch error:', err);
       }
     }
+    let paidBountyRadar = {
+      providers: {
+        rustchain: { ok: false, count: 0, error: 'not_refreshed' },
+        algora: { ok: false, count: 0, error: 'not_refreshed' },
+      },
+      bounties: [] as any[],
+    };
+
+    if (refresh) {
+      try {
+        paidBountyRadar = await fetchPaidBountyRadar();
+      } catch (err) {
+        console.warn('[PAID_BOUNTY_RADAR] Fetch error:', err);
+      }
+    }
+
     sendJson(res, 200, {
       total: opportunities.length,
       opportunities,
+      paidBounties: paidBountyRadar.bounties,
+      paidBountyProviders: paidBountyRadar.providers,
+      moneyTruth: 'A listed bounty is not revenue. Only authoritative external settlement counts as revenue.',
     });
     return;
   }
