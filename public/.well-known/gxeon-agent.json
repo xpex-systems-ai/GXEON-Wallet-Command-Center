@@ -5,7 +5,8 @@
   "protocols": [
     "REST",
     "MCP",
-    "x402"
+    "x402",
+    "Stripe Checkout"
   ],
   "network": "eip155:8453",
   "currency": "USDC",
@@ -22,5 +23,17 @@
       "/x402/url-verify",
       "/x402/json-validate"
     ]
+  },
+  "stripe": {
+    "enabled": true,
+    "livemode": true,
+    "currency": "BRL",
+    "serviceId": "gxeon_quick_fix_v1",
+    "amountMinor": 4900,
+    "amountDisplay": "R$49,00",
+    "checkoutEndpoint": "/v1/checkout",
+    "publicPaymentLink": "https://buy.stripe.com/bJeeVd45Zgrp5EFdeV1B60b",
+    "paymentLinkId": "plink_1UKpGBHDcsx7lyooXYeQg6Al",
+    "fulfillmentGate": "verified_live_stripe_webhook"
   }
 }

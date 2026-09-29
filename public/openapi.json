@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "GXEON Autonomous Agent Capability Market & x402 Gateway API",
-    "description": "Production Agent-to-Agent (A2A) machine capability marketplace and canonical x402 V2 micro-USDC payment gateway. Zero human checkout required.",
-    "version": "2.0.0"
+    "description": "Production GXEON Agent-to-Agent capability marketplace with Stripe LIVE hosted checkout for BRL services and canonical x402 V2 micro-USDC machine payments. Payment execution remains proof-gated and Money Truth compliant.",
+    "version": "2.1.0"
   },
   "servers": [
     {
@@ -29,7 +29,9 @@
                   "properties": {
                     "services": {
                       "type": "array",
-                      "items": { "$ref": "#/components/schemas/Service" }
+                      "items": {
+                        "$ref": "#/components/schemas/Service"
+                      }
                     }
                   }
                 }
@@ -52,7 +54,9 @@
                   "properties": {
                     "capabilities": {
                       "type": "array",
-                      "items": { "type": "string" }
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   }
                 }
@@ -92,7 +96,9 @@
                   "properties": {
                     "paymentRails": {
                       "type": "array",
-                      "items": { "type": "string" }
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   }
                 }
@@ -110,7 +116,9 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/QuickFixCheckoutRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/QuickFixCheckoutRequest"
+              }
             }
           }
         },
@@ -119,12 +127,18 @@
             "description": "Checkout Session created; payment is still pending",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/QuickFixCheckoutResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/QuickFixCheckoutResponse"
+                }
               }
             }
           },
-          "400": { "description": "Invalid request" },
-          "503": { "description": "Stripe or durable store not configured" }
+          "400": {
+            "description": "Invalid request"
+          },
+          "503": {
+            "description": "Stripe or durable store not configured"
+          }
         }
       }
     },
@@ -190,7 +204,9 @@
             "name": "PAYMENT-SIGNATURE",
             "in": "header",
             "description": "Base Mainnet USDC transaction hash or x402 payment proof",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -200,10 +216,16 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "rawJson": { "type": "string" },
-                  "schema": { "type": "object" }
+                  "rawJson": {
+                    "type": "string"
+                  },
+                  "schema": {
+                    "type": "object"
+                  }
                 },
-                "required": ["rawJson"]
+                "required": [
+                  "rawJson"
+                ]
               }
             }
           }
@@ -213,11 +235,15 @@
             "description": "Execution successful with cryptographic receipt",
             "headers": {
               "PAYMENT-RESPONSE": {
-                "schema": { "type": "string" },
+                "schema": {
+                  "type": "string"
+                },
                 "description": "Canonical x402 V2 receipt payload"
               },
               "X-402-Receipt": {
-                "schema": { "type": "string" },
+                "schema": {
+                  "type": "string"
+                },
                 "description": "Receipt ID"
               }
             },
@@ -233,7 +259,9 @@
             "description": "Payment Required - challenge returned with Base USDC payment instructions",
             "headers": {
               "PAYMENT-REQUIRED": {
-                "schema": { "type": "string" },
+                "schema": {
+                  "type": "string"
+                },
                 "description": "Canonical x402 V2 challenge requirements"
               }
             },
@@ -276,7 +304,9 @@
             "name": "PAYMENT-SIGNATURE",
             "in": "header",
             "description": "Base Mainnet USDC transaction hash or x402 payment proof",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -288,10 +318,14 @@
                 "properties": {
                   "urls": {
                     "type": "array",
-                    "items": { "type": "string" }
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 },
-                "required": ["urls"]
+                "required": [
+                  "urls"
+                ]
               }
             }
           }
@@ -336,40 +370,89 @@
     "schemas": {
       "QuickFixCheckoutRequest": {
         "type": "object",
-        "required": ["customerEmail", "problemSummary"],
+        "required": [
+          "customerEmail",
+          "problemSummary"
+        ],
         "properties": {
-          "customerName": { "type": "string" },
-          "customerEmail": { "type": "string", "format": "email" },
-          "problemSummary": { "type": "string" },
-          "repoOrCodeUrl": { "type": "string" },
-          "requestId": { "type": "string" },
-          "source": { "type": "string" },
-          "agentId": { "type": "string" },
-          "opportunityId": { "type": "string" },
-          "offerId": { "type": "string" }
+          "customerName": {
+            "type": "string"
+          },
+          "customerEmail": {
+            "type": "string",
+            "format": "email"
+          },
+          "problemSummary": {
+            "type": "string"
+          },
+          "repoOrCodeUrl": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "agentId": {
+            "type": "string"
+          },
+          "opportunityId": {
+            "type": "string"
+          },
+          "offerId": {
+            "type": "string"
+          }
         }
       },
       "QuickFixCheckoutResponse": {
         "type": "object",
         "properties": {
-          "orderId": { "type": "string" },
-          "checkoutUrl": { "type": "string", "format": "uri" },
-          "sessionId": { "type": "string" }
+          "orderId": {
+            "type": "string"
+          },
+          "checkoutUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "sessionId": {
+            "type": "string"
+          }
         }
       },
       "Service": {
         "type": "object",
         "properties": {
-          "serviceId": { "type": "string" },
-          "version": { "type": "string" },
-          "name": { "type": "string" },
-          "description": { "type": "string" },
-          "unit": { "type": "string" },
-          "unitPriceCredits": { "type": "integer" },
-          "unitPriceUsdc": { "type": "number" },
-          "minimumChargeCredits": { "type": "integer" },
-          "minimumChargeUsdc": { "type": "number" },
-          "status": { "type": "string" }
+          "serviceId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "unitPriceCredits": {
+            "type": "integer"
+          },
+          "unitPriceUsdc": {
+            "type": "number"
+          },
+          "minimumChargeCredits": {
+            "type": "integer"
+          },
+          "minimumChargeUsdc": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string"
+          }
         }
       },
       "PricingResponse": {
@@ -377,81 +460,175 @@
         "properties": {
           "pricing": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/Service" }
+            "items": {
+              "$ref": "#/components/schemas/Service"
+            }
           },
           "billingRails": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
       "OfferRequest": {
         "type": "object",
-        "required": ["buyerAgentId", "requestedCapability", "quantity"],
+        "required": [
+          "buyerAgentId",
+          "requestedCapability",
+          "quantity"
+        ],
         "properties": {
-          "buyerAgentId": { "type": "string" },
-          "requestedCapability": { "type": "string" },
-          "quantity": { "type": "integer" }
+          "buyerAgentId": {
+            "type": "string"
+          },
+          "requestedCapability": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          }
         }
       },
       "CapabilityOffer": {
         "type": "object",
         "properties": {
-          "offerId": { "type": "string" },
-          "seller": { "type": "string", "example": "GXEON" },
-          "serviceId": { "type": "string" },
-          "quantity": { "type": "integer" },
-          "unitPrice": { "type": "number" },
-          "total": { "type": "number" },
-          "currency": { "type": "string" },
-          "expiresAt": { "type": "string" },
+          "offerId": {
+            "type": "string"
+          },
+          "seller": {
+            "type": "string",
+            "example": "GXEON"
+          },
+          "serviceId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "unitPrice": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
           "paymentMethods": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
-          "ttlSeconds": { "type": "integer" }
+          "ttlSeconds": {
+            "type": "integer"
+          }
         }
       },
       "NegotiationRequest": {
         "type": "object",
-        "required": ["buyerAgentId", "requestedCapability", "requestedQuantity", "proposedUnitPriceCredits"],
+        "required": [
+          "buyerAgentId",
+          "requestedCapability",
+          "requestedQuantity",
+          "proposedUnitPriceCredits"
+        ],
         "properties": {
-          "buyerAgentId": { "type": "string" },
-          "requestedCapability": { "type": "string" },
-          "requestedQuantity": { "type": "integer" },
-          "proposedUnitPriceCredits": { "type": "number" }
+          "buyerAgentId": {
+            "type": "string"
+          },
+          "requestedCapability": {
+            "type": "string"
+          },
+          "requestedQuantity": {
+            "type": "integer"
+          },
+          "proposedUnitPriceCredits": {
+            "type": "number"
+          }
         }
       },
       "NegotiationResponse": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["ACCEPTED", "COUNTER", "REJECTED"] },
-          "negotiationId": { "type": "string" },
-          "acceptedPrice": { "type": "number" },
-          "counterPrice": { "type": "number" },
-          "reason": { "type": "string" }
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACCEPTED",
+              "COUNTER",
+              "REJECTED"
+            ]
+          },
+          "negotiationId": {
+            "type": "string"
+          },
+          "acceptedPrice": {
+            "type": "number"
+          },
+          "counterPrice": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          }
         }
       },
       "X402Challenge": {
         "type": "object",
         "properties": {
-          "x402Version": { "type": "integer", "example": 2 },
-          "status": { "type": "integer", "example": 402 },
-          "title": { "type": "string" },
-          "description": { "type": "string" },
-          "resource": { "type": "string" },
-          "serviceId": { "type": "string" },
+          "x402Version": {
+            "type": "integer",
+            "example": 2
+          },
+          "status": {
+            "type": "integer",
+            "example": 402
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "serviceId": {
+            "type": "string"
+          },
           "accepts": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "scheme": { "type": "string", "example": "exact" },
-                "network": { "type": "string", "example": "eip155:8453" },
-                "asset": { "type": "string", "example": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
-                "amount": { "type": "string", "example": "10000" },
-                "payTo": { "type": "string" },
-                "maxTimeoutSeconds": { "type": "integer", "example": 300 }
+                "scheme": {
+                  "type": "string",
+                  "example": "exact"
+                },
+                "network": {
+                  "type": "string",
+                  "example": "eip155:8453"
+                },
+                "asset": {
+                  "type": "string",
+                  "example": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                },
+                "amount": {
+                  "type": "string",
+                  "example": "10000"
+                },
+                "payTo": {
+                  "type": "string"
+                },
+                "maxTimeoutSeconds": {
+                  "type": "integer",
+                  "example": 300
+                }
               }
             }
           }
@@ -460,41 +637,104 @@
       "X402ExecutionSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "example": "SUCCESS" },
-          "serviceId": { "type": "string" },
-          "result": { "type": "object" },
-          "receipt": { "$ref": "#/components/schemas/X402Receipt" }
+          "status": {
+            "type": "string",
+            "example": "SUCCESS"
+          },
+          "serviceId": {
+            "type": "string"
+          },
+          "result": {
+            "type": "object"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/X402Receipt"
+          }
         }
       },
       "X402Receipt": {
         "type": "object",
         "properties": {
-          "receiptId": { "type": "string", "example": "rcpt_1790631300_ab12" },
-          "seller": { "type": "string", "example": "GXEON" },
-          "buyer": { "type": "string" },
-          "serviceId": { "type": "string" },
-          "quantity": { "type": "integer" },
-          "paymentRail": { "type": "string", "example": "x402" },
-          "currency": { "type": "string", "example": "USDC" },
-          "amountAtomic": { "type": "string", "example": "10000" },
-          "amountUsdc": { "type": "string", "example": "0.010000" },
-          "network": { "type": "string", "example": "eip155:8453" },
-          "settlementId": { "type": "string" },
-          "txHash": { "type": "string" },
-          "blockNumber": { "type": "integer" },
-          "jobId": { "type": "string" },
-          "resultHash": { "type": "string" },
-          "evidenceHash": { "type": "string" },
-          "createdAt": { "type": "string" }
+          "receiptId": {
+            "type": "string",
+            "example": "rcpt_1790631300_ab12"
+          },
+          "seller": {
+            "type": "string",
+            "example": "GXEON"
+          },
+          "buyer": {
+            "type": "string"
+          },
+          "serviceId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "paymentRail": {
+            "type": "string",
+            "example": "x402"
+          },
+          "currency": {
+            "type": "string",
+            "example": "USDC"
+          },
+          "amountAtomic": {
+            "type": "string",
+            "example": "10000"
+          },
+          "amountUsdc": {
+            "type": "string",
+            "example": "0.010000"
+          },
+          "network": {
+            "type": "string",
+            "example": "eip155:8453"
+          },
+          "settlementId": {
+            "type": "string"
+          },
+          "txHash": {
+            "type": "string"
+          },
+          "blockNumber": {
+            "type": "integer"
+          },
+          "jobId": {
+            "type": "string"
+          },
+          "resultHash": {
+            "type": "string"
+          },
+          "evidenceHash": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
         }
       },
       "ErrorResponse": {
         "type": "object",
         "properties": {
-          "error": { "type": "string" },
-          "message": { "type": "string" }
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
         }
       }
     }
+  },
+  "x-gxeon-stripe-live": {
+    "enabled": true,
+    "serviceId": "gxeon_quick_fix_v1",
+    "amountMinor": 4900,
+    "currency": "brl",
+    "checkoutEndpoint": "/v1/checkout",
+    "publicPaymentLink": "https://buy.stripe.com/bJeeVd45Zgrp5EFdeV1B60b",
+    "paymentLinkId": "plink_1UKpGBHDcsx7lyooXYeQg6Al"
   }
 }
