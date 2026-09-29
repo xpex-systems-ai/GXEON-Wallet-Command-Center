@@ -10,7 +10,8 @@ on:
       - '.github/workflows/taskmarket-radar.yml'
       - 'src/agent-economy/taskmarket/**'
       - 'src/agent-economy/connectors/taskmarketConnector.ts'
-      - 'api/cron/taskmarket-radar.ts'
+      - 'api/v1/radar.ts'
+      - 'vercel.json'
 
 permissions:
   contents: read

@@ -3,6 +3,14 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/taskmarket",
+      "destination": "/api/v1/radar?gxeonView=taskmarket"
+    },
+    {
+      "source": "/api/cron/taskmarket-radar",
+      "destination": "/api/v1/radar?gxeonView=taskmarket-poll"
+    },
+    {
       "source": "/x402/(.*)",
       "destination": "/api/x402?path=$1"
     },

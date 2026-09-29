@@ -16,6 +16,8 @@ Taskmarket public discovery is live. This release reads, qualifies and records r
 
 `GET /api/taskmarket` returns the latest durable snapshot. `?live=1` performs a fresh public read without writing opportunity or revenue records. Views `network`, `legal`, `identity`, `task`, `qualify` and `preview` expose read-only inspection. POST is rejected. MCP exposes ten read/preview tools plus four fail-closed action tools.
 
+Both public Taskmarket URLs rewrite into the existing `/api/v1/radar` function, keeping this deployment within the current hosting plan's 12-function limit. The poll branch still requires scheduler authentication; the public branch still rejects writes.
+
 `.github/workflows/taskmarket-radar.yml` requests a poll every 15 minutes. GitHub schedules can be delayed. The workflow sends a short-lived GitHub OIDC token to `/api/cron/taskmarket-radar`; it requires no new shared secret. The server checks the issuer signature, exact audience, repository and owner IDs, main ref, workflow path, event, subject and token times. Optional existing `CRON_SECRET` authentication remains supported. Unauthenticated polling is rejected.
 
 The authenticated poll creates a durable 15-minute slot, stores current opportunities, reconciles known submissions and refreshes the unified Taskmarket/Bounty/MergePay/paid-GitHub radar. Repeated calls in the same slot return the recent snapshot. A failed slot does not count as a successful poll; recovery is the next slot. Scheduler status displays the last successful poll, not a presumed schedule execution.
