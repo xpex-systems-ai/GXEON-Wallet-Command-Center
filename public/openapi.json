@@ -102,6 +102,32 @@
         }
       }
     },
+    "/v1/checkout": {
+      "post": {
+        "summary": "Create a Stripe LIVE Checkout Session for GXEON Quick Fix",
+        "description": "Creates an unpaid R$49.00 Checkout Session using server-authoritative pricing. Revenue remains zero until a verified LIVE Stripe webhook confirms payment.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/QuickFixCheckoutRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Checkout Session created; payment is still pending",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/QuickFixCheckoutResponse" }
+              }
+            }
+          },
+          "400": { "description": "Invalid request" },
+          "503": { "description": "Stripe or durable store not configured" }
+        }
+      }
+    },
     "/v1/offers": {
       "post": {
         "summary": "Request an autonomous capability offer from GXEON Offer Agent",
@@ -308,6 +334,29 @@
   },
   "components": {
     "schemas": {
+      "QuickFixCheckoutRequest": {
+        "type": "object",
+        "required": ["customerEmail", "problemSummary"],
+        "properties": {
+          "customerName": { "type": "string" },
+          "customerEmail": { "type": "string", "format": "email" },
+          "problemSummary": { "type": "string" },
+          "repoOrCodeUrl": { "type": "string" },
+          "requestId": { "type": "string" },
+          "source": { "type": "string" },
+          "agentId": { "type": "string" },
+          "opportunityId": { "type": "string" },
+          "offerId": { "type": "string" }
+        }
+      },
+      "QuickFixCheckoutResponse": {
+        "type": "object",
+        "properties": {
+          "orderId": { "type": "string" },
+          "checkoutUrl": { "type": "string", "format": "uri" },
+          "sessionId": { "type": "string" }
+        }
+      },
       "Service": {
         "type": "object",
         "properties": {
