@@ -45,6 +45,7 @@ export interface CheckoutSessionInput {
   customOrderId?: string;
   clientOrderId?: string;
   requestId?: string;
+  serviceId?: string;
   source?: string;
   agentId?: string;
   opportunityId?: string;
@@ -271,6 +272,11 @@ export class VercelStripeService {
       }
     }
 
+    const targetServiceId = input.serviceId || 'gxeon_quick_fix_v1';
+    if (targetServiceId !== 'gxeon_quick_fix_v1') {
+      throw new Error(`Unsupported Stripe serviceId: ${targetServiceId}. Only gxeon_quick_fix_v1 is active.`);
+    }
+
     if (!order) {
       const proposed: CustomerOrder = {
         id: orderId,
@@ -291,6 +297,14 @@ export class VercelStripeService {
       };
       order = await this.store.createOrderIfAbsent(orderId, proposed);
     }
+
+    const sessionMetadata: Record<string, string> = {
+      order_id: orderId,
+      service_id: 'gxeon_quick_fix_v1',
+      opportunity_id: input.opportunityId || '',
+      agent_id: input.agentId || 'GXEON_STRIPE_AGENT',
+      source: input.source || 'gxeon_quantum_swarm',
+    };
 
     const session = await this.stripe.checkout.sessions.create(
       {
@@ -317,19 +331,19 @@ export class VercelStripeService {
         metadata: {
           order_id: orderId,
           service_id: 'gxeon_quick_fix_v1',
-          source: input.source || order.source || 'web',
-          agent_id: input.agentId || order.agentId || '',
-          opportunity_id: input.opportunityId || order.opportunityId || '',
-          offer_id: input.offerId || order.offerId || '',
+          source: input.source || (order as any).source || 'web',
+          agent_id: input.agentId || (order as any).agentId || 'GXEON_STRIPE_AGENT',
+          opportunity_id: input.opportunityId || (order as any).opportunityId || '',
+          offer_id: input.offerId || (order as any).offerId || '',
         },
         payment_intent_data: {
           metadata: {
             order_id: orderId,
             service_id: 'gxeon_quick_fix_v1',
-            source: input.source || order.source || 'web',
-            agent_id: input.agentId || order.agentId || '',
-            opportunity_id: input.opportunityId || order.opportunityId || '',
-            offer_id: input.offerId || order.offerId || '',
+            source: input.source || (order as any).source || 'web',
+            agent_id: input.agentId || (order as any).agentId || 'GXEON_STRIPE_AGENT',
+            opportunity_id: input.opportunityId || (order as any).opportunityId || '',
+            offer_id: input.offerId || (order as any).offerId || '',
           },
         },
         success_url: `${this.publicUrl}/order/${orderId}/success?session_id={CHECKOUT_SESSION_ID}`,

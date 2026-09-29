@@ -5,3 +5,5 @@ export * from './pricingAgent.js';
 export * from './offerAgent.js';
 export * from './negotiation.js';
 export * from './retentionAgent.js';
+export * from './quantumSwarm.js';
+
