@@ -159,9 +159,12 @@ export class TaskmarketConnector {
     if (!address) return { status: 'PUBLIC_ADDRESS_REQUIRED', walletAddress: null, registered: null, agentId: null, stats: null };
     string(address, ADDRESS);
     const i = object(await this.read(`/api/identity/status?address=${address}`));
-    const registered = bool(i.registered); const agentId = i.agentId == null ? null : string(i.agentId, UINT);
-    if (registered && !agentId) throw new Error('TASKMARKET_IDENTITY_MISMATCH');
-    const result: WorkerStatus = { status: registered ? 'REGISTERED' : 'REGISTRATION_PENDING', walletAddress: address, registered, agentId, cacheFresh: bool(i.cacheFresh), stats: null };
+    const reportedRegistered = bool(i.registered); const agentId = i.agentId == null ? null : string(i.agentId, UINT);
+    if (reportedRegistered && !agentId) throw new Error('TASKMARKET_IDENTITY_MISMATCH');
+    const cacheFresh = bool(i.cacheFresh);
+    // An ID minted against another registry/chain is not a current worker identity.
+    const registered = reportedRegistered && cacheFresh;
+    const result: WorkerStatus = { status: registered ? 'REGISTERED' : 'REGISTRATION_PENDING', walletAddress: address, registered, agentId, cacheFresh, stats: null };
     const s = object(await this.read(`/api/agents/stats?address=${address}`));
     if (String(s.address).toLowerCase() !== address.toLowerCase()) throw new Error('TASKMARKET_WORKER_MISMATCH');
     let balance: string | null = null;

@@ -231,5 +231,6 @@ export interface TaskmarketSnapshot {
   fetchedAt: string;
   openApiHash: string | null;
   persistence: 'DURABLE' | 'UNAVAILABLE';
-  scheduler: { kind: 'github_actions_oidc'; cadence: '*/15 * * * *'; lastSuccessfulPoll: string | null };
+  scheduler: { kind: 'github_actions_oidc'; cadence: string; lastSuccessfulPoll: string | null;
+    health?: 'AWAITING_FIRST_POLL' | 'CURRENT' | 'DELAYED' | 'INVALID_TIMESTAMP'; ageSeconds?: number | null };
 }

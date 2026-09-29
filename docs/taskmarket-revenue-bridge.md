@@ -22,6 +22,10 @@ Both public Taskmarket URLs rewrite into the existing `/api/v1/radar` function, 
 
 The authenticated poll creates a durable 15-minute slot, stores current opportunities, reconciles known submissions and refreshes the unified Taskmarket/Bounty/MergePay/paid-GitHub radar. Repeated calls in the same slot return the recent snapshot. A failed slot does not count as a successful poll; recovery is the next slot. Scheduler status displays the last successful poll, not a presumed schedule execution.
 
+The schedule now targets minutes 7, 22, 37 and 52 to avoid the start-of-hour peak. This does not guarantee GitHub runner timing. Reads derive `scheduler.health` and `ageSeconds` from the last durable successful poll: after 30 minutes it becomes `DELAYED`. Missing or invalid timestamps cannot report healthy. A manual LIVE refresh does not update the background poll timestamp. The dashboard ages both observations each minute and explicitly shows delayed polling. GitHub documents scheduling limitations at https://docs.github.com/en/actions/how-tos/troubleshoot-workflows.
+
+Identity status requires both `registered` and `cacheFresh` from the provider. A stale ERC-8004 identity from another registry or chain remains `REGISTRATION_PENDING`, retains its public agent ID for diagnosis, and cannot pass qualification. No registration or signature is attempted.
+
 Firestore collections: `paid_opportunities`, `marketplace_tasks`, `marketplace_assessments`, `marketplace_missions`, `marketplace_settlements`, `machine_revenue`, `marketplace_agent_state`, `marketplace_poll_runs`. Phase A creates no claim/submission records because no corresponding action occurs. Financial reads have no in-memory fallback.
 
 ## Qualification and execution
