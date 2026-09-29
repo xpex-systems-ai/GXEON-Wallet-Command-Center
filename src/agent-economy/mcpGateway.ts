@@ -10,6 +10,10 @@ import {
   getBountyIntegrationStatus,
   listBountyRemoteTools,
 } from './connectors/bountyMcpConnector.js';
+import {
+  getMergePayIntegrationStatus,
+  listMergePayOpenBounties,
+} from './connectors/mergePayConnector.js';
 
 export interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -129,6 +133,27 @@ const MCP_TOOLS = [
         },
       },
       required: ['toolName'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'mergepay_integration_status',
+    description: 'Check GXEON connection metadata for MergePay, the GitHub-to-USDC bounty rail on Arc.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'mergepay_list_open',
+    description: 'Discover live MergePay-funded GitHub issues with escrowed USDC and return only issues that appear open and unclaimed unless includeClaimed=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        maxRepos: { type: 'integer', minimum: 1, maximum: 40 },
+        includeClaimed: { type: 'boolean' },
+      },
       additionalProperties: false,
     },
   },
@@ -488,6 +513,42 @@ export async function handleMcpRpc(
                 {
                   type: 'text',
                   text: JSON.stringify(remoteResult, null, 2),
+                },
+              ],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'mergepay_integration_status') {
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(getMergePayIntegrationStatus(), null, 2),
+                },
+              ],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'mergepay_list_open') {
+          const discovery = await listMergePayOpenBounties({
+            maxRepos: Number(args.maxRepos || 20),
+            includeClaimed: Boolean(args.includeClaimed),
+          });
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(discovery, null, 2),
                 },
               ],
               isError: false,
