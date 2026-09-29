@@ -5,6 +5,11 @@ import { getAgentEconomyStore } from './store.js';
 import { submitJobAdmission } from './admissionService.js';
 import { executeJsonValidateWorker } from './workers/jsonValidateWorker.js';
 import { executeUrlVerifyWorker } from './workers/urlVerifyWorker.js';
+import {
+  callBountyTool,
+  getBountyIntegrationStatus,
+  listBountyRemoteTools,
+} from './connectors/bountyMcpConnector.js';
 
 export interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -87,6 +92,43 @@ const MCP_TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bounty_integration_status',
+    description: 'Check whether the GXEON connection to Bounty paid work marketplace is configured and whether autonomous writes are enabled.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bounty_remote_tools',
+    description: 'Read the current live Bounty MCP tool catalog. Use this before invoking marketplace actions so GXEON follows the provider current schema.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'bounty_marketplace_call',
+    description: 'Call an allowlisted Bounty MCP marketplace tool. Read operations are allowed when configured; claim/submit/message writes additionally require GXEON_BOUNTY_AUTONOMOUS_WRITES_ENABLED=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        toolName: {
+          type: 'string',
+          description: 'Remote Bounty MCP tool name, for example bounty_list_open, bounty_get, bounty_claim, or bounty_submit',
+        },
+        arguments: {
+          type: 'object',
+          description: 'Arguments matching the live schema returned by bounty_remote_tools',
+        },
+      },
+      required: ['toolName'],
       additionalProperties: false,
     },
   },
@@ -376,6 +418,78 @@ export async function handleMcpRpc(
             id,
             result: {
               content: [{ type: 'text', text: JSON.stringify(balance, null, 2) }],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'bounty_integration_status') {
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(getBountyIntegrationStatus(), null, 2),
+                },
+              ],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'bounty_remote_tools') {
+          const remoteTools = await listBountyRemoteTools();
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(remoteTools, null, 2),
+                },
+              ],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'bounty_marketplace_call') {
+          const remoteToolName = String(args.toolName || '');
+          const remoteArguments =
+            args.arguments && typeof args.arguments === 'object'
+              ? (args.arguments as Record<string, unknown>)
+              : {};
+
+          if (!remoteToolName) {
+            return {
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({ error: 'toolName is required' }),
+                  },
+                ],
+                isError: true,
+              },
+            };
+          }
+
+          const remoteResult = await callBountyTool(remoteToolName, remoteArguments);
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(remoteResult, null, 2),
+                },
+              ],
               isError: false,
             },
           };
