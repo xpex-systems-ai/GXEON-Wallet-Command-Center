@@ -11,6 +11,10 @@ export interface CustomerOrder {
   state: string;
   problemSummary: string;
   repoOrCodeUrl?: string;
+  source?: string;
+  agentId?: string;
+  opportunityId?: string;
+  offerId?: string;
   stripeSessionId?: string;
   stripePaymentIntentId?: string;
   createdAt: string;
@@ -41,6 +45,10 @@ export interface CheckoutSessionInput {
   customOrderId?: string;
   clientOrderId?: string;
   requestId?: string;
+  source?: string;
+  agentId?: string;
+  opportunityId?: string;
+  offerId?: string;
 }
 
 export interface CheckoutSessionResult {
@@ -274,6 +282,10 @@ export class VercelStripeService {
         state: 'CUSTOMER_CREATED',
         problemSummary: input.problemSummary,
         repoOrCodeUrl: input.repoOrCodeUrl,
+        source: input.source || 'web',
+        agentId: input.agentId,
+        opportunityId: input.opportunityId,
+        offerId: input.offerId,
         createdAt: now,
         updatedAt: now,
       };
@@ -305,11 +317,19 @@ export class VercelStripeService {
         metadata: {
           order_id: orderId,
           service_id: 'gxeon_quick_fix_v1',
+          source: input.source || order.source || 'web',
+          agent_id: input.agentId || order.agentId || '',
+          opportunity_id: input.opportunityId || order.opportunityId || '',
+          offer_id: input.offerId || order.offerId || '',
         },
         payment_intent_data: {
           metadata: {
             order_id: orderId,
             service_id: 'gxeon_quick_fix_v1',
+            source: input.source || order.source || 'web',
+            agent_id: input.agentId || order.agentId || '',
+            opportunity_id: input.opportunityId || order.opportunityId || '',
+            offer_id: input.offerId || order.offerId || '',
           },
         },
         success_url: `${this.publicUrl}/order/${orderId}/success?session_id={CHECKOUT_SESSION_ID}`,
