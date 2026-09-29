@@ -56,14 +56,15 @@ export default async function handler(req: any, res: any) {
   // POST /v1/billing/topup -> Generate Stripe Checkout Session for agent funding
   if (req.method === 'POST') {
     const authHeader = req.headers.authorization || req.headers.Authorization;
-    let authenticatedAccountId: string | undefined;
-
-    if (authHeader) {
-      const auth = await authenticateMachineRequest(authHeader);
-      if (auth.authenticated && auth.context) {
-        authenticatedAccountId = auth.context.account.accountId;
-      }
+    const auth = await authenticateMachineRequest(authHeader, 'balance:read');
+    if (!auth.authenticated || !auth.context) {
+      const status = auth.statusCode || 401;
+      const err = auth.error?.error || { code: 'AUTH_REQUIRED', message: 'Authentication failed' };
+      sendError(res, status, err.code, err.message);
+      return;
     }
+
+    const authenticatedAccountId = auth.context.account.accountId;
 
     const body = await parseBody(req);
     if (!body) {
@@ -78,11 +79,12 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const targetAccountId = authenticatedAccountId || body.accountId;
-    if (!targetAccountId || typeof targetAccountId !== 'string') {
-      sendError(res, 400, 'INVALID_INPUT', 'Missing target accountId');
+    if (body.accountId && body.accountId !== authenticatedAccountId) {
+      sendError(res, 403, 'SCOPE_DENIED', 'Topups can only target the authenticated agent account');
       return;
     }
+
+    const targetAccountId = authenticatedAccountId;
 
     const store = getAgentEconomyStore();
     const account = await store.getAccount(targetAccountId);
