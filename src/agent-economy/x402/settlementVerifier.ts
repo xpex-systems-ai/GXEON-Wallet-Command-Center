@@ -31,6 +31,11 @@ const EIP712_TRANSFER_TYPES = {
   ],
 } as const;
 
+// Phase 5 Treasury Safety Policy constants
+export const MAX_SINGLE_PAYMENT_USDC = Number(process.env.GXEON_MAX_SINGLE_PAYMENT_USDC || 100);
+export const ALLOWED_NETWORKS = ['eip155:8453'];
+export const ALLOWED_ASSETS = ['0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase()];
+
 export async function verifyX402Settlement(
   paymentData: X402PaymentPayload | X402PaymentProof,
   requiredAmountAtomic: string,
@@ -61,6 +66,42 @@ export async function verifyX402Settlement(
     };
   }
 
+  // Phase 5: Allowed networks policy check
+  if (!ALLOWED_NETWORKS.includes(networkId)) {
+    await store.recordSecurityEvent('invalidPaymentsBlocked');
+    return {
+      verified: false,
+      settlementId: '',
+      network: networkId,
+      txHash: '',
+      payer: '',
+      recipient: '',
+      amountAtomic: '0',
+      amountUsdc: 0,
+      asset: network.usdcAsset,
+      timestamp: new Date().toISOString(),
+      error: `Network ${networkId} is not permitted by policy (allowed: ${ALLOWED_NETWORKS.join(', ')})`,
+    };
+  }
+
+  // Phase 5: Allowed assets policy check
+  if (!ALLOWED_ASSETS.includes(network.usdcAsset.toLowerCase())) {
+    await store.recordSecurityEvent('invalidPaymentsBlocked');
+    return {
+      verified: false,
+      settlementId: '',
+      network: networkId,
+      txHash: '',
+      payer: '',
+      recipient: '',
+      amountAtomic: '0',
+      amountUsdc: 0,
+      asset: network.usdcAsset,
+      timestamp: new Date().toISOString(),
+      error: `Asset ${network.usdcAsset} is not permitted by policy`,
+    };
+  }
+
   // Security gate: Treasury must NOT be the example address
   if (network.treasuryPayTo.toLowerCase() === FORBIDDEN_EXAMPLE_ADDRESS) {
     await store.recordSecurityEvent('circuitBreakerEvents');
@@ -79,10 +120,14 @@ export async function verifyX402Settlement(
     };
   }
 
+  const isProduction = process.env.NODE_ENV === 'production';
+  const allowTestProofs = !isProduction && process.env.GXEON_X402_ALLOW_TEST_PROOFS === 'true';
+
   // -------------------------------------------------------------
   // FLOW A: Canonical EIP-3009 Authorization Flow (Exact Scheme)
   // -------------------------------------------------------------
   if (isCanonicalPayload) {
+
     const payload = (paymentData as X402PaymentPayload).payload;
     if (payload.authorization && payload.signature) {
       const auth = payload.authorization as Eip3009Authorization;
@@ -159,7 +204,8 @@ export async function verifyX402Settlement(
         };
       }
 
-      // 4. Verify amount >= required
+      // 4. Verify amount >= required and <= MAX_SINGLE_PAYMENT_USDC
+      const authAmountUsdc = Number(auth.value) / 1_000_000;
       if (BigInt(auth.value) < BigInt(requiredAmountAtomic)) {
         return {
           verified: false,
@@ -169,15 +215,31 @@ export async function verifyX402Settlement(
           payer: auth.from,
           recipient: auth.to,
           amountAtomic: auth.value,
-          amountUsdc: Number(auth.value) / 1_000_000,
+          amountUsdc: authAmountUsdc,
           asset: network.usdcAsset,
           timestamp: new Date().toISOString(),
           error: `Authorization value (${auth.value}) is less than required (${requiredAmountAtomic})`,
         };
       }
 
-      // 5. Test mock signature bypass if enabled for vitest
-      if (process.env.GXEON_X402_ALLOW_TEST_PROOFS === 'true' && sig.startsWith('0xtest_sig')) {
+      if (authAmountUsdc > MAX_SINGLE_PAYMENT_USDC) {
+        return {
+          verified: false,
+          settlementId: cleanNonce,
+          network: networkId,
+          txHash: cleanNonce,
+          payer: auth.from,
+          recipient: auth.to,
+          amountAtomic: auth.value,
+          amountUsdc: authAmountUsdc,
+          asset: network.usdcAsset,
+          timestamp: new Date().toISOString(),
+          error: `Payment amount (${authAmountUsdc} USDC) exceeds maximum allowed single payment (${MAX_SINGLE_PAYMENT_USDC} USDC)`,
+        };
+      }
+
+      // 5. Test mock signature bypass if enabled for vitest (disabled in production)
+      if (allowTestProofs && sig.startsWith('0xtest_sig')) {
         return {
           verified: true,
           settlementId: cleanNonce,
@@ -186,7 +248,7 @@ export async function verifyX402Settlement(
           payer: auth.from,
           recipient: network.treasuryPayTo,
           amountAtomic: auth.value,
-          amountUsdc: Number(auth.value) / 1_000_000,
+          amountUsdc: authAmountUsdc,
           asset: network.usdcAsset,
           blockNumber: 12345678,
           timestamp: new Date().toISOString(),
@@ -307,8 +369,26 @@ export async function verifyX402Settlement(
     };
   }
 
-  // Test proof bypass for test suite if enabled
-  if (process.env.GXEON_X402_ALLOW_TEST_PROOFS === 'true' && rawTxHash.startsWith('0xtest_')) {
+  // Verify required amount <= MAX_SINGLE_PAYMENT_USDC
+  const requiredUsdc = Number(requiredAmountAtomic) / 1_000_000;
+  if (requiredUsdc > MAX_SINGLE_PAYMENT_USDC) {
+    return {
+      verified: false,
+      settlementId: rawTxHash,
+      network: networkId,
+      txHash: rawTxHash,
+      payer: '',
+      recipient: network.treasuryPayTo,
+      amountAtomic: requiredAmountAtomic,
+      amountUsdc: requiredUsdc,
+      asset: network.usdcAsset,
+      timestamp: new Date().toISOString(),
+      error: `Payment amount (${requiredUsdc} USDC) exceeds maximum allowed single payment (${MAX_SINGLE_PAYMENT_USDC} USDC)`,
+    };
+  }
+
+  // Test proof bypass for test suite if enabled (disabled in production)
+  if (allowTestProofs && rawTxHash.startsWith('0xtest_')) {
     return {
       verified: true,
       settlementId: rawTxHash,
@@ -317,7 +397,7 @@ export async function verifyX402Settlement(
       payer: '0xtest_buyer',
       recipient: network.treasuryPayTo,
       amountAtomic: requiredAmountAtomic,
-      amountUsdc: Number(requiredAmountAtomic) / 1_000_000,
+      amountUsdc: requiredUsdc,
       asset: network.usdcAsset,
       blockNumber: 12345678,
       timestamp: new Date().toISOString(),

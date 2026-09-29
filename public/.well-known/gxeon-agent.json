@@ -7,6 +7,8 @@
     "MCP",
     "x402"
   ],
+  "network": "eip155:8453",
+  "currency": "USDC",
   "openapi": "/openapi.json",
   "services": "/v1/services",
   "pricing": "/v1/pricing",
@@ -14,9 +16,8 @@
   "mcp": "/api/v1/mcp",
   "x402": {
     "enabled": true,
-    "networks": [
-      "eip155:8453"
-    ],
+    "network": "eip155:8453",
+    "currency": "USDC",
     "capabilities": [
       "/x402/url-verify",
       "/x402/json-validate"

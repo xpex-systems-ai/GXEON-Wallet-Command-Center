@@ -93,8 +93,26 @@ const MCP_TOOLS = [
   {
     name: 'gxeon_json_validate_v1',
     description: 'Validate and lint JSON payloads. Price: 0.01 USDC or 2 credits per payload.',
+    serviceId: 'gxeon_json_validate_v1',
+    priceUsdc: 0.01,
+    network: 'eip155:8453',
+    paymentProtocol: 'x402',
+    endpoint: '/x402/json-validate',
+    outputSchema: {
+      type: 'object',
+      properties: {
+        valid: { type: 'boolean' },
+        parsed: { type: 'object' },
+        error: { type: 'string' },
+      },
+    },
     metadata: {
+      serviceId: 'gxeon_json_validate_v1',
       version: '1.0.0',
+      priceUsdc: 0.01,
+      network: 'eip155:8453',
+      paymentProtocol: 'x402',
+      endpoint: '/x402/json-validate',
       pricing: { credits: 2, usdc: 0.01, atomic: '10000' },
       paymentRails: ['prepaid_credits', 'x402'],
       executionLimits: { timeoutMs: 5000 },
@@ -110,8 +128,25 @@ const MCP_TOOLS = [
   {
     name: 'gxeon_url_verify_v1',
     description: 'Perform URL health checks, status verification, and TLS validation. Price: 0.025 USDC or 5 credits per URL.',
+    serviceId: 'gxeon_url_verify_v1',
+    priceUsdc: 0.025,
+    network: 'eip155:8453',
+    paymentProtocol: 'x402',
+    endpoint: '/x402/url-verify',
+    outputSchema: {
+      type: 'object',
+      properties: {
+        summary: { type: 'object' },
+        results: { type: 'array' },
+      },
+    },
     metadata: {
+      serviceId: 'gxeon_url_verify_v1',
       version: '1.0.0',
+      priceUsdc: 0.025,
+      network: 'eip155:8453',
+      paymentProtocol: 'x402',
+      endpoint: '/x402/url-verify',
       pricing: { credits: 5, usdc: 0.025, atomic: '25000' },
       paymentRails: ['prepaid_credits', 'x402'],
       executionLimits: { timeoutMs: 10000, maxUrls: 50 },

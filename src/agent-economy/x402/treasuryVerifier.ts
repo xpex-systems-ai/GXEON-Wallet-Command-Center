@@ -11,6 +11,8 @@ export interface TreasuryVerificationRecord {
   signature: string;
   recovered_address: string;
   verified_at: string;
+  verification_method?: string;
+  wallet_provider?: string;
 }
 
 export function generateTreasuryChallenge(targetAddress: string): {
@@ -45,13 +47,21 @@ export async function verifyTreasurySignature(params: {
   address: string;
   challenge: string;
   signature: string;
+  walletProvider?: string;
+  verificationMethod?: string;
 }): Promise<{
   verified: boolean;
   recoveredAddress?: string;
   error?: string;
   record?: TreasuryVerificationRecord;
 }> {
-  const { address, challenge, signature } = params;
+  const {
+    address,
+    challenge,
+    signature,
+    walletProvider = 'coinbase_cdp',
+    verificationMethod = 'eip191_signature',
+  } = params;
   const cleanAddress = address.trim().toLowerCase();
 
   if (cleanAddress === FORBIDDEN_EXAMPLE_ADDRESS) {
@@ -91,6 +101,8 @@ export async function verifyTreasurySignature(params: {
       signature,
       recovered_address: getAddress(recoveredAddress),
       verified_at: new Date().toISOString(),
+      verification_method: verificationMethod,
+      wallet_provider: walletProvider,
     };
 
     // Persist proof in durable store
@@ -102,6 +114,7 @@ export async function verifyTreasurySignature(params: {
       recoveredAddress,
       record,
     };
+
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return {

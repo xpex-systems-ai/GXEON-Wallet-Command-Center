@@ -365,6 +365,11 @@ export class VercelStripeService {
       const session = event.data.object as Stripe.Checkout.Session;
       const serviceId = session.metadata?.service_id;
 
+      // Phase 9 Money Truth: In production, test sessions NEVER count
+      if (process.env.NODE_ENV === 'production' && !event.livemode) {
+        return { status: 'INVALID_ORDER_STATE', processed: false, error: 'Test sessions never count toward production revenue (livemode required)' };
+      }
+
       if (session.payment_status !== 'paid') {
         return { status: 'UNPAID', processed: false, error: 'Stripe session is not paid' };
       }
