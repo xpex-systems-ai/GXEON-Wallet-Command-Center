@@ -353,10 +353,9 @@ export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
     );
   }
 
-  async getLedgerEntries(_accountId: string): Promise<LedgerEntry[]> {
-    // Note: For Firestore, ledger entries are durable append-only documents.
-    // Querying by account requires composite index or retrieval via document ID prefix.
-    return [];
+  async getLedgerEntries(accountId: string): Promise<LedgerEntry[]> {
+    const docs = await this.client.list<LedgerEntry>('credit_ledger', 500);
+    return docs.map((d) => d.data).filter((entry) => entry.accountId === accountId);
   }
 
   /**
@@ -405,7 +404,8 @@ export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
   }
 
   async listOpportunities(): Promise<DemandOpportunity[]> {
-    return [];
+    const docs = await this.client.list<DemandOpportunity>('demand_opportunities', 200);
+    return docs.map((d) => d.data);
   }
 
   async getIdempotencyRecord(
@@ -485,7 +485,8 @@ export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
   }
 
   async listPendingOutbox(): Promise<OutboxJob[]> {
-    return [];
+    const docs = await this.client.list<OutboxJob>('outbox_jobs', 200);
+    return docs.map((d) => d.data).filter((item) => item.status === 'PENDING');
   }
 
   async updateOutboxStatus(outboxId: string, status: OutboxJob['status']): Promise<void> {
@@ -495,8 +496,9 @@ export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
     }
   }
 
-  async getWorker(_workerId: string): Promise<WorkerDefinition | null> {
-    return null;
+  async getWorker(workerId: string): Promise<WorkerDefinition | null> {
+    const doc = await this.client.get<WorkerDefinition>('workers', workerId);
+    return doc ? doc.data : null;
   }
 
   async saveWorker(worker: WorkerDefinition): Promise<void> {
@@ -504,7 +506,49 @@ export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
   }
 
   async listWorkers(): Promise<WorkerDefinition[]> {
-    return [];
+    const docs = await this.client.list<WorkerDefinition>('workers', 100);
+    if (docs.length > 0) return docs.map((d) => d.data);
+
+    const defaults: WorkerDefinition[] = [
+      {
+        workerId: 'worker_url_verify_01',
+        capabilities: ['gxeon_url_verify_v1'],
+        status: 'ONLINE',
+        health: 1.0,
+        maxConcurrency: 10,
+        currentLoad: 0,
+        successRate: 0.99,
+        averageLatencyMs: 250,
+        version: '1.0.0',
+      },
+      {
+        workerId: 'worker_json_validate_01',
+        capabilities: ['gxeon_json_validate_v1'],
+        status: 'ONLINE',
+        health: 1.0,
+        maxConcurrency: 50,
+        currentLoad: 0,
+        successRate: 1.0,
+        averageLatencyMs: 15,
+        version: '1.0.0',
+      },
+      {
+        workerId: 'worker_api_health_01',
+        capabilities: ['gxeon_api_health_v1'],
+        status: 'OFFLINE',
+        health: 1.0,
+        maxConcurrency: 10,
+        currentLoad: 0,
+        successRate: 0.98,
+        averageLatencyMs: 320,
+        version: '1.0.0',
+      },
+    ];
+
+    for (const worker of defaults) {
+      await this.saveWorker(worker);
+    }
+    return defaults;
   }
 }
 
@@ -519,15 +563,20 @@ export function getAgentEconomyStore(): IAgentEconomyStore {
     return storeInstance;
   }
 
-  // In production / preview: Fail closed if Firestore is not configured
+  // Hosted production/preview must never fall back to volatile memory.
   if (isFirestoreRestConfigured()) {
     storeInstance = new FirestoreAgentEconomyStore();
-  } else {
-    // Fallback for local runtime only with loud notice
-    console.warn('[STORAGE NOTICE] Running in local development memory mode. Firestore WIF not present.');
-    storeInstance = new MemoryAgentEconomyStore();
+    return storeInstance;
   }
 
+  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Durable Firestore is required for GXEON Agent Economy on hosted production/preview runtimes.'
+    );
+  }
+
+  console.warn('[STORAGE NOTICE] Local development memory mode active; no durable Firestore configured.');
+  storeInstance = new MemoryAgentEconomyStore();
   return storeInstance;
 }
 
