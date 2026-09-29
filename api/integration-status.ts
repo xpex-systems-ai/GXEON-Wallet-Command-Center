@@ -5,6 +5,10 @@ import {
   callBountyTool,
   getBountyIntegrationStatus,
 } from '../src/agent-economy/connectors/bountyMcpConnector.js';
+import {
+  getMergePayIntegrationStatus,
+  listMergePayOpenBounties,
+} from '../src/agent-economy/connectors/mergePayConnector.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
@@ -196,6 +200,31 @@ export default async function handler(req: any, res: any) {
     }
   }
 
+  const mergePayIntegration = getMergePayIntegrationStatus();
+  let mergePayLiveProbe: any = null;
+  const shouldProbeMergePay =
+    String(req.query?.mergepay || '').toLowerCase() === '1' ||
+    String(req.query?.mergepay || '').toLowerCase() === 'true';
+
+  if (shouldProbeMergePay) {
+    try {
+      const openMergePayBounties = await listMergePayOpenBounties({ maxRepos: 20 });
+      mergePayLiveProbe = {
+        ok: true,
+        provider: 'MergePay',
+        action: 'mergepay_list_open',
+        result: openMergePayBounties,
+      };
+    } catch (error: any) {
+      mergePayLiveProbe = {
+        ok: false,
+        provider: 'MergePay',
+        action: 'mergepay_list_open',
+        error: String(error?.message || error),
+      };
+    }
+  }
+
   res.statusCode = 200;
   res.setHeader('Content-Type', 'application/json');
   res.end(
@@ -213,6 +242,10 @@ export default async function handler(req: any, res: any) {
       bounty: {
         ...bountyIntegration,
         liveProbe: bountyLiveProbe,
+      },
+      mergepay: {
+        ...mergePayIntegration,
+        liveProbe: mergePayLiveProbe,
       },
       metrics: {
         stripeGrossRevenue: `R$${stripeGrossRevenue.toFixed(2)}`,
