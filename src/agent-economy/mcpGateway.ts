@@ -103,6 +103,8 @@ const MCP_TOOLS = [
       currency: 'BRL',
       paymentRail: 'stripe_live',
       endpoint: '/v1/checkout',
+      publicPaymentLink: 'https://buy.stripe.com/bJeeVd45Zgrp5EFdeV1B60b',
+      paymentLinkId: 'plink_1UKpGBHDcsx7lyooXYeQg6Al',
       fulfillmentGate: 'verified_checkout.session.completed',
     },
     inputSchema: {
@@ -444,6 +446,7 @@ export async function handleMcpRpc(
                       orderId: checkout.orderId,
                       checkoutUrl: checkout.checkoutUrl,
                       sessionId: checkout.sessionId,
+                      publicPaymentLink: 'https://buy.stripe.com/bJeeVd45Zgrp5EFdeV1B60b',
                       moneyTruth: 'Checkout created. Revenue remains zero until a verified LIVE Stripe webhook confirms payment_status=paid.',
                     },
                     null,
