@@ -1,4 +1,5 @@
 import { ServiceDefinition } from '../types.js';
+import { isServiceFeatureEnabled } from '../featureFlags.js';
 
 /**
  * GXEON Service Registry
@@ -172,7 +173,9 @@ export function getService(serviceId: string): ServiceDefinition | null {
 }
 
 export function listAvailableServices(): ServiceDefinition[] {
-  return Object.values(SERVICE_REGISTRY).filter((s) => s.status === 'AVAILABLE');
+  return Object.values(SERVICE_REGISTRY).filter(
+    (s) => s.status === 'AVAILABLE' && isServiceFeatureEnabled(s.serviceId)
+  );
 }
 
 export function listAllServices(): ServiceDefinition[] {
