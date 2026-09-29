@@ -34,3 +34,12 @@ export function getFeatureFlags(): AgentMarketFeatureFlags {
       : false,
   };
 }
+
+
+export function isServiceFeatureEnabled(serviceId: string): boolean {
+  const flags = getFeatureFlags();
+  if (serviceId === 'gxeon_url_verify_v1') return flags.urlVerifyEnabled;
+  if (serviceId === 'gxeon_json_validate_v1') return flags.jsonValidateEnabled;
+  if (serviceId === 'gxeon_api_health_v1') return flags.apiHealthEnabled;
+  return false;
+}
