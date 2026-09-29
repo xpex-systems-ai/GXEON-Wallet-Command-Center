@@ -3,6 +3,7 @@ import { ingestDemandSignal, RawDemandSignal } from '../../src/agent-economy/dem
 import { fetchAndIngestX402Demand } from '../../src/agent-economy/connectors/x402BazaarConnector.js';
 import { fetchPaidBountyRadar } from '../../src/agent-economy/connectors/paidBountyConnector.js';
 import { getAgentEconomyStore } from '../../src/agent-economy/store.js';
+import { FirestoreRestClient, isFirestoreRestConfigured } from '../_firestoreRest.js';
 import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
 import { sendJson, sendError, parseBody } from './_helper.js';
 
@@ -48,7 +49,13 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    let unifiedPaidRadar = null;
+    if (isFirestoreRestConfigured()) {
+      try { unifiedPaidRadar = (await new FirestoreRestClient().get('marketplace_agent_state', 'unified'))?.data || null; } catch { /* Unavailable is not zero. */ }
+    }
+    opportunities = opportunities.filter(o => !/example-org|fintechstartup|sample|synthetic|placeholder/i.test(`${o.source} ${o.sourceUrl}`));
     sendJson(res, 200, {
+      unifiedPaidRadar,
       total: opportunities.length,
       opportunities,
       paidBounties: paidBountyRadar.bounties,

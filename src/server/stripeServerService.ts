@@ -110,11 +110,8 @@ export class StripeServerService {
       }
     }
 
-    let order: CustomerOrder;
-    if (existingOrder) {
-      order = existingOrder;
-    } else {
-      order = {
+    if (!existingOrder) {
+      const order: CustomerOrder = {
         id: orderId,
         customerName: input.customerName || 'Customer',
         customerEmail: input.customerEmail,

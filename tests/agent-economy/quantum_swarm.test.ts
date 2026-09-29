@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { TestScoutFixtures } from "../fixtures/quantumScoutFixtures.js";
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import crypto from 'node:crypto';
 import {
   QuantumRevenueSwarm,
@@ -28,6 +29,10 @@ describe('GXEON QUANTUM REVENUE SWARM (GXEON-QUANTUM-REVENUE-SWARM-001)', () => 
 
   beforeEach(() => {
     swarm = new QuantumRevenueSwarm();
+    const fixtures = new TestScoutFixtures();
+    vi.spyOn(swarm.scout, 'discoverFromGithubLeads').mockImplementation(() => fixtures.discoverFromGithubLeads());
+    vi.spyOn(swarm.scout, 'discoverFromMcpRegistry').mockImplementation(() => fixtures.discoverFromMcpRegistry());
+    vi.spyOn(swarm.scout, 'discoverFromInboundLeads').mockImplementation(() => fixtures.discoverFromInboundLeads());
   });
 
   describe('1. Priority Score & Fingerprint Deduplication Logic', () => {
@@ -377,7 +382,8 @@ describe('GXEON QUANTUM REVENUE SWARM (GXEON-QUANTUM-REVENUE-SWARM-001)', () => 
   });
 
   describe('7. End-to-End Monetization Loop (Discover -> Qualify -> Checkout -> Paid -> Execute -> Evidence -> Retain)', () => {
-    it('executes full revenue lifecycle successfully with zero synthetic money', async () => {
+    it('exercises orchestration with test-only provider and executor fixtures', async () => {
+      vi.spyOn(swarm.execution, 'executePaidService').mockResolvedValue({ status: 'COMPLETED', serviceId: 'gxeon_quick_fix_v1', diagnosis: { fixture: true } });
       // 1. Discover
       const opps = await swarm.discover(['github_lead']);
       expect(opps.length).toBeGreaterThan(0);

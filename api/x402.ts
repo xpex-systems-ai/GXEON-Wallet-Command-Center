@@ -12,7 +12,7 @@ export default async function handler(req: any, res: any) {
   const url = new URL(req.url, 'http://localhost');
   const path = (url.searchParams.get('path') || url.pathname).toLowerCase();
 
-  let serviceId = '';
+  let serviceId: string;
   if (path.includes('url-verify')) {
     serviceId = 'gxeon_url_verify_v1';
   } else if (path.includes('json-validate')) {

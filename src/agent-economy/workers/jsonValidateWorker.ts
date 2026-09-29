@@ -20,7 +20,7 @@ export interface JsonValidateWorkerOutput {
 export function executeJsonValidateWorker(input: JsonValidateInput): JsonValidateWorkerOutput {
   const errors: string[] = [];
   let parsed: unknown = input.payload;
-  let byteLength = 0;
+  let byteLength: number;
 
   if (typeof input.payload === 'string') {
     byteLength = Buffer.byteLength(input.payload, 'utf8');

@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import dns from 'node:dns/promises';
+import { describe, it, expect, vi } from 'vitest';
 import { isIpBlocked, validateTargetUrl } from '../../src/agent-economy/antiSsrf.js';
 
 describe('GXEON Anti-SSRF Defense Suite', () => {
@@ -87,7 +88,9 @@ describe('GXEON Anti-SSRF Defense Suite', () => {
     });
 
     it('validates and accepts legitimate public HTTPS URLs', async () => {
+      const lookup = vi.spyOn(dns, 'lookup').mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }] as any);
       const res = await validateTargetUrl('https://example.com');
+      lookup.mockRestore();
       expect(res.safe).toBe(true);
       expect(res.urlObj?.hostname).toBe('example.com');
       expect(res.resolvedIps?.length).toBeGreaterThan(0);

@@ -1,6 +1,7 @@
 // GXEON_BOUNTY_LIVE_PROBE_DEPLOY_MARKER
 import { paymentStoreConfigured, paymentStoreHealth } from './_store.js';
 import { FirestoreRestClient } from './_firestoreRest.js';
+import { readTaskmarketStatus } from '../src/agent-economy/taskmarket/taskmarketRadar.js';
 import {
   callBountyTool,
   getBountyIntegrationStatus,
@@ -29,7 +30,7 @@ export default async function handler(req: any, res: any) {
   let stripeRefunds = 0;
   let successfulPayments = 0;
   let pendingPayments = 0;
-  let failedPayments = 0;
+  const failedPayments = 0;
   let creditsSold = 0;
   let creditsConsumed = 0;
   let jobsPaid = 0;
@@ -58,9 +59,10 @@ export default async function handler(req: any, res: any) {
 
       // 1. Demand Opportunities
       const oppDocs = await client.list<any>('demand_opportunities');
-      opportunitiesCount = oppDocs.length;
-      for (const op of oppDocs) {
-        if (op.data.status === 'QUALIFIED' || (op.data.fitScore && op.data.fitScore >= 80)) {
+      const liveOppDocs = oppDocs.filter(op => !/example-org|fintechstartup|sample|synthetic|placeholder/i.test(`${op.data.source} ${op.data.sourceUrl}`));
+      opportunitiesCount = liveOppDocs.length;
+      for (const op of liveOppDocs) {
+        if (op.data.kind === 'FUNDED_JOB' && ['QUALIFIED', 'READY_FOR_OPERATOR'].includes(op.data.status)) {
           qualifiedCount++;
         }
       }
@@ -225,10 +227,15 @@ export default async function handler(req: any, res: any) {
     }
   }
 
+  const taskmarket = await readTaskmarketStatus();
+  const { opportunities: taskmarketOpportunities, ...taskmarketStatus } = taskmarket;
+  void taskmarketOpportunities;
   res.statusCode = 200;
+  res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'application/json');
   res.end(
     JSON.stringify({
+      taskmarket: taskmarketStatus,
       stripeConfigured: Boolean(stripeKey),
       webhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
       durableStoreConfigured,

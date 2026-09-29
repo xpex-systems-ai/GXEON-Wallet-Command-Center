@@ -1,0 +1,50 @@
+name: Taskmarket paid-work radar
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/taskmarket-radar.yml'
+      - 'src/agent-economy/taskmarket/**'
+      - 'src/agent-economy/connectors/taskmarketConnector.ts'
+      - 'api/cron/taskmarket-radar.ts'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: taskmarket-radar
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Read marketplaces and persist qualified opportunities
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const endpoint = 'https://gxeon-wallet-command-center.vercel.app/api/cron/taskmarket-radar';
+            for (let attempt = 0; attempt < 10; attempt++) {
+              const token = await core.getIDToken(endpoint);
+              const response = await fetch(endpoint, {
+                method: 'POST', headers: { Authorization: `Bearer ${token}` },
+                signal: AbortSignal.timeout(300000), redirect: 'error',
+              });
+              if (response.ok) {
+                const result = await response.json();
+                core.info(JSON.stringify(result));
+                return;
+              }
+              // Initial main push can run before Vercel finishes deploying the route.
+              if (![401, 404, 405, 503].includes(response.status) || attempt === 9) {
+                throw new Error(`Radar returned HTTP ${response.status}; no marketplace writes were attempted`);
+              }
+              core.info(`Waiting for radar deployment/storage (HTTP ${response.status})`);
+              await new Promise(resolve => setTimeout(resolve, 30000));
+            }

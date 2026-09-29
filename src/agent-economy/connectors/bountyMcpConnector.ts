@@ -58,6 +58,7 @@ async function bountyFetchJson(
   const apiKey = getBountyApiKey();
   const response = await fetch(`${BOUNTY_API_BASE}${path}`, {
     ...init,
+    signal: AbortSignal.timeout(20000), redirect: 'error',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       Accept: 'application/json',
@@ -93,6 +94,7 @@ async function bountyFetchJson(
 async function rpc(request: JsonRpcEnvelope): Promise<JsonRpcResponse> {
   const apiKey = getBountyApiKey();
   const response = await fetch(BOUNTY_MCP_URL, {
+    signal: AbortSignal.timeout(20000), redirect: 'error',
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,

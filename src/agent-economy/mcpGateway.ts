@@ -5,6 +5,7 @@ import { getAgentEconomyStore } from './store.js';
 import { submitJobAdmission } from './admissionService.js';
 import { executeJsonValidateWorker } from './workers/jsonValidateWorker.js';
 import { executeUrlVerifyWorker } from './workers/urlVerifyWorker.js';
+import { TASKMARKET_MCP_TOOLS, callTaskmarketTool } from './taskmarket/mcpTools.js';
 import {
   callBountyTool,
   getBountyIntegrationStatus,
@@ -34,6 +35,7 @@ export interface JsonRpcResponse {
 }
 
 const MCP_TOOLS = [
+  ...TASKMARKET_MCP_TOOLS,
   {
     name: 'list_services',
     description: 'List all active GXEON capability services, pricing models, and input schemas',
@@ -306,6 +308,15 @@ export async function handleMcpRpc(
       case 'tools/call': {
         const toolName = (params.name as string) || '';
         const args = (params.arguments || {}) as Record<string, unknown>;
+
+        if (toolName.startsWith('taskmarket_')) {
+          try {
+            const value = await callTaskmarketTool(toolName, args);
+            return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(value) }], isError: false } };
+          } catch (error) {
+            return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: error instanceof Error ? error.message : 'TASKMARKET_UNAVAILABLE' }], isError: true } };
+          }
+        }
 
         if (toolName === 'list_services') {
           const services = listAvailableServices();
