@@ -91,6 +91,36 @@ const MCP_TOOLS = [
     },
   },
   {
+    name: 'gxeon_quick_fix_checkout_v1',
+    description: 'Create a real Stripe LIVE Checkout URL for the GXEON Quick Fix service (R$49.00). This creates an unpaid order and Checkout Session only; fulfillment remains payment-gated by verified Stripe webhooks.',
+    serviceId: 'gxeon_quick_fix_v1',
+    paymentProtocol: 'stripe_checkout',
+    endpoint: '/v1/checkout',
+    metadata: {
+      serviceId: 'gxeon_quick_fix_v1',
+      version: '1.0.0',
+      priceBrl: 49,
+      currency: 'BRL',
+      paymentRail: 'stripe_live',
+      endpoint: '/v1/checkout',
+      fulfillmentGate: 'verified_checkout.session.completed',
+    },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        customerName: { type: 'string' },
+        customerEmail: { type: 'string', description: 'Buyer email address' },
+        problemSummary: { type: 'string', description: 'Delimited technical problem to be fixed' },
+        repoOrCodeUrl: { type: 'string' },
+        opportunityId: { type: 'string' },
+        offerId: { type: 'string' },
+        requestId: { type: 'string', description: 'Optional idempotent external request ID' },
+      },
+      required: ['customerEmail', 'problemSummary'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'gxeon_json_validate_v1',
     description: 'Validate and lint JSON payloads. Price: 0.01 USDC or 2 credits per payload.',
     serviceId: 'gxeon_json_validate_v1',
@@ -344,6 +374,83 @@ export async function handleMcpRpc(
             id,
             result: {
               content: [{ type: 'text', text: JSON.stringify(balance, null, 2) }],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'gxeon_quick_fix_checkout_v1') {
+          const {
+            customerName,
+            customerEmail,
+            problemSummary,
+            repoOrCodeUrl,
+            opportunityId,
+            offerId,
+            requestId,
+          } = args as {
+            customerName?: string;
+            customerEmail: string;
+            problemSummary: string;
+            repoOrCodeUrl?: string;
+            opportunityId?: string;
+            offerId?: string;
+            requestId?: string;
+          };
+
+          if (!customerEmail || !problemSummary) {
+            return {
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{ type: 'text', text: JSON.stringify({ error: 'customerEmail and problemSummary are required' }) }],
+                isError: true,
+              },
+            };
+          }
+
+          const [{ VercelStripeService }, { getPaymentStore }] = await Promise.all([
+            import('../../api/_stripe.js'),
+            import('../../api/_store.js'),
+          ]);
+
+          const stripeService = new VercelStripeService({ store: getPaymentStore() });
+          const checkout = await stripeService.createCheckoutSession({
+            customerName: customerName || 'Customer',
+            customerEmail,
+            problemSummary,
+            repoOrCodeUrl,
+            requestId,
+            source: 'mcp_agent',
+            agentId: accountId,
+            opportunityId,
+            offerId,
+          });
+
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(
+                    {
+                      status: 'CHECKOUT_CREATED',
+                      paid: false,
+                      serviceId: 'gxeon_quick_fix_v1',
+                      amountBrl: 49,
+                      currency: 'BRL',
+                      orderId: checkout.orderId,
+                      checkoutUrl: checkout.checkoutUrl,
+                      sessionId: checkout.sessionId,
+                      moneyTruth: 'Checkout created. Revenue remains zero until a verified LIVE Stripe webhook confirms payment_status=paid.',
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
               isError: false,
             },
           };
