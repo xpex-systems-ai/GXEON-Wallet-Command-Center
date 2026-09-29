@@ -19,6 +19,10 @@
       "destination": "/api/v1/jobs?jobId=:jobId"
     },
     {
+      "source": "/v1/checkout",
+      "destination": "/api/checkout"
+    },
+    {
       "source": "/v1/offers",
       "destination": "/api/v1/offers"
     },
