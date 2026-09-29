@@ -12,7 +12,9 @@ export function qualifyTask(task: TaskmarketTask, context: {
   const workerActions = task.pendingActions.filter(p => p.role === 'worker');
   const action = workerActions.find(p => ['claim', 'pitch', 'bid', 'submit', 'submit_proof', 'auction_accept'].includes(p.action));
   const providerSpend = action?.requiresPayment === false ? 0 : action?.paymentAmount ? usdc(action.paymentAmount) : null;
-  const external = providerSpend === null ? null : Math.max(providerSpend, a?.externalSpendUsdc ?? 0);
+  // A free provider action does not establish the cost of tools/materials needed
+  // to perform the brief. Keep total external spend unknown until scope review.
+  const external = providerSpend === null || !a ? null : Math.max(providerSpend, a.externalSpendUsdc);
   const competition = Math.max(task.submissionCount, task.pitchCount, task.auctionBidCount || 0);
   let risk = 0;
   if (task.status !== 'open' || (['bounty', 'benchmark'].includes(task.mode) && !task.submissionWindowOpen)) reasons.push('TASK_NOT_OPEN');

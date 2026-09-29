@@ -26,6 +26,10 @@ The schedule now targets minutes 7, 22, 37 and 52 to avoid the start-of-hour pea
 
 Identity status requires both `registered` and `cacheFresh` from the provider. A stale ERC-8004 identity from another registry or chain remains `REGISTRATION_PENDING`, retains its public agent ID for diagnosis, and cannot pass qualification. No registration or signature is attempted.
 
+An action advertised as free by Taskmarket does not prove that executing the brief needs no external tools or materials. Until the scope/cost assessment exists, total `externalSpendUsdc` and `requiresSpend` remain unknown. The action preview can independently show the provider action fee; it never supplies an execution budget.
+
+On a main push, the polling workflow first checks the public `?view=release` commit against the pushed SHA. It waits for that version to reach production before acquiring the durable poll slot. A successful response from the previous deployment is not proof that the new qualification code is running. Scheduled and manual polls still use normal OIDC authentication.
+
 Firestore collections: `paid_opportunities`, `marketplace_tasks`, `marketplace_assessments`, `marketplace_missions`, `marketplace_settlements`, `machine_revenue`, `marketplace_agent_state`, `marketplace_poll_runs`. Phase A creates no claim/submission records because no corresponding action occurs. Financial reads have no in-memory fallback.
 
 ## Qualification and execution

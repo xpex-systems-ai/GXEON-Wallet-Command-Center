@@ -8,6 +8,10 @@ export async function taskmarketReadHandler(req: any, res: any) {
   const url = new URL(req.url || '/', 'https://gxeon-wallet-command-center.vercel.app');
   const view = url.searchParams.get('view') || 'status';
   try {
+    if (view === 'release') {
+      const sha = process.env.VERCEL_GIT_COMMIT_SHA || '';
+      return sendJson(res, 200, { deployedCommit: /^[a-f0-9]{40}$/i.test(sha) ? sha : null });
+    }
     if (view === 'status') return sendJson(res, 200, await readTaskmarketStatus(url.searchParams.get('live') === '1'));
     const allowed: Record<string, string> = { task: 'get_task', qualify: 'qualify_task', preview: 'action_preview', network: 'network_status', legal: 'legal_status', identity: 'identity_status' };
     if (!allowed[view]) return sendJson(res, 400, { error: 'UNKNOWN_VIEW' });
