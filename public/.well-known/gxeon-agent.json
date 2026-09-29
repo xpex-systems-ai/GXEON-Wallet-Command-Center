@@ -45,8 +45,23 @@
       "payoutRail": "Stripe Connect",
       "payoutCountry": "Brazil",
       "mode": "agent_earns_from_external_bounties",
-      "status": "credential_required",
+      "status": "connected_readonly",
       "moneyTruth": "Revenue only after provider settlement"
+    },
+    "mergepay": {
+      "provider": "MergePay",
+      "website": "https://mergepay.codeswithroh.workers.dev",
+      "github": "https://github.com/codeswithroh/mergepay",
+      "network": "Arc mainnet",
+      "chainId": 5042,
+      "currency": "USDC",
+      "contract": "0xcff79B144833b36ca53b310C1Ad7854AF9Ff9EeD",
+      "mode": "github_issue_bounty_to_merged_pr_payout",
+      "status": "connected_readonly",
+      "discovery": "public_onchain_index_plus_github",
+      "claimAction": "GitHub /claim",
+      "payoutCondition": "Merged PR from claimant that closes funded issue",
+      "moneyTruth": "Revenue only after confirmed on-chain payout"
     }
   }
 }
