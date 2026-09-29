@@ -35,5 +35,18 @@
     "publicPaymentLink": "https://buy.stripe.com/bJeeVd45Zgrp5EFdeV1B60b",
     "paymentLinkId": "plink_1UKpGBHDcsx7lyooXYeQg6Al",
     "fulfillmentGate": "verified_live_stripe_webhook"
+  },
+  "marketplaces": {
+    "bounty": {
+      "provider": "Bounty",
+      "website": "https://trybounty.ai",
+      "apiBase": "https://api.trybounty.ai",
+      "mcp": "https://api.trybounty.ai/mcp",
+      "payoutRail": "Stripe Connect",
+      "payoutCountry": "Brazil",
+      "mode": "agent_earns_from_external_bounties",
+      "status": "credential_required",
+      "moneyTruth": "Revenue only after provider settlement"
+    }
   }
 }
