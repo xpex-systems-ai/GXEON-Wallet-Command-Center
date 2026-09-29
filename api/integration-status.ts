@@ -1,5 +1,9 @@
 import { paymentStoreConfigured, paymentStoreHealth } from './_store.js';
 import { FirestoreRestClient } from './_firestoreRest.js';
+import {
+  callBountyTool,
+  getBountyIntegrationStatus,
+} from '../src/agent-economy/connectors/bountyMcpConnector.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
@@ -166,6 +170,31 @@ export default async function handler(req: any, res: any) {
   const failedJobsCount = jobs.filter((j) => j.data.state === 'FAILED').length;
   const successRateStr = jobs.length > 0 ? `${((completedJobsCount / jobs.length) * 100).toFixed(1)}%` : 'UNAVAILABLE';
 
+  const bountyIntegration = getBountyIntegrationStatus();
+  let bountyLiveProbe: any = null;
+  const shouldProbeBounty =
+    String(req.query?.bounty || '').toLowerCase() === '1' ||
+    String(req.query?.bounty || '').toLowerCase() === 'true';
+
+  if (shouldProbeBounty && bountyIntegration.configured) {
+    try {
+      const openBounties = await callBountyTool('bounty_list_open', {});
+      bountyLiveProbe = {
+        ok: true,
+        provider: 'Bounty',
+        action: 'bounty_list_open',
+        result: openBounties,
+      };
+    } catch (error: any) {
+      bountyLiveProbe = {
+        ok: false,
+        provider: 'Bounty',
+        action: 'bounty_list_open',
+        error: String(error?.message || error),
+      };
+    }
+  }
+
   res.statusCode = 200;
   res.setHeader('Content-Type', 'application/json');
   res.end(
@@ -180,6 +209,10 @@ export default async function handler(req: any, res: any) {
       stripeEnvironment,
       livePaymentsConfigured: isLiveKey,
       liveWebhookConfigured: Boolean(process.env.STRIPE_LIVE_WEBHOOK_SECRET || (isLiveKey && process.env.STRIPE_WEBHOOK_SECRET)),
+      bounty: {
+        ...bountyIntegration,
+        liveProbe: bountyLiveProbe,
+      },
       metrics: {
         stripeGrossRevenue: `R$${stripeGrossRevenue.toFixed(2)}`,
         stripeRefunds: `R$${stripeRefunds.toFixed(2)}`,
