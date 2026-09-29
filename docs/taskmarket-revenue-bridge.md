@@ -28,6 +28,8 @@ Identity status requires both `registered` and `cacheFresh` from the provider. A
 
 An action advertised as free by Taskmarket does not prove that executing the brief needs no external tools or materials. Until the scope/cost assessment exists, total `externalSpendUsdc` and `requiresSpend` remain unknown. The action preview can independently show the provider action fee; it never supplies an execution budget.
 
+On a main push, the polling workflow first checks the public `?view=release` commit against the pushed SHA. It waits for that version to reach production before acquiring the durable poll slot. A successful response from the previous deployment is not proof that the new qualification code is running. Scheduled and manual polls still use normal OIDC authentication.
+
 Firestore collections: `paid_opportunities`, `marketplace_tasks`, `marketplace_assessments`, `marketplace_missions`, `marketplace_settlements`, `machine_revenue`, `marketplace_agent_state`, `marketplace_poll_runs`. Phase A creates no claim/submission records because no corresponding action occurs. Financial reads have no in-memory fallback.
 
 ## Qualification and execution

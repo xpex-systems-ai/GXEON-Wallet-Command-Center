@@ -33,6 +33,20 @@ jobs:
           script: |
             const endpoint = 'https://gxeon-wallet-command-center.vercel.app/api/cron/taskmarket-radar';
             for (let attempt = 0; attempt < 10; attempt++) {
+              // An existing deployment may return 200 before the new code is live.
+              // Do not acquire the durable poll slot using an older release on push.
+              if (context.eventName === 'push') {
+                const release = await fetch('https://gxeon-wallet-command-center.vercel.app/api/taskmarket?view=release', {
+                  signal: AbortSignal.timeout(15000), redirect: 'error',
+                });
+                const current = release.ok ? await release.json() : null;
+                if (current?.deployedCommit !== context.sha) {
+                  if (attempt === 9) throw new Error('Production has not deployed this commit; no poll slot acquired');
+                  core.info('Waiting for the pushed commit to reach production');
+                  await new Promise(resolve => setTimeout(resolve, 30000));
+                  continue;
+                }
+              }
               const token = await core.getIDToken(endpoint);
               const response = await fetch(endpoint, {
                 method: 'POST', headers: { Authorization: `Bearer ${token}` },
