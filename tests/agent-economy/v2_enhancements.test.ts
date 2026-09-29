@@ -211,10 +211,12 @@ describe('GXEON Machine Market V2 Enhancements Test Suite', () => {
       expect(opp.requiredCapability).toBe('gxeon_url_verify_v1');
     });
 
-    it('successfully connects to x402 discovery and ingests SUPPLY_LISTING', async () => {
+    it('normalizes x402 discovery as supply rather than a paid job', async () => {
+      const discoveryFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ id: 'test-supply', name: 'JSON validator', url: 'https://example.com/json', description: 'Validate JSON' }] }), { status: 200, headers: { 'content-type': 'application/json' } }));
       const opps = await fetchAndIngestX402Demand({ query: 'verification', limit: 2 });
       expect(Array.isArray(opps)).toBe(true);
-      // Even if network is blocked or mock returns empty, return array without throwing
+      discoveryFetch.mockRestore();
+      expect(opps).toHaveLength(1);
       for (const opp of opps) {
         expect(opp.source).toBe('x402_bazaar');
         expect(['SUPPLY_LISTING', 'USAGE_SIGNAL']).toContain(opp.kind);

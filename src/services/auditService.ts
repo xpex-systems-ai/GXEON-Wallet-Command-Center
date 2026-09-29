@@ -24,8 +24,8 @@ export function sanitizeAuditDetail(detail: string): string {
   sanitized = sanitized.replace(/(seed|mnemonic|recoveryPhrase|recovery_phrase|seedPhrase|seed_phrase)([\s:=]+)[a-zA-Z\s]{15,}/gi, '$1$2[REDACTED_MNEMONIC_PHRASE]');
 
   // 3. Redact Bearer / JWT / Auth tokens
-  sanitized = sanitized.replace(/Bearer\s+[a-zA-Z0-9_\-\.]+/gi, 'Bearer [REDACTED_TOKEN]');
-  sanitized = sanitized.replace(/eyJ[a-zA-Z0-9_\-]{10,}\.eyJ[a-zA-Z0-9_\-]{10,}\.[a-zA-Z0-9_\-]+/g, '[REDACTED_JWT_TOKEN]');
+  sanitized = sanitized.replace(/Bearer\s+[a-zA-Z0-9_.-]+/gi, 'Bearer [REDACTED_TOKEN]');
+  sanitized = sanitized.replace(/eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+/g, '[REDACTED_JWT_TOKEN]');
 
   // 4. Redact password assignments
   sanitized = sanitized.replace(/(?:password|pass)[\s:=]+([^\s]+)/gi, 'password: [REDACTED_PASSWORD]');

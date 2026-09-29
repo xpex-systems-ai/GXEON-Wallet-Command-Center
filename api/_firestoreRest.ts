@@ -198,6 +198,22 @@ function asDocument<T>(doc: FirestoreRestDocument): FirestoreDocument<T> {
 }
 
 export class FirestoreRestClient {
+  /** Financial/marketplace readers must distinguish unavailable storage from an empty ledger. */
+  async listStrict<T>(collection: string): Promise<Array<FirestoreDocument<T>>> {
+    const result: Array<FirestoreDocument<T>> = [];
+    let pageToken = '';
+    do {
+      const params = new URLSearchParams({ pageSize: '300' });
+      if (pageToken) params.set('pageToken', pageToken);
+      const response = await firestoreFetch(`/${encodeURIComponent(collection)}?${params}`);
+      if (!response.ok) throw new Error(`Firestore LIST failed with HTTP ${response.status}`);
+      const data = await response.json() as { documents?: FirestoreRestDocument[]; nextPageToken?: string };
+      result.push(...(data.documents || []).map(asDocument<T>));
+      pageToken = data.nextPageToken || '';
+    } while (pageToken);
+    return result;
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       const response = await firestoreFetch('/payments?pageSize=1');

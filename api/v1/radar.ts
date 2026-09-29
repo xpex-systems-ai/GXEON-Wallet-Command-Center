@@ -3,10 +3,18 @@ import { ingestDemandSignal, RawDemandSignal } from '../../src/agent-economy/dem
 import { fetchAndIngestX402Demand } from '../../src/agent-economy/connectors/x402BazaarConnector.js';
 import { fetchPaidBountyRadar } from '../../src/agent-economy/connectors/paidBountyConnector.js';
 import { getAgentEconomyStore } from '../../src/agent-economy/store.js';
+import { FirestoreRestClient, isFirestoreRestConfigured } from '../_firestoreRest.js';
 import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
 import { sendJson, sendError, parseBody } from './_helper.js';
+import { taskmarketReadHandler, taskmarketPollHandler } from '../../src/agent-economy/taskmarket/httpHandlers.js';
+
+export const config = { maxDuration: 300 };
 
 export default async function handler(req: any, res: any) {
+  const requestUrl = new URL(req.url || '/', 'http://localhost');
+  const taskmarketRoute = req.query?.gxeonView || requestUrl.searchParams.get('gxeonView');
+  if (taskmarketRoute === 'taskmarket' || requestUrl.pathname === '/api/taskmarket') return taskmarketReadHandler(req, res);
+  if (taskmarketRoute === 'taskmarket-poll' || requestUrl.pathname === '/api/cron/taskmarket-radar') return taskmarketPollHandler(req, res);
   const flags = getFeatureFlags();
   if (!flags.demandRadarEnabled) {
     sendError(res, 503, 'SERVICE_UNAVAILABLE', 'GXEON Demand Radar is disabled');
@@ -32,12 +40,12 @@ export default async function handler(req: any, res: any) {
         console.warn('[RADAR] Live x402 fetch error:', err);
       }
     }
-    let paidBountyRadar = {
+    let paidBountyRadar: Awaited<ReturnType<typeof fetchPaidBountyRadar>> = {
       providers: {
         rustchain: { ok: false, count: 0, error: 'not_refreshed' },
         algora: { ok: false, count: 0, error: 'not_refreshed' },
       },
-      bounties: [] as any[],
+      bounties: [],
     };
 
     if (refresh) {
@@ -48,7 +56,13 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    let unifiedPaidRadar = null;
+    if (isFirestoreRestConfigured()) {
+      try { unifiedPaidRadar = (await new FirestoreRestClient().get('marketplace_agent_state', 'unified'))?.data || null; } catch { /* Unavailable is not zero. */ }
+    }
+    opportunities = opportunities.filter(o => !/example-org|fintechstartup|sample|synthetic|placeholder/i.test(`${o.source} ${o.sourceUrl}`));
     sendJson(res, 200, {
+      unifiedPaidRadar,
       total: opportunities.length,
       opportunities,
       paidBounties: paidBountyRadar.bounties,

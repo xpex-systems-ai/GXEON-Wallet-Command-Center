@@ -29,7 +29,12 @@ jobs:
         run: npm ci
 
       - name: TypeScript
-        run: npx tsc --noEmit
+        run: |
+          npx tsc --noEmit
+          npm run typecheck:taskmarket
+
+      - name: Lint
+        run: npm run lint
 
       - name: Vitest
         run: npm test -- --run

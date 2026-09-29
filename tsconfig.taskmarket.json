@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["node", "vite/client"] },
+  "include": ["src/agent-economy/taskmarket/**/*.ts", "src/agent-economy/connectors/taskmarketConnector.ts", "api/v1/radar.ts"]
+}

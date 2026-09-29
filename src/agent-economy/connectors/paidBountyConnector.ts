@@ -73,7 +73,7 @@ export async function fetchRustChainPaidBounties(limit = 30): Promise<ExternalPa
   };
   if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
 
-  const response = await fetch(endpoint, { headers });
+  const response = await fetch(endpoint, { headers, signal: AbortSignal.timeout(12000), redirect: 'error' });
   if (!response.ok) {
     throw new Error(`RUSTCHAIN_RADAR_HTTP_${response.status}: ${response.statusText}`);
   }
@@ -112,6 +112,7 @@ export async function fetchRustChainPaidBounties(limit = 30): Promise<ExternalPa
 export async function fetchAlgoraPaidBounties(limit = 50): Promise<ExternalPaidBounty[]> {
   const endpoint = `https://algora.io/api/bounties?status=open&limit=${Math.min(Math.max(limit, 1), 50)}`;
   const response = await fetch(endpoint, {
+    signal: AbortSignal.timeout(12000), redirect: 'error',
     headers: {
       Accept: 'application/json',
       'User-Agent': 'GXEON-Paid-Bounty-Radar/1.0',
@@ -122,7 +123,7 @@ export async function fetchAlgoraPaidBounties(limit = 50): Promise<ExternalPaidB
   }
 
   const raw = await response.text();
-  let items: AlgoraBounty[] = [];
+  let items: AlgoraBounty[];
   try {
     const parsed = JSON.parse(raw) as any;
     items = Array.isArray(parsed) ? parsed : parsed.bounties || parsed.items || parsed.results || [];

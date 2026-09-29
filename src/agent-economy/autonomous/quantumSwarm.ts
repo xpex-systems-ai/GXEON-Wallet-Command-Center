@@ -58,13 +58,14 @@ export class SwarmScoutAgent {
     const results: QuantumOpportunity[] = [];
 
     for (const sig of signals) {
+      if (sig.kind !== 'FUNDED_JOB' || /example-org|fintechstartup|sample|synthetic|placeholder/i.test(`${sig.source} ${sig.sourceUrl}`)) continue;
       const sourceUrl = sig.sourceUrl || `https://gxeon.network/demand/${sig.opportunityId}`;
       const demandText = `${sig.source} ${sig.summary || ''} ${sig.requiredCapability || ''}`;
       const fingerprint = generateOpportunityFingerprint('radar', sourceUrl, demandText);
 
       let compatible: QuantumOpportunity['compatibleGxeonCapability'] = 'NONE';
-      let currency: 'BRL' | 'USDC' | 'credits' = 'USDC';
-      let protocol: 'stripe' | 'x402' | 'mcp' | 'rest' = 'x402';
+      const currency: 'BRL' | 'USDC' | 'credits' = 'USDC';
+      const protocol: 'stripe' | 'x402' | 'mcp' | 'rest' = 'x402';
 
       if (sig.requiredCapability === 'gxeon_url_verify_v1') {
         compatible = 'gxeon_url_verify_v1';
@@ -100,136 +101,10 @@ export class SwarmScoutAgent {
     return results;
   }
 
-  /**
-   * Discovers developer leads (e.g. GitHub issues, syntax errors, bug triage).
-   */
-  async discoverFromGithubLeads(): Promise<QuantumOpportunity[]> {
-    // Sample public developer bug leads matching Quick Fix
-    const sampleLeads = [
-      {
-        id: 'gh_react_hook_crash_401',
-        url: 'https://github.com/example-org/public-repo/issues/401',
-        title: 'TypeError: Cannot read properties of undefined (reading useEffect) during SSR build',
-        summary: 'Next.js 14 App Router hydration mismatch and useEffect syntax violation in production bundle',
-        buyerType: 'developer' as const,
-      },
-      {
-        id: 'gh_ts_type_mismatch_88',
-        url: 'https://github.com/example-org/api-service/issues/88',
-        title: 'TypeScript error TS2322: Type string is not assignable to type number in stripe payload',
-        summary: 'Webhook handler failing in production due to unparsed amount string',
-        buyerType: 'developer' as const,
-      },
-    ];
-
-    return sampleLeads.map((lead) => {
-      const fingerprint = generateOpportunityFingerprint('github_lead', lead.url, lead.summary);
-      return {
-        opportunityId: `opp_${lead.id}`,
-        source: 'github_lead',
-        sourceUrl: lead.url,
-        detectedAt: new Date().toISOString(),
-        category: 'developer_quick_fix',
-        demandType: 'bug_fix',
-        buyerType: lead.buyerType,
-        description: `${lead.title} - ${lead.summary}`,
-        requestedCapability: 'gxeon_quick_fix_v1',
-        estimatedValue: 49.0,
-        currency: 'BRL',
-        protocol: 'stripe',
-        publicContactMethod: 'github_issue',
-        compatibleGxeonCapability: 'gxeon_quick_fix_v1',
-        fitScore: 0,
-        revenueScore: 0,
-        riskScore: 0,
-        confidence: 90,
-        priorityScore: 0,
-        fingerprint,
-        status: 'SIGNAL',
-      };
-    });
-  }
-
-  /**
-   * Discovers MCP registry / tool integration demand.
-   */
-  async discoverFromMcpRegistry(): Promise<QuantumOpportunity[]> {
-    const sampleMcpDemand = [
-      {
-        id: 'mcp_json_tool_demand_12',
-        url: 'https://registry.modelcontextprotocol.io/tools/json-validator',
-        summary: 'Agent needing JSON schema verification tool for output guardrails',
-      },
-    ];
-
-    return sampleMcpDemand.map((item) => {
-      const fingerprint = generateOpportunityFingerprint('mcp_registry', item.url, item.summary);
-      return {
-        opportunityId: `opp_${item.id}`,
-        source: 'mcp_registry',
-        sourceUrl: item.url,
-        detectedAt: new Date().toISOString(),
-        category: 'agent_tooling',
-        demandType: 'schema_validation',
-        buyerType: 'agent',
-        description: item.summary,
-        requestedCapability: 'gxeon_json_validate_v1',
-        estimatedValue: 0.02,
-        currency: 'USDC',
-        protocol: 'mcp',
-        publicContactMethod: 'mcp_tool',
-        compatibleGxeonCapability: 'gxeon_json_validate_v1',
-        fitScore: 0,
-        revenueScore: 0,
-        riskScore: 0,
-        confidence: 88,
-        priorityScore: 0,
-        fingerprint,
-        status: 'SIGNAL',
-      };
-    });
-  }
-
-  /**
-   * Discovers inbound developer/business leads.
-   */
-  async discoverFromInboundLeads(): Promise<QuantumOpportunity[]> {
-    const sampleInbound = [
-      {
-        id: 'inbound_lead_stripe_checkout_fix',
-        url: 'https://gxeon.network/intake/lead_9041',
-        email: 'founder@fintechstartup.co',
-        summary: 'Stripe webhook signature validation failing after version upgrade. Urgent production fix needed.',
-      },
-    ];
-
-    return sampleInbound.map((item) => {
-      const fingerprint = generateOpportunityFingerprint('inbound_lead', item.url, item.summary);
-      return {
-        opportunityId: `opp_${item.id}`,
-        source: 'inbound_lead',
-        sourceUrl: item.url,
-        detectedAt: new Date().toISOString(),
-        category: 'developer_quick_fix',
-        demandType: 'emergency_patch',
-        buyerType: 'developer',
-        description: item.summary,
-        requestedCapability: 'gxeon_quick_fix_v1',
-        estimatedValue: 49.0,
-        currency: 'BRL',
-        protocol: 'stripe',
-        publicContactMethod: 'email',
-        compatibleGxeonCapability: 'gxeon_quick_fix_v1',
-        fitScore: 0,
-        revenueScore: 0,
-        riskScore: 0,
-        confidence: 95,
-        priorityScore: 0,
-        fingerprint,
-        status: 'SIGNAL',
-      };
-    });
-  }
+  // Unconnected sources return no work. Test leads live exclusively in tests/fixtures.
+  async discoverFromGithubLeads(): Promise<QuantumOpportunity[]> { return []; }
+  async discoverFromMcpRegistry(): Promise<QuantumOpportunity[]> { return []; }
+  async discoverFromInboundLeads(): Promise<QuantumOpportunity[]> { return []; }
 
   /**
    * Executes parallel discovery across specified sources with deduplication.
@@ -428,9 +303,9 @@ export class SwarmPricingAgent {
     revenueScore: number;
     validFloor: boolean;
   } {
-    let unitPrice = 0;
-    let minimumFloor = 0;
-    let revenueScore = 0;
+    let unitPrice: number;
+    let minimumFloor: number;
+    let revenueScore: number;
 
     if (capability === 'gxeon_quick_fix_v1') {
       // Server-authoritative R$49.00 BRL per Section 9
@@ -724,6 +599,19 @@ export class SwarmSettlementAgent {
 export class SwarmExecutionAgent {
   readonly role: SwarmRole = 'GXEON_EXECUTION_AGENT';
 
+  async executeMarketplaceService(params: {
+    capability: 'gxeon_json_validate_v1' | 'gxeon_url_verify_v1';
+    input: Record<string, unknown>;
+    funding: { verified: boolean; transactionHash: string; checkedAt: string };
+  }): Promise<Record<string, unknown>> {
+    if (!params.funding.verified || !/^0x[a-fA-F0-9]{64}$/.test(params.funding.transactionHash) ||
+      !Number.isFinite(Date.parse(params.funding.checkedAt)) || Date.now() - Date.parse(params.funding.checkedAt) > 60_000) {
+      throw new ExecutionBlockedError('Marketplace execution requires fresh verified escrow.');
+    }
+    // Same real runners as direct sales; escrow is not recorded as buyer revenue or credits.
+    return this.runCapability(params.capability, params.input);
+  }
+
   /**
    * Executes the service STRICTLY AFTER payment verification.
    * Throws ExecutionBlockedError if payment verification fails.
@@ -742,33 +630,15 @@ export class SwarmExecutionAgent {
       );
     }
 
+    return this.runCapability(capability, input, settlementProof.paymentReference);
+  }
+
+  private async runCapability(capability: string, input: Record<string, unknown>, paymentReference?: string): Promise<Record<string, unknown>> {
     const startedAt = new Date().toISOString();
 
     if (capability === 'gxeon_quick_fix_v1') {
-      const problem = String(input.problemSummary || 'Quick fix diagnostic requested');
-      const repoUrl = String(input.repoOrCodeUrl || 'n/a');
-
-      // Execute automated diagnostic triage and patch generation
-      const diagnosis = {
-        issueType: problem.toLowerCase().includes('typeerror') ? 'RUNTIME_TYPE_ERROR' : 'LOGIC_DEFECT',
-        rootCause: 'Uncaught null reference during component rendering',
-        recommendedPatch: `// Proposed Surgical Patch for GXEON Quick Fix\n- const val = data.field;\n+ const val = data?.field ?? null;`,
-        impactAnalysis: 'Zero regression observed; passes syntax validation.',
-        executionTimeMs: 142,
-      };
-
-      return {
-        serviceId: 'gxeon_quick_fix_v1',
-        status: 'COMPLETED',
-        startedAt,
-        completedAt: new Date().toISOString(),
-        diagnosis,
-        deliveryReceipt: {
-          problem,
-          repoUrl,
-          paymentProof: settlementProof.paymentReference,
-        },
-      };
+      void paymentReference;
+      throw new ExecutionBlockedError('QUICK_FIX_REQUIRES_REVIEWED_CODE_AND_TEST_EVIDENCE: no autonomous coding runner is configured.');
     }
 
     if (capability === 'gxeon_json_validate_v1') {
@@ -995,7 +865,7 @@ export class QuantumRevenueSwarm {
     consensus: SwarmConsensus;
   }> {
     // 1. Research
-    let current = this.researchResearcher(opp);
+    const current = this.researchResearcher(opp);
 
     // 2. Qualify
     const qualResult = this.qualifier.qualify(current);

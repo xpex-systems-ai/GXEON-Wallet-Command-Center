@@ -22,6 +22,7 @@ type MergePayBounty = {
   amount: string;
   status: 'open' | 'awarded' | 'expired' | string;
   expiry: number;
+  claimant?: string | null;
 };
 
 type GithubRepo = {
@@ -39,6 +40,7 @@ type GithubIssue = {
   assignee?: { login?: string } | null;
   assignees?: Array<{ login?: string }>;
   pull_request?: unknown;
+  comments?: number;
 };
 
 const DEFAULT_REPOS = ['codeswithroh/mergepay', 'codeswithroh/tastemaker'];
@@ -53,7 +55,7 @@ function githubHeaders(): Record<string, string> {
 }
 
 async function fetchJson(url: string, init: RequestInit = {}): Promise<any> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(10_000), redirect: 'error' });
   const raw = await response.text();
   let body: any;
   try {
@@ -66,6 +68,19 @@ async function fetchJson(url: string, init: RequestInit = {}): Promise<any> {
     throw new Error(`MERGEPAY_HTTP_${response.status}: ${message}`);
   }
   return body;
+}
+
+export async function inspectMergePayClaims(repo: string, issue: number) {
+  const claims: string[] = [];
+  for (let page = 1; page <= 10; page++) {
+    const comments = await fetchJson(`https://api.github.com/repos/${repo}/issues/${issue}/comments?per_page=100&page=${page}`, { headers: githubHeaders() });
+    if (!Array.isArray(comments)) throw new Error('MERGEPAY_COMMENTS_UNAVAILABLE');
+    for (const comment of comments) {
+      if (typeof comment.body === 'string' && /(?:^|\n)\s*\/claim\b/i.test(comment.body)) claims.push(comment.user?.login || 'unknown');
+    }
+    if (comments.length < 100) return { complete: true, claimants: [...new Set(claims)] };
+  }
+  return { complete: false, claimants: [...new Set(claims)] };
 }
 
 export function getMergePayIntegrationStatus() {
@@ -118,7 +133,7 @@ export async function listMergePayOpenBounties(options?: {
   const feed = await getMergePayFeed();
   const feedRepos = (feed.items || [])
     .map((item) => item.repo)
-    .filter((repo): repo is string => Boolean(repo && repo.includes('/')));
+    .filter((repo): repo is string => Boolean(repo && /^[\w.-]+\/[\w.-]+$/.test(repo)));
 
   const repos = Array.from(new Set([...DEFAULT_REPOS, ...feedRepos])).slice(
     0,
@@ -135,7 +150,7 @@ export async function listMergePayOpenBounties(options?: {
 
       const bounties = await getRepoBounties(meta.id);
       for (const bounty of bounties) {
-        if (bounty.status !== 'open') continue;
+        if (bounty.status !== 'open' || !Number.isFinite(bounty.expiry) || bounty.expiry * 1000 <= Date.now() || !Number.isFinite(Number(bounty.amount)) || Number(bounty.amount) <= 0) continue;
 
         let issue: GithubIssue | null = null;
         try {
@@ -144,11 +159,17 @@ export async function listMergePayOpenBounties(options?: {
           errors.push({ repo, error: `issue #${bounty.issue}: ${String(error?.message || error)}` });
         }
 
+        let comments = { complete: false, claimants: [] as string[] };
+        try { comments = await inspectMergePayClaims(repo, bounty.issue); }
+        catch { errors.push({ repo, error: `issue #${bounty.issue}: claim comments unavailable` }); }
         const claimedBy =
           issue?.assignee?.login ||
           issue?.assignees?.find((a) => a?.login)?.login ||
+          comments.claimants[0] || bounty.claimant ||
           null;
-        const claimAvailable = issue?.state === 'open' && !claimedBy;
+        // Missing canonical claimant is UNKNOWN, never proof that nobody has claimed.
+        const canonicalClaimKnown = Object.prototype.hasOwnProperty.call(bounty, 'claimant');
+        const claimAvailable = issue?.state === 'open' && !issue.pull_request && !claimedBy && comments.complete && canonicalClaimKnown && bounty.claimant === null;
 
         if (!options?.includeClaimed && !claimAvailable) continue;
 
@@ -167,6 +188,8 @@ export async function listMergePayOpenBounties(options?: {
           expiryUnix: bounty.expiry,
           expiryIso: new Date(bounty.expiry * 1000).toISOString(),
           claimedBy,
+          claimStatus: claimedBy ? 'CLAIMED_OR_CONFLICT' : claimAvailable ? 'AVAILABLE' : 'UNKNOWN',
+          claimEvidence: { commentScanComplete: comments.complete, commentClaimants: comments.claimants, canonicalClaimKnown },
           claimAvailable,
           payoutCondition: 'Merged PR from current claimant that closes the funded issue',
           claimAction: 'Comment /claim on the GitHub issue',

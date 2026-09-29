@@ -12,16 +12,17 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { SERVICE_REGISTRY } from '../../agent-economy/services/registry';
+import { TaskmarketPanel } from './TaskmarketPanel';
 
 export const AgentEconomyView: React.FC = () => {
   const [activeSection, setActiveSection] = useState<
-    'overview' | 'services' | 'radar' | 'workers' | 'docs'
+    'overview' | 'services' | 'radar' | 'workers' | 'docs' | 'taskmarket'
   >('overview');
 
   const [services] = useState(Object.values(SERVICE_REGISTRY));
   const [radarSignals, setRadarSignals] = useState<any[]>([]);
   const [radarQuery, setRadarQuery] = useState<string>('verification');
-  const [realRevenue, setRealRevenue] = useState<string>('R$49.00');
+  const [realRevenue, setRealRevenue] = useState<string>('Indisponível');
   const [loading, setLoading] = useState(false);
 
   const fetchRadar = async (overrideQuery?: string) => {
@@ -102,6 +103,7 @@ export const AgentEconomyView: React.FC = () => {
         <div className="flex items-center gap-2 mt-6 pt-4 border-t border-slate-800 overflow-x-auto">
           {[
             { id: 'overview', label: 'Overview & Metrics', icon: Layers },
+            { id: 'taskmarket', label: 'Taskmarket · Trabalho pago', icon: Bot },
             { id: 'services', label: 'Service Registry', icon: Zap },
             { id: 'radar', label: 'Demand Radar', icon: Radio },
             { id: 'workers', label: 'Worker Leases', icon: Server },
@@ -128,6 +130,7 @@ export const AgentEconomyView: React.FC = () => {
       </div>
 
       {/* OVERVIEW SECTION */}
+      {(activeSection === 'overview' || activeSection === 'taskmarket') && <TaskmarketPanel />}
       {activeSection === 'overview' && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
