@@ -29,20 +29,21 @@ export default async function handler(req: any, res: any) {
   if (firestoreConnected) {
     try {
       const client = new FirestoreRestClient();
-      const events = await client.list<{ type: string; metadata?: Record<string, unknown> }>('stripe_events');
-      for (const ev of events) {
-        if (ev.data.type === 'checkout.session.completed') {
-          successfulPayments++;
-          stripeGrossRevenue += 49.00;
-          jobsPaid++;
-        } else if (ev.data.type === 'charge.refunded') {
-          stripeRefunds += 49.00;
-        }
-      }
-
-      const orders = await client.list<{ state: string }>('orders');
+      const orders = await client.list<{ state: string; amountBrl?: number }>('orders', 500);
       for (const ord of orders) {
-        if (['CUSTOMER_CREATED', 'CHECKOUT_CREATED', 'PAYMENT_PENDING'].includes(ord.data.state)) {
+        const amount = typeof ord.data.amountBrl === 'number' && Number.isFinite(ord.data.amountBrl)
+          ? Math.max(0, ord.data.amountBrl)
+          : 0;
+
+        if (['PAYMENT_SUCCEEDED', 'JOB_CREATED', 'EXECUTING', 'QA_PASSED', 'DELIVERED', 'FUNDS_PENDING', 'FUNDS_AVAILABLE_STRIPE', 'PAYOUT_PENDING', 'PAYOUT_PAID_TO_BANK'].includes(ord.data.state)) {
+          successfulPayments++;
+          jobsPaid++;
+          stripeGrossRevenue += amount;
+        } else if (ord.data.state === 'REFUNDED') {
+          stripeRefunds += amount;
+        } else if (ord.data.state === 'FAILED') {
+          failedPayments++;
+        } else if (['CUSTOMER_CREATED', 'CHECKOUT_CREATED', 'PAYMENT_PENDING'].includes(ord.data.state)) {
           pendingPayments++;
         }
       }
@@ -96,6 +97,7 @@ export default async function handler(req: any, res: any) {
         jobsPaid,
         jobsDelivered,
         moneyTruth: 'REAL MONEY != INTERNAL CREDITS',
+        revenueCoverage: 'DURABLE_SERVICE_ORDERS_ONLY; AGENT_CREDIT_SETTLEMENT_REQUIRES_SEPARATE PAYMENT EVIDENCE',
       },
     })
   );
