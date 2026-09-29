@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { Quote } from './types.js';
 import { getService } from './services/registry.js';
 import { getAgentEconomyStore } from './store.js';
+import { isServiceFeatureEnabled } from './featureFlags.js';
 
 const QUOTE_VALIDITY_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -40,7 +41,7 @@ export async function createQuote(params: CreateQuoteParams): Promise<QuoteResul
     };
   }
 
-  if (service.status !== 'AVAILABLE') {
+  if (service.status !== 'AVAILABLE' || !isServiceFeatureEnabled(service.serviceId)) {
     return {
       success: false,
       errorCode: 'SERVICE_UNAVAILABLE',

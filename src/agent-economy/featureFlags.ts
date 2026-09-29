@@ -13,7 +13,6 @@ export interface AgentMarketFeatureFlags {
 }
 
 export function getFeatureFlags(): AgentMarketFeatureFlags {
-  // During tests, default to true unless explicitly overridden
   const isTest = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
 
   return {
@@ -36,4 +35,13 @@ export function getFeatureFlags(): AgentMarketFeatureFlags {
       ? process.env.GXEON_METERED_BILLING_ENABLED === 'true'
       : false,
   };
+}
+
+
+export function isServiceFeatureEnabled(serviceId: string): boolean {
+  const flags = getFeatureFlags();
+  if (serviceId === 'gxeon_url_verify_v1') return flags.urlVerifyEnabled;
+  if (serviceId === 'gxeon_json_validate_v1') return flags.jsonValidateEnabled;
+  if (serviceId === 'gxeon_api_health_v1') return flags.apiHealthEnabled;
+  return false;
 }

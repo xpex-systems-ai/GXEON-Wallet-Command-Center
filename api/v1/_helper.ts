@@ -29,8 +29,15 @@ export function sendError(
   sendJson(res, statusCode, payload);
 }
 
-export async function parseBody(req: any): Promise<any> {
+export async function parseBody(req: any, maxBytes = 1_048_576): Promise<any> {
+  const contentLength = Number(req.headers?.['content-length'] || 0);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    return null;
+  }
+
   if (req.body && typeof req.body === 'object') {
+    const encoded = JSON.stringify(req.body);
+    if (Buffer.byteLength(encoded, 'utf8') > maxBytes) return null;
     return req.body;
   }
   if (typeof req.body === 'string') {
@@ -43,10 +50,20 @@ export async function parseBody(req: any): Promise<any> {
 
   return new Promise((resolve) => {
     let raw = '';
+    let size = 0;
+    let rejected = false;
     req.on('data', (chunk: any) => {
+      if (rejected) return;
+      size += Buffer.byteLength(chunk);
+      if (size > maxBytes) {
+        rejected = true;
+        resolve(null);
+        return;
+      }
       raw += chunk;
     });
     req.on('end', () => {
+      if (rejected) return;
       try {
         resolve(raw ? JSON.parse(raw) : {});
       } catch {

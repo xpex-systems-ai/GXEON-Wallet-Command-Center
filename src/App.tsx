@@ -16,6 +16,9 @@ import { QuickFixServiceCard } from './features/sales/QuickFixServiceCard';
 import { JobPipelineTracker } from './features/sales/JobPipelineTracker';
 import { CustomerOrder, JobTicket } from './features/sales/types';
 import { AgentEconomyView } from './features/agent-economy/AgentEconomyView';
+import { QuickFixLanding } from './pages/QuickFixLanding';
+import { CreditsStore } from './pages/CreditsStore';
+import { McpDocs } from './pages/McpDocs';
 
 import {
   WalletItem,
@@ -243,6 +246,18 @@ export function App() {
       addToast('warning', 'Paid Transition Blocked', result.error || 'Verification rejected.');
     }
   };
+
+  // Public Commercial Pages Route Check (accessible without operator authentication)
+  const currentPath = window.location.pathname.toLowerCase().replace(/\/$/, '');
+  if (currentPath === '/fix') {
+    return <QuickFixLanding />;
+  }
+  if (currentPath === '/credits') {
+    return <CreditsStore />;
+  }
+  if (currentPath === '/mcp') {
+    return <McpDocs />;
+  }
 
   // Auth Gate check: If Firebase is configured and user is unauthenticated
   const isDevMode = Boolean(import.meta.env.DEV);
