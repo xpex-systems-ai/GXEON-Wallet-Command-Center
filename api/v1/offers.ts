@@ -15,8 +15,54 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
+  if (req.method === 'GET') {
+    const list = Array.from(activeOffers.values());
+    sendJson(res, 200, {
+      total: list.length + 3,
+      offers: list,
+      canonicalOffers: [
+        {
+          offerId: 'off_quick_fix_v1_live',
+          seller: 'GXEON',
+          serviceId: 'gxeon_quick_fix_v1',
+          name: 'GXEON Quick Fix',
+          description: 'Diagnóstico técnico especializado e implementação de 1 correção cirúrgica.',
+          amountBrl: 49.0,
+          currency: 'BRL',
+          paymentRail: 'stripe_live',
+          checkoutEndpoint: '/v1/checkout',
+          publicPaymentLink: 'https://buy.stripe.com/bJeeVd45Zgrp5EFdeV1B60b',
+          status: 'ACTIVE',
+        },
+        {
+          offerId: 'off_json_validate_v1',
+          seller: 'GXEON',
+          serviceId: 'gxeon_json_validate_v1',
+          name: 'GXEON JSON Validate',
+          description: 'High-performance JSON syntax validation and schema conformance verification.',
+          unitPriceUsdc: 0.01,
+          currency: 'USDC',
+          paymentRail: 'x402',
+          status: 'ACTIVE',
+        },
+        {
+          offerId: 'off_url_verify_v1',
+          seller: 'GXEON',
+          serviceId: 'gxeon_url_verify_v1',
+          name: 'GXEON URL Verify',
+          description: 'Batch public URL verification with strict anti-SSRF defense.',
+          unitPriceUsdc: 0.025,
+          currency: 'USDC',
+          paymentRail: 'x402',
+          status: 'ACTIVE',
+        },
+      ],
+    });
+    return;
+  }
+
   if (req.method !== 'POST') {
-    sendError(res, 405, 'INVALID_INPUT', 'Method Not Allowed. Use POST /v1/offers or POST /v1/negotiate');
+    sendError(res, 405, 'INVALID_INPUT', 'Method Not Allowed. Use GET /v1/offers, POST /v1/offers or POST /v1/negotiate');
     return;
   }
 

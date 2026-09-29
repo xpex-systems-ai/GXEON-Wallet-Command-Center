@@ -110,6 +110,18 @@ export default async function handler(req: any, res: any) {
 
       pricing: [
         {
+          serviceId: 'gxeon_quick_fix_v1',
+          name: 'GXEON Quick Fix',
+          description: 'Diagnóstico técnico especializado e implementação de 1 correção cirúrgica.',
+          unit: 'job',
+          unitPriceBrl: 49.0,
+          currency: 'BRL',
+          minimumChargeBrl: 49.0,
+          billingRail: 'stripe_live',
+          checkoutEndpoint: '/v1/checkout',
+          publicPaymentLink: 'https://buy.stripe.com/bJeeVd45Zgrp5EFdeV1B60b',
+        },
+        {
           serviceId: 'gxeon_url_verify_v1',
           name: 'GXEON URL Verify',
           unit: 'url',
@@ -128,7 +140,7 @@ export default async function handler(req: any, res: any) {
           minimumChargeUsdc: 0.01,
         },
       ],
-      billingRails: ['prepaid_credits', 'x402'],
+      billingRails: ['stripe_live', 'prepaid_credits', 'x402'],
     });
     return;
   }
@@ -137,6 +149,13 @@ export default async function handler(req: any, res: any) {
   if (path.endsWith('/payment-methods') || view === 'payment-methods') {
     sendJson(res, 200, {
       paymentMethods: [
+        {
+          rail: 'stripe_live',
+          currency: 'BRL',
+          description: 'Stripe Live Checkout for developer and enterprise direct payments (R$49.00)',
+          checkoutEndpoint: '/v1/checkout',
+          publicPaymentLink: 'https://buy.stripe.com/bJeeVd45Zgrp5EFdeV1B60b',
+        },
         {
           rail: 'prepaid_credits',
           currency: 'BRL',

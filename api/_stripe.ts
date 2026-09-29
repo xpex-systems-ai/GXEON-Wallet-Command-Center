@@ -301,9 +301,10 @@ export class VercelStripeService {
     const sessionMetadata: Record<string, string> = {
       order_id: orderId,
       service_id: 'gxeon_quick_fix_v1',
-      opportunity_id: input.opportunityId || '',
-      agent_id: input.agentId || 'GXEON_STRIPE_AGENT',
-      source: input.source || 'gxeon_quantum_swarm',
+      source: input.source || (order as any).source || 'web',
+      agent_id: input.agentId || (order as any).agentId || 'GXEON_STRIPE_AGENT',
+      opportunity_id: input.opportunityId || (order as any).opportunityId || '',
+      offer_id: input.offerId || (order as any).offerId || '',
     };
 
     const session = await this.stripe.checkout.sessions.create(
@@ -328,23 +329,9 @@ export class VercelStripeService {
           },
         ],
         customer_email: order.customerEmail,
-        metadata: {
-          order_id: orderId,
-          service_id: 'gxeon_quick_fix_v1',
-          source: input.source || (order as any).source || 'web',
-          agent_id: input.agentId || (order as any).agentId || 'GXEON_STRIPE_AGENT',
-          opportunity_id: input.opportunityId || (order as any).opportunityId || '',
-          offer_id: input.offerId || (order as any).offerId || '',
-        },
+        metadata: sessionMetadata,
         payment_intent_data: {
-          metadata: {
-            order_id: orderId,
-            service_id: 'gxeon_quick_fix_v1',
-            source: input.source || (order as any).source || 'web',
-            agent_id: input.agentId || (order as any).agentId || 'GXEON_STRIPE_AGENT',
-            opportunity_id: input.opportunityId || (order as any).opportunityId || '',
-            offer_id: input.offerId || (order as any).offerId || '',
-          },
+          metadata: sessionMetadata,
         },
         success_url: `${this.publicUrl}/order/${orderId}/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${this.publicUrl}/order/${orderId}/cancel`,
