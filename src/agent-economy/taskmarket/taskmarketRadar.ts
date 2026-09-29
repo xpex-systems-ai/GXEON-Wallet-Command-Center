@@ -3,6 +3,7 @@ import { verifyTaskFunding } from './chainEvidence.js';
 import { qualifyTask, rankOpportunities } from './qualification.js';
 import { marketplaceRepository, type MarketplaceRepository } from './repository.js';
 import { TaskmarketSettlementWatcher } from './settlementWatcher.js';
+import { TASKMARKET_POLL_CADENCE, withSchedulerHealth } from './schedulerHealth.js';
 import type { TaskmarketSnapshot, WorkerStatus, RequesterStats } from './types.js';
 
 const publicWorker = (): string | undefined => process.env.GXEON_TASKMARKET_WORKER_ADDRESS?.trim() || undefined;
@@ -20,7 +21,7 @@ export async function scanTaskmarket(options: {
     openTasks: 0, fundedTasksAvailable: 0, qualifiedTasksAvailable: 0, claimReady: 0,
     activeClaims: null, submittedTasks: null, paidTasks: null, totalSettledUsdc: null,
     opportunities: [], errors: [], fetchedAt: now, openApiHash: null, persistence: repository ? 'DURABLE' : 'UNAVAILABLE',
-    scheduler: { kind: 'github_actions_oidc', cadence: '*/15 * * * *', lastSuccessfulPoll: null },
+    scheduler: { kind: 'github_actions_oidc', cadence: TASKMARKET_POLL_CADENCE, lastSuccessfulPoll: null },
   };
   try {
     // Schema, network and legal all gate discovery. Network disagreement cannot degrade to success.
@@ -63,7 +64,7 @@ export async function scanTaskmarket(options: {
     if (snapshot.totalSettledUsdc === null) snapshot.persistence = 'UNAVAILABLE';
     snapshot.errors.push(error instanceof Error && /^TASKMARKET_[A-Z_0-9]+$/.test(error.message) ? error.message : 'TASKMARKET_SCAN_FAILED');
   }
-  return snapshot;
+  return withSchedulerHealth(snapshot);
 }
 
 export async function pollTaskmarket(repository = marketplaceRepository()): Promise<TaskmarketSnapshot> {
@@ -71,18 +72,19 @@ export async function pollTaskmarket(repository = marketplaceRepository()): Prom
   if (!await repository.acquirePollSlot(slot)) {
     const cached = await repository.getSnapshot();
     if (!cached || Date.now() - Date.parse(cached.fetchedAt) > 900_000) throw new Error('TASKMARKET_POLL_ALREADY_RUNNING');
-    return cached;
+    return withSchedulerHealth(cached);
   }
   const snapshot = await scanTaskmarket({ repository, persist: true });
   const previous = await repository.getSnapshot();
   snapshot.scheduler.lastSuccessfulPoll = snapshot.apiReachable && snapshot.errors.length === 0 ? snapshot.fetchedAt : previous?.scheduler.lastSuccessfulPoll || null;
-  await repository.saveSnapshot(snapshot);
-  return snapshot;
+  const result = withSchedulerHealth(snapshot);
+  await repository.saveSnapshot(result);
+  return result;
 }
 
 export async function readTaskmarketStatus(live = false): Promise<TaskmarketSnapshot> {
   if (!live) {
-    try { const cached = await marketplaceRepository().getSnapshot(); if (cached) return cached; } catch { /* Report live reads with unavailable persistence explicitly. */ }
+    try { const cached = await marketplaceRepository().getSnapshot(); if (cached) return withSchedulerHealth(cached); } catch { /* Report live reads with unavailable persistence explicitly. */ }
   }
   try { return await scanTaskmarket({ repository: marketplaceRepository() }); }
   catch { return scanTaskmarket(); }

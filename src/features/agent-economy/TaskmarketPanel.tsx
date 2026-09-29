@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ExternalLink, RefreshCw, ShieldCheck } from 'lucide-react';
 import type { TaskmarketSnapshot, TaskmarketOpportunity, ActionPreview } from '../../agent-economy/taskmarket/types';
+import { getSchedulerHealth } from '../../agent-economy/taskmarket/schedulerHealth';
 
 const money = (value: number | null) => value === null ? 'Indisponível' : `${value.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} USDC`;
 const reasonLabels: Record<string, string> = {
@@ -29,6 +30,7 @@ export function TaskmarketPanel() {
   const [selected, setSelected] = useState<TaskmarketOpportunity | null>(null);
   const [preview, setPreview] = useState<ActionPreview | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [now, setNow] = useState(Date.now);
   const load = useCallback(async (live = false) => {
     setLoading(true); setError('');
     try {
@@ -41,7 +43,9 @@ export function TaskmarketPanel() {
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
-  const stale = Boolean(data && Date.now() - Date.parse(data.fetchedAt) > 20 * 60_000);
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(timer); }, []);
+  const stale = Boolean(data && now - Date.parse(data.fetchedAt) > 20 * 60_000);
+  const scheduler = getSchedulerHealth(data?.scheduler.lastSuccessfulPoll || null, Math.max(now, Date.now()));
   async function inspect(task: TaskmarketOpportunity, action: 'qualify' | 'preview') {
     setActionBusy(true); setError(''); setPreview(null); setSelected(task);
     try {
@@ -109,6 +113,10 @@ export function TaskmarketPanel() {
     </div>}
     <footer className="border-t border-slate-800 p-4 text-xs text-slate-500 space-y-1">
       <p>Varredura prevista a cada 15 minutos. Último ciclo confirmado: {data?.scheduler.lastSuccessfulPoll ? new Date(data.scheduler.lastSuccessfulPoll).toLocaleString('pt-BR') : 'ainda não registrado'}.</p>
+      {data && scheduler.health !== 'CURRENT' && <p role="status" className="text-amber-300">
+        {scheduler.health === 'DELAYED' ? 'Varredura automática atrasada: mais de 30 minutos sem ciclo confirmado.' : scheduler.health === 'INVALID_TIMESTAMP' ? 'Horário do último ciclo inválido; operação automática não confirmada.' : 'Aguardando o primeiro ciclo automático confirmado.'}
+        {' '}Consultar agora atualiza esta tela, mas não confirma a execução do agendamento.
+      </p>}
       <p>{data?.persistence === 'DURABLE' ? 'Histórico persistido.' : 'Consulta ao vivo; histórico persistente indisponível nesta resposta.'} Bounty e MergePay continuam em paralelo.</p>
     </footer>
   </section>;

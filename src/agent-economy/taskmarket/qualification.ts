@@ -48,7 +48,7 @@ export function qualifyTask(task: TaskmarketTask, context: {
   risk = Math.min(100, risk);
   if (risk > 30) reasons.push('RISK_ABOVE_30');
   if (context.legal.enforcementEnabled) blockers.push('LEGAL_ACCEPTANCE_REQUIRED');
-  if (context.identity.registered !== true) blockers.push('WORKER_IDENTITY_REQUIRED');
+  if (context.identity.registered !== true || context.identity.cacheFresh === false) blockers.push('WORKER_IDENTITY_REQUIRED');
   if (!action) blockers.push('NO_WORKER_ACTION_AVAILABLE');
   const qualified = reasons.length === 0 && !blockers.some(b => !['WORKER_IDENTITY_REQUIRED', 'LEGAL_ACCEPTANCE_REQUIRED', 'SPEND_APPROVAL_REQUIRED', 'BOND_APPROVAL_REQUIRED'].includes(b));
   const state = reasons.includes('TASK_EXPIRED') ? 'EXPIRED' : reasons.length ? 'REJECTED' : qualified && blockers.length === 0 ? 'CLAIM_READY' : qualified ? 'QUALIFIED' : 'DISCOVERED';
