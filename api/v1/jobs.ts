@@ -127,6 +127,8 @@ export default async function handler(req: any, res: any) {
       jobId: admission.job!.jobId,
       state: admission.job!.state,
       totalCreditsReserved: admission.totalCreditsReserved,
+      totalCreditsSettled: admission.totalCreditsSettled,
+      result: admission.result,
     });
     return;
   }

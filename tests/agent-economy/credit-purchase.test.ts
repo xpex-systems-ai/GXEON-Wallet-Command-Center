@@ -10,11 +10,11 @@ import { handleMcpRpc } from '../../src/agent-economy/mcpGateway.js';
 import { reserveCredits } from '../../src/agent-economy/ledger.js';
 import type { AgentAccount } from '../../src/agent-economy/types.js';
 
-const mocks = vi.hoisted(() => ({ create: vi.fn() }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), list: vi.fn() }));
 vi.mock('stripe', async importOriginal => {
   const actual = await importOriginal<typeof import('stripe')>();
   return { default: class extends actual.default {
-    constructor(key: string) { super(key); this.checkout.sessions.create = mocks.create; }
+    constructor(key: string) { super(key); this.checkout.sessions.create = mocks.create; this.checkout.sessions.list = mocks.list; }
   } };
 });
 
@@ -69,6 +69,7 @@ beforeEach(() => {
   vi.stubEnv('GXEON_AGENT_MARKET_ENABLED', 'true');
   resetAgentEconomyStoreForTesting();
   mocks.create.mockReset().mockResolvedValue({ id: 'cs_test_checkout', url: 'https://checkout.stripe.com/c/pay/cs_test_checkout' });
+  mocks.list.mockReset().mockResolvedValue({ data: [{ id: purchase.sessionId, metadata: { service_id: 'agent_credit_topup' } }] });
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
@@ -125,6 +126,34 @@ describe('Credit purchase onboarding', () => {
 });
 
 describe('Signed credit payment fulfillment', () => {
+  it('reverses partial then full refunds once, even when credits have already been spent', async () => {
+    const store = getAgentEconomyStore();
+    await store.saveAccount(seed);
+    await store.commitCreditPurchase(purchase);
+    const service = new VercelStripeService({ store: paymentStore(), webhookSecret: testSecret });
+    const refund = (id: string, amount: number) => event(id, 'charge.refunded', {
+      id: 'ch_unit', payment_intent: purchase.paymentIntentId, amount_refunded: amount,
+      metadata: { service_id: 'agent_credit_topup' },
+    });
+    expect((await deliver(service, refund('evt_partial', 1000))).status).toBe('REFUNDED');
+    expect((await store.getAccount(seed.accountId))?.creditBalance).toBe(50);
+    await store.saveAccount({ ...(await store.getAccount(seed.accountId))!, creditBalance: 10, spentCredits: 40 });
+    expect((await deliver(service, refund('evt_full', 2000))).status).toBe('REFUNDED');
+    await deliver(service, refund('evt_full_again', 2000));
+    await deliver(service, refund('evt_old_partial', 1000));
+    expect((await store.getAccount(seed.accountId))?.creditBalance).toBe(-40);
+    expect((await reserveCredits(seed.accountId, 2, 'job_after_refund', 'quote_unit')).success).toBe(false);
+  });
+
+  it('retries a refund that arrives before fulfillment instead of forgetting it', async () => {
+    const store = getAgentEconomyStore();
+    await store.saveAccount(seed);
+    await expect(store.refundCreditPurchase(purchase.sessionId, 2000, 'ch_unit')).rejects.toThrow('not yet fulfilled');
+    await store.commitCreditPurchase(purchase);
+    expect(await store.refundCreditPurchase(purchase.sessionId, 2000, 'ch_unit')).toBe('COMMITTED');
+    expect((await store.getAccount(seed.accountId))?.creditBalance).toBe(0);
+  });
+
   it('credits a paid session once across retries, concurrent delivery and different event types', async () => {
     const store = getAgentEconomyStore();
     await store.saveAccount(seed);
@@ -173,6 +202,24 @@ describe('Signed credit payment fulfillment', () => {
 });
 
 describe('Production storage and paid execution', () => {
+  it.each(['2025-03-26', '2025-06-18', '2025-11-25'])('negotiates the supported MCP version %s', async protocolVersion => {
+    const result = await handleMcpRpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion } }, seed.accountId);
+    expect(result.result).toMatchObject({ protocolVersion });
+  });
+
+  it('commits refunds and their receipt watermark against both current revisions', async () => {
+    vi.spyOn(FirestoreRestClient.prototype, 'get').mockImplementation(async collection =>
+      collection === 'credit_ledger'
+        ? { data: { accountId: seed.accountId, stripePurchase: purchase, refundedCents: 0 }, updateTime: 'receipt-revision' }
+        : { data: { ...seed, creditBalance: 100 }, updateTime: 'account-revision' });
+    const commit = vi.spyOn(FirestoreRestClient.prototype, 'conditionalCommit').mockResolvedValue('COMMITTED');
+    expect(await new FirestoreAgentEconomyStore().refundCreditPurchase(purchase.sessionId, 2000, 'ch_unit')).toBe('COMMITTED');
+    const writes = commit.mock.calls[0][0];
+    expect(writes.map(write => write.currentDocument)).toEqual([
+      { updateTime: 'account-revision' }, { updateTime: 'receipt-revision' }, { exists: false },
+    ]);
+  });
+
   it('commits the receipt and balance together with a snapshot precondition and retries conflicts', async () => {
     const get = vi.spyOn(FirestoreRestClient.prototype, 'get').mockImplementation(async collection =>
       collection === 'credit_ledger' ? null : { data: { ...seed }, updateTime: '2026-01-01T00:00:00.000001Z' });

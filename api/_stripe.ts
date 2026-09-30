@@ -512,9 +512,22 @@ export class VercelStripeService {
 
     if (event.type === 'charge.refunded') {
       const charge = event.data.object as Stripe.Charge;
+      if (process.env.NODE_ENV === 'production' && (!event.livemode || !charge.livemode)) {
+        return { status: 'INVALID_ORDER_STATE', processed: false, error: 'Live refund required' };
+      }
       let orderId: string | undefined = charge.metadata?.order_id;
       const paymentIntentId =
         typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id || null;
+
+      if (charge.metadata?.service_id === 'agent_credit_topup') {
+        if (!paymentIntentId) return { status: 'PAYMENT_INTENT_MISSING', processed: false };
+        const sessions = await this.stripe.checkout.sessions.list({ payment_intent: paymentIntentId, limit: 2 });
+        const session = sessions.data.find(item => item.metadata?.service_id === 'agent_credit_topup');
+        if (!session) throw new Error('Credit purchase session not found; retry refund');
+        const result = await getAgentEconomyStore().refundCreditPurchase(session.id, charge.amount_refunded, charge.id);
+        await this.store.recordEventIfAbsent(event.id, event.type);
+        return { status: result === 'COMMITTED' ? 'REFUNDED' : 'DUPLICATE_IGNORED', processed: true };
+      }
 
       if (!orderId && paymentIntentId) {
         orderId = (await this.store.getOrderIdByPaymentIntent(paymentIntentId)) || undefined;

@@ -53,9 +53,24 @@ function purchaseEntry(purchase: CreditPurchase, account: AgentAccount): LedgerE
   };
 }
 
+function refundEntry(purchase: CreditPurchase, account: AgentAccount, amountCents: number, previousCents: number, chargeId: string): LedgerEntry {
+  if (!Number.isSafeInteger(amountCents) || amountCents < 0 || amountCents > purchase.amountCents) {
+    throw new Error('Invalid Stripe refund amount');
+  }
+  const reversed = Math.floor(purchase.credits * amountCents / purchase.amountCents)
+    - Math.floor(purchase.credits * previousCents / purchase.amountCents);
+  return {
+    ledgerEntryId: `stripe_refund_${chargeId}_${amountCents}`, accountId: account.accountId,
+    type: 'REFUND', amountCredits: -reversed,
+    balanceBefore: account.creditBalance, balanceAfter: account.creditBalance - reversed,
+    timestamp: new Date().toISOString(), idempotencyKey: `stripe_refund_${chargeId}_${amountCents}`,
+  };
+}
+
 export interface IAgentEconomyStore {
   provisionAccount(account: AgentAccount, apiKey: ApiKeyRecord): Promise<void>;
   commitCreditPurchase(purchase: CreditPurchase): Promise<'COMMITTED' | 'DUPLICATE'>;
+  refundCreditPurchase(sessionId: string, amountCents: number, chargeId: string): Promise<'COMMITTED' | 'DUPLICATE'>;
   getAccount(accountId: string): Promise<AgentAccount | null>;
   saveAccount(account: AgentAccount): Promise<void>;
   getApiKeyByHash(hashedKey: string): Promise<ApiKeyRecord | null>;
@@ -120,6 +135,7 @@ export interface IAgentEconomyStore {
  * and environments where Firestore is explicitly not configured.
  */
 export class MemoryAgentEconomyStore implements IAgentEconomyStore {
+  private creditPurchases = new Map<string, { purchase: CreditPurchase; refundedCents: number }>();
   private accounts = new Map<string, AgentAccount>();
   private apiKeys = new Map<string, ApiKeyRecord>();
   private quotes = new Map<string, Quote>();
@@ -210,6 +226,20 @@ export class MemoryAgentEconomyStore implements IAgentEconomyStore {
     if (entries.some(existing => existing.ledgerEntryId === entry.ledgerEntryId)) return 'DUPLICATE';
     this.accounts.set(account.accountId, { ...account, creditBalance: entry.balanceAfter, updatedAt: entry.timestamp });
     this.ledger.set(account.accountId, [...entries, { ...entry }]);
+    this.creditPurchases.set(purchase.sessionId, { purchase: { ...purchase }, refundedCents: 0 });
+    return 'COMMITTED';
+  }
+
+  async refundCreditPurchase(sessionId: string, amountCents: number, chargeId: string): Promise<'COMMITTED' | 'DUPLICATE'> {
+    const receipt = this.creditPurchases.get(sessionId);
+    if (!receipt) throw new Error('Purchase not yet fulfilled; retry refund');
+    if (receipt.refundedCents >= amountCents) return 'DUPLICATE';
+    const account = this.accounts.get(receipt.purchase.accountId);
+    if (!account) throw new Error('Credit account not found');
+    const entry = refundEntry(receipt.purchase, account, amountCents, receipt.refundedCents, chargeId);
+    this.accounts.set(account.accountId, { ...account, creditBalance: entry.balanceAfter, updatedAt: entry.timestamp });
+    this.ledger.set(account.accountId, [...(this.ledger.get(account.accountId) || []), entry]);
+    receipt.refundedCents = amountCents;
     return 'COMMITTED';
   }
 
@@ -498,6 +528,28 @@ export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
       if (result === 'COMMITTED') return 'COMMITTED';
     }
     throw new Error('Concurrent credit update; retry the Stripe event');
+  }
+
+  async refundCreditPurchase(sessionId: string, amountCents: number, chargeId: string): Promise<'COMMITTED' | 'DUPLICATE'> {
+    const receiptId = `stripe_${sessionId}`;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const receipt = await this.client.get<LedgerEntry & { stripePurchase: CreditPurchase; refundedCents?: number }>('credit_ledger', receiptId);
+      if (!receipt?.updateTime || !receipt.data.stripePurchase) throw new Error('Purchase not yet fulfilled; retry refund');
+      const previousCents = receipt.data.refundedCents || 0;
+      if (previousCents >= amountCents) return 'DUPLICATE';
+      const doc = await this.client.get<AgentAccount>('agent_accounts', receipt.data.accountId);
+      if (!doc?.updateTime) throw new Error('Credit account not found');
+      const entry = refundEntry(receipt.data.stripePurchase, doc.data, amountCents, previousCents, chargeId);
+      const result = await this.client.conditionalCommit([
+        this.client.makeUpdateWrite('agent_accounts', doc.data.accountId,
+          { ...doc.data, creditBalance: entry.balanceAfter, updatedAt: entry.timestamp }, { updateTime: doc.updateTime }),
+        this.client.makeUpdateWrite('credit_ledger', receiptId,
+          { ...receipt.data, refundedCents: amountCents }, { updateTime: receipt.updateTime }),
+        this.client.makeUpdateWrite('credit_ledger', entry.ledgerEntryId, { ...entry }, { exists: false }),
+      ]);
+      if (result === 'COMMITTED') return 'COMMITTED';
+    }
+    throw new Error('Concurrent credit update; retry the Stripe refund');
   }
 
   async saveAccount(account: AgentAccount): Promise<void> {

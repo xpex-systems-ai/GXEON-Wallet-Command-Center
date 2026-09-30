@@ -126,13 +126,14 @@ export default async function handler(req: any, res: any) {
       }
 
       // 4. Internal Credits Ledger
-      const ledgerEntries = await client.listStrict<{ type: string; amountCredits: number; stripePurchase?: CreditPurchase }>('credit_ledger');
+      const ledgerEntries = await client.listStrict<{ type: string; amountCredits: number; stripePurchase?: CreditPurchase; refundedCents?: number }>('credit_ledger');
       for (const entry of ledgerEntries) {
         if (entry.data.type === 'CREDIT') {
           creditsSold += (entry.data.amountCredits || 0);
           const purchase = entry.data.stripePurchase;
           if (purchase?.livemode === true && purchase.currency === 'brl') {
             stripeGrossRevenue += purchase.amountCents / 100;
+            stripeRefunds += (entry.data.refundedCents || 0) / 100;
             successfulPayments++;
           }
         } else if (entry.data.type === 'DEBIT') {

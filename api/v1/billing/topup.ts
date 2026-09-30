@@ -88,6 +88,7 @@ export default async function handler(req: any, res: any) {
         service_id: 'agent_credit_topup', account_id: account.accountId,
         credits: String(pack.credits), pack_id: pack.id,
       },
+      payment_intent_data: { metadata: { service_id: 'agent_credit_topup', account_id: account.accountId, pack_id: pack.id } },
       success_url: publicUrl + '/credits?status=returned',
       cancel_url: publicUrl + '/credits?status=cancelled',
     });

@@ -278,7 +278,8 @@ export async function handleMcpRpc(
           jsonrpc: '2.0',
           id,
           result: {
-            protocolVersion: '2026-07-28',
+            protocolVersion: ['2025-03-26', '2025-06-18', '2025-11-25'].includes(String(params.protocolVersion))
+              ? params.protocolVersion : '2025-11-25',
             capabilities: {
               tools: {},
             },
@@ -738,6 +739,8 @@ export async function handleMcpRpc(
             jobId: admission.job!.jobId,
             state: admission.job!.state,
             totalCreditsReserved: admission.totalCreditsReserved,
+            totalCreditsSettled: admission.totalCreditsSettled,
+            result: admission.result,
           },
         };
       }
