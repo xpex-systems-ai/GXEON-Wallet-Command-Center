@@ -25,10 +25,12 @@ export function McpDocs() {
       "args": [
         "-y",
         "mcp-remote",
-        "https://gxeon-wallet-command-center.vercel.app/api/v1/mcp"
+        "https://gxeon-wallet-command-center.vercel.app/api/v1/mcp",
+        "--header",
+        "Authorization:\${GXEON_AUTH_HEADER}"
       ],
       "env": {
-        "GXEON_API_KEY": "<YOUR_KEY>"
+        "GXEON_AUTH_HEADER": "Bearer <YOUR_KEY>"
       }
     }
   }
@@ -145,10 +147,10 @@ export function McpDocs() {
                 <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">2 créditos / validação</span>
               </div>
               <p className="text-xs text-slate-300 mb-3">
-                Valida dados estruturados contra schemas JSON Draft 7/2020-12, apontando divergências e JSON Pointers exatos.
+                Valida a sintaxe JSON, o tipo principal, os campos obrigatórios e os tipos de propriedades simples do schema informado.
               </p>
               <div className="text-[11px] font-mono text-slate-500 bg-slate-950 p-2 rounded">
-                Input: &#123; "schema": &#123; ... &#125;, "data": &#123; ... &#125; &#125;
+                Input: &#123; "payload": &#123; "ok": true &#125;, "schema": &#123; "type": "object" &#125; &#125;
               </div>
             </div>
 
@@ -207,7 +209,7 @@ export function McpDocs() {
         <div className="bg-gradient-to-r from-slate-900 via-[#0B1220] to-slate-900 border border-slate-800 p-8 rounded-2xl text-center">
           <h3 className="text-xl font-bold text-white mb-2">Pronto para integrar ao seu agente?</h3>
           <p className="text-xs text-slate-300 mb-6 max-w-lg mx-auto">
-            Adquira créditos pré-pagos a partir de R$ 20,00 e receba imediatamente sua chave de acesso à API.
+            Pacotes a partir de R$ 20,00. Salve sua chave antes do checkout; os créditos ficam disponíveis após a confirmação do pagamento.
           </p>
           <a
             href="/credits"

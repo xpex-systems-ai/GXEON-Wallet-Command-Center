@@ -303,7 +303,7 @@ export class FirestoreRestClient {
     collection: string,
     id: string,
     data: Record<string, unknown>,
-    options?: { exists?: boolean }
+    options?: { exists?: boolean; updateTime?: string }
   ): Record<string, unknown> {
     const write: Record<string, unknown> = {
       update: {
@@ -311,9 +311,24 @@ export class FirestoreRestClient {
         fields: encodeFields(data),
       },
     };
-    if (typeof options?.exists === 'boolean') {
+    if (options?.updateTime) {
+      write.currentDocument = { updateTime: options.updateTime };
+    } else if (typeof options?.exists === 'boolean') {
       write.currentDocument = { exists: options.exists };
     }
     return write;
+  }
+
+  // A stale balance or an existing receipt must reject the whole commit.
+  async conditionalCommit(writes: Array<Record<string, unknown>>): Promise<'COMMITTED' | 'CONFLICT'> {
+    const response = await firestoreFetch(':commit', {
+      method: 'POST', body: JSON.stringify({ writes }),
+    });
+    if (response.ok) return 'COMMITTED';
+    const body = await response.json().catch(() => ({})) as { error?: { status?: string } };
+    if (['ALREADY_EXISTS', 'FAILED_PRECONDITION', 'ABORTED'].includes(body.error?.status || '')) {
+      return 'CONFLICT';
+    }
+    throw new Error(`Firestore conditional COMMIT failed with HTTP ${response.status}`);
   }
 }
