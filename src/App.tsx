@@ -19,6 +19,7 @@ import { AgentEconomyView } from './features/agent-economy/AgentEconomyView';
 import { QuickFixLanding } from './pages/QuickFixLanding';
 import { CreditsStore } from './pages/CreditsStore';
 import { McpDocs } from './pages/McpDocs';
+import { Ecosystem } from './pages/Ecosystem';
 
 import {
   WalletItem,
@@ -257,6 +258,9 @@ export function App() {
   }
   if (currentPath === '/mcp') {
     return <McpDocs />;
+  }
+  if (currentPath === '/ecosystem') {
+    return <Ecosystem />;
   }
 
   // Auth Gate check: If Firebase is configured and user is unauthenticated
