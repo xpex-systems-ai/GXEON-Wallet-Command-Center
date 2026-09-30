@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Coins, ShieldCheck, ArrowRight, CheckCircle2, Lock, Cpu, AlertCircle, Download } from 'lucide-react';
 import { TOPUP_PACKS } from '../agent-economy/billingCatalog';
 
@@ -19,10 +19,22 @@ export function CreditsStore() {
   const [keySaved, setKeySaved] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
   const [checkingBalance, setCheckingBalance] = useState(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
   const returnStatus = new URLSearchParams(window.location.search).get('status');
+
+  useEffect(() => {
+    if (error || checkout?.apiKey) {
+      feedbackRef.current?.scrollIntoView({ block: 'center' });
+      feedbackRef.current?.focus({ preventScroll: true });
+    }
+  }, [error, checkout?.apiKey]);
 
   async function handleCheckout(packId: string) {
     setError('');
+    if (!existingKey.trim() && !agentName.trim()) {
+      setError('Informe o nome do agente ou projeto para criar sua conta.');
+      return;
+    }
     setLoadingPack(packId);
     setKeySaved(false);
     try {
@@ -111,6 +123,7 @@ export function CreditsStore() {
           {existingKey.trim() && <button onClick={checkBalance} disabled={checkingBalance} className="mt-4 text-sm text-cyan-400 disabled:opacity-50">{checkingBalance ? 'Consultando…' : 'Consultar saldo'}</button>}
           {balance !== null && <p role="status" className="mt-3 text-emerald-400">{balance} créditos disponíveis</p>}
         </section>
+        <div ref={feedbackRef} tabIndex={-1}>
         {error && <div role="alert" className="max-w-xl mx-auto mb-8 p-4 bg-red-950 border border-red-800 rounded-xl flex items-center gap-3 text-sm text-red-200"><AlertCircle className="w-5 h-5 shrink-0" />{error}</div>}
         {checkout?.apiKey && (
           <section aria-label="Chave de acesso" className="max-w-xl mx-auto mb-10 p-6 rounded-2xl border border-cyan-500 bg-slate-900">
@@ -124,12 +137,13 @@ export function CreditsStore() {
               className="w-full bg-[#FF7A00] text-black font-bold py-3 rounded-xl disabled:opacity-40">Continuar para o pagamento</button>
           </section>
         )}
+        </div>
         <div className="grid md:grid-cols-3 gap-6">
           {Object.values(TOPUP_PACKS).map(pack => (
             <section key={pack.id} className={'bg-[#0B1220] rounded-2xl p-7 border flex flex-col ' + (pack.id === 'pack_500' ? 'border-[#FF7A00]' : 'border-slate-800')}>
               <div className="flex justify-between items-center gap-2 mb-5"><h2 className="font-mono text-sm">{pack.name}</h2><span className="text-xs bg-slate-800 p-2 rounded">{pack.credits} créditos</span></div>
               <p className="text-4xl font-bold">{currency(pack.priceCents / 100)}</p>
-              <p className="text-xs text-slate-400 mt-2 mb-6">{currency(pack.priceCents / 100 / pack.credits)} por crédito</p>
+              <p className="text-xs text-slate-400 mt-2 mb-6">{(pack.priceCents / 100 / pack.credits).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 3 })} por crédito</p>
               <ul className="space-y-3 text-sm text-slate-300 mb-8 flex-1">
                 {[
                   pack.credits / 5 + ' verificações de URL ou ' + pack.credits / 2 + ' validações JSON',
