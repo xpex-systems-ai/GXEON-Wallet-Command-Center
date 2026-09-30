@@ -124,7 +124,7 @@ describe('GXEON Machine Market V2 Enhancements Test Suite', () => {
       );
       expect(resp.jsonrpc).toBe('2.0');
       const res = resp.result as { protocolVersion: string; serverInfo: { name: string } };
-      expect(res.protocolVersion).toBe('2026-07-28');
+      expect(res.protocolVersion).toBe('2025-11-25');
       expect(res.serverInfo.name).toBe('gxeon-capability-market');
     });
 

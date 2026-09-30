@@ -1,6 +1,7 @@
 // GXEON_BOUNTY_LIVE_PROBE_DEPLOY_MARKER
 import { paymentStoreConfigured, paymentStoreHealth } from './_store.js';
 import { FirestoreRestClient } from './_firestoreRest.js';
+import type { CreditPurchase } from '../src/agent-economy/store.js';
 import { readTaskmarketStatus } from '../src/agent-economy/taskmarket/taskmarketRadar.js';
 import {
   callBountyTool,
@@ -70,8 +71,9 @@ export default async function handler(req: any, res: any) {
       // 2. Stripe Events & Orders (BRL Rail)
       const events = await client.list<any>('stripe_events');
       const orders = await client.list<any>('orders');
-      auditEvents = events.map((e) => e.data);
-      auditOrders = orders.map((o) => o.data);
+      auditEvents = events.map(({ data }) => ({ eventId: data.eventId, type: data.type, processedAt: data.processedAt }));
+      auditOrders = orders.map(({ data }) => ({ id: data.id, state: data.state, amountBrl: data.amountBrl, updatedAt: data.updatedAt }));
+      const countedOrders = new Set<string>();
 
       for (const ev of events) {
         const orderId = (ev.data.metadata as any)?.orderId;
@@ -90,15 +92,17 @@ export default async function handler(req: any, res: any) {
         const isAmount49 =
           ev.data.amount === 4900 ||
           ev.data.amount_total === 4900 ||
-          matchingOrder?.amountCents === 4900;
+          matchingOrder?.amountCents === 4900 || matchingOrder?.amountBrl === 49;
 
         if (
-          ev.data.type === 'checkout.session.completed' &&
+          ['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(ev.data.type) &&
+          !countedOrders.has(orderId) &&
           isLive &&
           isPaid &&
           isBrl &&
           isAmount49
         ) {
+          countedOrders.add(orderId);
           successfulPayments++;
           stripeGrossRevenue += 49.00;
           jobsPaid++;
@@ -122,10 +126,16 @@ export default async function handler(req: any, res: any) {
       }
 
       // 4. Internal Credits Ledger
-      const ledgerEntries = await client.list<{ type: string; amountCredits: number }>('credit_ledger');
+      const ledgerEntries = await client.listStrict<{ type: string; amountCredits: number; stripePurchase?: CreditPurchase; refundedCents?: number }>('credit_ledger');
       for (const entry of ledgerEntries) {
         if (entry.data.type === 'CREDIT') {
           creditsSold += (entry.data.amountCredits || 0);
+          const purchase = entry.data.stripePurchase;
+          if (purchase?.livemode === true && purchase.currency === 'brl') {
+            stripeGrossRevenue += purchase.amountCents / 100;
+            stripeRefunds += (entry.data.refundedCents || 0) / 100;
+            successfulPayments++;
+          }
         } else if (entry.data.type === 'DEBIT') {
           creditsConsumed += (entry.data.amountCredits || 0);
         }

@@ -4,6 +4,7 @@ import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
 import { sendJson, sendError } from './_helper.js';
 
 export default async function handler(req: any, res: any) {
+  res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') {
     sendError(res, 405, 'INVALID_INPUT', 'Method Not Allowed');
     return;

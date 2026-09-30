@@ -3,8 +3,6 @@ import { createQuote } from './quoteEngine.js';
 import { getAccountBalance } from './ledger.js';
 import { getAgentEconomyStore } from './store.js';
 import { submitJobAdmission } from './admissionService.js';
-import { executeJsonValidateWorker } from './workers/jsonValidateWorker.js';
-import { executeUrlVerifyWorker } from './workers/urlVerifyWorker.js';
 import { TASKMARKET_MCP_TOOLS, callTaskmarketTool } from './taskmarket/mcpTools.js';
 import {
   callBountyTool,
@@ -280,7 +278,8 @@ export async function handleMcpRpc(
           jsonrpc: '2.0',
           id,
           result: {
-            protocolVersion: '2026-07-28',
+            protocolVersion: ['2025-03-26', '2025-06-18', '2025-11-25'].includes(String(params.protocolVersion))
+              ? params.protocolVersion : '2025-11-25',
             capabilities: {
               tools: {},
             },
@@ -645,89 +644,28 @@ export async function handleMcpRpc(
           };
         }
 
-        if (toolName === 'gxeon_json_validate_v1') {
-          const balance = await getAccountBalance(accountId);
-          const availableCredits = balance?.availableCredits ?? 0;
-          if (availableCredits < 2) {
-            return {
-              jsonrpc: '2.0',
-              id,
-              result: {
-                content: [
-                  {
-                    type: 'text',
-                    text: JSON.stringify(
-                      {
-                        error: 'INSUFFICIENT_CREDITS',
-                        message: `Insufficient credits. Required: 2 credits. Available: ${availableCredits}`,
-                        x402Alternative: {
-                          endpoint: 'https://gxeon-wallet-command-center.vercel.app/x402/json-validate',
-                          priceUsdc: 0.01,
-                          network: 'eip155:8453',
-                        },
-                      },
-                      null,
-                      2
-                    ),
-                  },
-                ],
-                isError: true,
-              },
-            };
+        if (toolName === 'gxeon_json_validate_v1' || toolName === 'gxeon_url_verify_v1') {
+          const isJson = toolName === 'gxeon_json_validate_v1';
+          const quantity = isJson ? 1 : Array.isArray(args.urls) ? args.urls.length : 0;
+          const quote = await createQuote({ accountId, serviceId: toolName, quantity });
+          if (!quote.success || !quote.quote) {
+            return { jsonrpc: '2.0', id, result: {
+              content: [{ type: 'text', text: JSON.stringify({ error: quote.message }) }], isError: true,
+            } };
           }
-          const raw = (args.rawJson || args.payload || '') as string;
-          const execRes = executeJsonValidateWorker({ payload: raw });
-          return {
-            jsonrpc: '2.0',
-            id,
-            result: {
-              content: [{ type: 'text', text: JSON.stringify(execRes, null, 2) }],
-              isError: !execRes.valid,
-            },
-          };
-        }
-
-        if (toolName === 'gxeon_url_verify_v1') {
-          const urls = (args.urls as string[]) || [];
-          const requiredCredits = Math.max(1, urls.length) * 5;
-          const balance = await getAccountBalance(accountId);
-          const availableCredits = balance?.availableCredits ?? 0;
-          if (availableCredits < requiredCredits) {
-            return {
-              jsonrpc: '2.0',
-              id,
-              result: {
-                content: [
-                  {
-                    type: 'text',
-                    text: JSON.stringify(
-                      {
-                        error: 'INSUFFICIENT_CREDITS',
-                        message: `Insufficient credits. Required: ${requiredCredits} credits. Available: ${availableCredits}`,
-                        x402Alternative: {
-                          endpoint: 'https://gxeon-wallet-command-center.vercel.app/x402/url-verify',
-                          priceUsdc: 0.025 * Math.max(1, urls.length),
-                          network: 'eip155:8453',
-                        },
-                      },
-                      null,
-                      2
-                    ),
-                  },
-                ],
-                isError: true,
-              },
-            };
-          }
-          const execRes = await executeUrlVerifyWorker({ urls });
-          return {
-            jsonrpc: '2.0',
-            id,
-            result: {
-              content: [{ type: 'text', text: JSON.stringify(execRes, null, 2) }],
-              isError: false,
-            },
-          };
+          const input = isJson
+            ? { payload: args.payload ?? args.rawJson, ...(args.schema ? { schema: args.schema } : {}) }
+            : args;
+          const admission = await submitJobAdmission({
+            accountId, quoteId: quote.quote.quoteId, input, waitForExecution: true,
+          });
+          const completed = admission.success && admission.job?.state === 'COMPLETED';
+          const output = completed
+            ? isJson ? admission.result?.results[0] : admission.result
+            : admission.error || { error: admission.job?.failedReason || 'Execution unavailable' };
+          return { jsonrpc: '2.0', id, result: {
+            content: [{ type: 'text', text: JSON.stringify(output) }], isError: !completed,
+          } };
         }
 
         return {
@@ -779,7 +717,7 @@ export async function handleMcpRpc(
           quoteId,
           input,
           idempotencyKey,
-          waitForExecution: false,
+          waitForExecution: true,
         });
 
         if (!admission.success) {
@@ -801,6 +739,8 @@ export async function handleMcpRpc(
             jobId: admission.job!.jobId,
             state: admission.job!.state,
             totalCreditsReserved: admission.totalCreditsReserved,
+            totalCreditsSettled: admission.totalCreditsSettled,
+            result: admission.result,
           },
         };
       }

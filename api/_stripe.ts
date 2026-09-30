@@ -1,5 +1,7 @@
 import Stripe from 'stripe';
 import { FirestoreRestClient } from './_firestoreRest.js';
+import { getTopupPack } from '../src/agent-economy/billingCatalog.js';
+import { getAgentEconomyStore } from '../src/agent-economy/store.js';
 
 export interface CustomerOrder {
   id: string;
@@ -382,17 +384,17 @@ export class VercelStripeService {
       return { status: 'DUPLICATE_IGNORED', processed: true };
     }
 
-    if (event.type === 'checkout.session.completed') {
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
       const session = event.data.object as Stripe.Checkout.Session;
       const serviceId = session.metadata?.service_id;
 
       // Phase 9 Money Truth: In production, test sessions NEVER count
-      if (process.env.NODE_ENV === 'production' && !event.livemode) {
+      if (process.env.NODE_ENV === 'production' && (!event.livemode || !session.livemode)) {
         return { status: 'INVALID_ORDER_STATE', processed: false, error: 'Test sessions never count toward production revenue (livemode required)' };
       }
 
       if (session.payment_status !== 'paid') {
-        return { status: 'UNPAID', processed: false, error: 'Stripe session is not paid' };
+        return { status: 'UNPAID', processed: true };
       }
       if (session.currency?.toLowerCase() !== 'brl') {
         return { status: 'CURRENCY_MISMATCH', processed: false, error: 'Stripe currency mismatch' };
@@ -400,22 +402,27 @@ export class VercelStripeService {
 
       if (serviceId === 'agent_credit_topup') {
         const accountId = session.metadata?.account_id;
-        const credits = parseInt(session.metadata?.credits || '0', 10);
-        if (!accountId || credits <= 0) {
-          return { status: 'INVALID_ORDER_STATE', processed: false, error: 'Missing or invalid account_id or credits in metadata' };
+        const pack = getTopupPack(session.metadata?.pack_id);
+        if (!accountId || !pack || session.metadata?.credits !== String(pack.credits)) {
+          return { status: 'INVALID_ORDER_STATE', processed: false, error: 'Invalid credit purchase metadata' };
         }
-
-        const { creditAccount } = await import('../src/agent-economy/ledger.js');
-        const creditRes = await creditAccount(accountId, credits, `stripe_${event.id}`);
-        if (!creditRes.success) {
-          return { status: 'INVALID_ORDER_STATE', processed: false, error: creditRes.error?.error.message || 'Failed to credit account' };
+        if (session.amount_total !== pack.priceCents) {
+          return { status: 'AMOUNT_MISMATCH', processed: false, error: 'Stripe credit pack amount mismatch' };
         }
-
+        const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
+        if (!paymentIntentId?.startsWith('pi_')) {
+          return { status: 'PAYMENT_INTENT_MISSING', processed: false };
+        }
+        const result = await getAgentEconomyStore().commitCreditPurchase({
+          sessionId: session.id, eventId: event.id, paymentIntentId, accountId,
+          packId: pack.id, credits: pack.credits, amountCents: pack.priceCents,
+          currency: 'brl', livemode: event.livemode && session.livemode,
+        });
         await this.store.recordEventIfAbsent(event.id, event.type);
         return {
-          status: 'PAYMENT_SUCCEEDED',
+          status: result === 'COMMITTED' ? 'PAYMENT_SUCCEEDED' : 'DUPLICATE_IGNORED',
           processed: true,
-          orderId: `topup_${event.id}`,
+          orderId: `topup_${session.id}`,
           jobId: `topup_acc_${accountId}`,
         };
       }
@@ -437,6 +444,10 @@ export class VercelStripeService {
       }
       if (!order.stripeSessionId || order.stripeSessionId !== session.id) {
         return { status: 'SESSION_MISMATCH', processed: false, error: 'Stripe session binding mismatch' };
+      }
+      if (order.stripePaymentIntentId) {
+        await this.store.recordEventIfAbsent(event.id, event.type);
+        return { status: 'DUPLICATE_IGNORED', processed: true, orderId };
       }
       if (!['CUSTOMER_CREATED', 'CHECKOUT_CREATED', 'PAYMENT_PENDING', 'PAYMENT_SUCCEEDED'].includes(order.state)) {
         return { status: 'INVALID_ORDER_STATE', processed: false, error: 'Order state cannot accept payment completion' };
@@ -501,9 +512,22 @@ export class VercelStripeService {
 
     if (event.type === 'charge.refunded') {
       const charge = event.data.object as Stripe.Charge;
+      if (process.env.NODE_ENV === 'production' && (!event.livemode || !charge.livemode)) {
+        return { status: 'INVALID_ORDER_STATE', processed: false, error: 'Live refund required' };
+      }
       let orderId: string | undefined = charge.metadata?.order_id;
       const paymentIntentId =
         typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id || null;
+
+      if (charge.metadata?.service_id === 'agent_credit_topup') {
+        if (!paymentIntentId) return { status: 'PAYMENT_INTENT_MISSING', processed: false };
+        const sessions = await this.stripe.checkout.sessions.list({ payment_intent: paymentIntentId, limit: 2 });
+        const session = sessions.data.find(item => item.metadata?.service_id === 'agent_credit_topup');
+        if (!session) throw new Error('Credit purchase session not found; retry refund');
+        const result = await getAgentEconomyStore().refundCreditPurchase(session.id, charge.amount_refunded, charge.id);
+        await this.store.recordEventIfAbsent(event.id, event.type);
+        return { status: result === 'COMMITTED' ? 'REFUNDED' : 'DUPLICATE_IGNORED', processed: true };
+      }
 
       if (!orderId && paymentIntentId) {
         orderId = (await this.store.getOrderIdByPaymentIntent(paymentIntentId)) || undefined;
