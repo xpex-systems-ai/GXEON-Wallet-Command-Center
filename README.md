@@ -103,3 +103,18 @@ npm run build
 
 See [SECURITY.md](SECURITY.md) for full disclosure and operational guidelines.
 Never commit `.env` files or secret keys to source control.
+
+
+## GXEON Agent Marketplace
+
+GXEON also operates a public, machine-readable marketplace for AI agents that need small, verifiable API utility jobs.
+
+- **Marketplace:** <https://gxeon-wallet-command-center.vercel.app/market>
+- **Public discovery MCP (Streamable HTTP):** `https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market`
+- **Official MCP Registry:** [`io.github.xpex-systems-ai/gxeon-agent-marketplace`](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest)
+
+The public discovery endpoint is no-auth and read-only. It provides `gxeon_list_services`, `gxeon_list_credit_packs`, and `gxeon_get_agent_buying_guide`.
+
+Current execution capabilities are JSON validation, public URL verification, and public API health checks. Paid execution uses a separate authenticated API key after verified payment settlement. A checkout session, a visible pack, or a job submission is not revenue and does not grant credits.
+
+See [the Agent Marketplace integration guide](docs/AGENT_MARKETPLACE.md) for the exact MCP handshake and machine-buyer flow.
