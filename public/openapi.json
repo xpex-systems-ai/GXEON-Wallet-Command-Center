@@ -364,6 +364,134 @@
           }
         }
       }
+    },
+    "/v1/billing/topup": {
+      "get": {
+        "operationId": "listAgentCreditPacks",
+        "summary": "List prepaid GXEON agent request packs",
+        "responses": {
+          "200": {
+            "description": "Available BRL prepaid credit packs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rail": {
+                      "type": "string"
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "packs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "credits": {
+                            "type": "integer"
+                          },
+                          "priceCents": {
+                            "type": "integer"
+                          },
+                          "currency": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAgentCreditCheckout",
+        "summary": "Create a Stripe Checkout for a prepaid GXEON agent pack",
+        "description": "For a new agent, provide packId and name. The response can include a one-time GXEON API key that must be saved before payment. Checkout creation does not grant credits; credits are granted only after verified Stripe settlement.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "packId"
+                ],
+                "properties": {
+                  "packId": {
+                    "type": "string",
+                    "enum": [
+                      "pack_20",
+                      "pack_50",
+                      "pack_100",
+                      "pack_250",
+                      "pack_500",
+                      "pack_2000"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Required for first purchase when no Authorization header is supplied"
+                  },
+                  "accountId": {
+                    "type": "string",
+                    "description": "Only valid when bound to the authenticated account"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Unpaid Stripe Checkout created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "checkoutUrl": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "targetAccountId": {
+                      "type": "string"
+                    },
+                    "apiKey": {
+                      "type": "string",
+                      "description": "Returned only on first account creation. Save securely before payment."
+                    },
+                    "pack": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pack or input"
+          },
+          "401": {
+            "description": "Invalid account authentication"
+          },
+          "503": {
+            "description": "Payment rail unavailable"
+          }
+        }
+      }
     }
   },
   "components": {

@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
-import topup from '../../api/v1/billing/topup.js';
+import topup, { TOPUP_PACKS } from '../../api/v1/billing/topup.js';
 import mcp from '../../api/v1/mcp.js';
 import { VercelStripeService, type PaymentStore } from '../../api/_stripe.js';
 import { FirestoreRestClient } from '../../api/_firestoreRest.js';
@@ -74,6 +74,48 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('Credit purchase onboarding', () => {
+  it('publishes six prepaid packs with lower entry pricing and non-increasing unit cost', () => {
+    const packs = Object.values(TOPUP_PACKS);
+    expect(packs.map(pack => pack.id)).toEqual([
+      'pack_20', 'pack_50', 'pack_100', 'pack_250', 'pack_500', 'pack_2000',
+    ]);
+    expect(packs.map(pack => pack.priceCents)).toEqual([490, 1190, 2000, 4500, 8000, 25000]);
+    const unitCosts = packs.map(pack => pack.priceCents / pack.credits);
+    for (let i = 1; i < unitCosts.length; i++) {
+      expect(unitCosts[i]).toBeLessThanOrEqual(unitCosts[i - 1] + Number.EPSILON);
+    }
+  });
+
+  it('publishes micro packs and creates a R$4.90 NANO checkout without granting credits early', async () => {
+    const res = response();
+    await topup({ method: 'POST', headers: {}, body: { packId: 'pack_20', name: 'Nano Buyer' } }, res);
+    expect(res.statusCode).toBe(201);
+    expect(res.body.pack).toMatchObject({ id: 'pack_20', credits: 20, priceCents: 490, currency: 'brl' });
+    expect(res.body.apiKey).toMatch(/^gxa_live_/);
+    const auth = await authenticateMachineRequest('Bearer ' + res.body.apiKey);
+    expect(auth.context?.account.creditBalance).toBe(0);
+    const params = mocks.create.mock.calls[0][0];
+    expect(params.line_items[0].price_data.unit_amount).toBe(490);
+    expect(params.metadata.credits).toBe('20');
+    expect(params.metadata.pack_id).toBe('pack_20');
+  });
+
+  it('lets authenticated agents discover prepaid packs over MCP without creating payment state', async () => {
+    const store = getAgentEconomyStore();
+    await store.saveAccount({ ...seed, creditBalance: 20 });
+    const result = await handleMcpRpc({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'tools/call',
+      params: { name: 'list_credit_packs', arguments: {} },
+    }, seed.accountId);
+    const payload = JSON.parse((result.result as any).content[0].text);
+    expect(payload.topupEndpoint).toBe('/v1/billing/topup');
+    expect(payload.packs.map((pack: any) => pack.id)).toContain('pack_20');
+    expect(payload.packs.find((pack: any) => pack.id === 'pack_20').priceCents).toBe(490);
+    expect(payload.moneyTruth).toContain('not payment');
+  });
+
   it('creates a zero-balance account with a hashed buyer key and returns a checkout', async () => {
     const res = response();
     await topup({ method: 'POST', headers: {}, body: { packId: 'pack_100', name: 'Buyer' } }, res);

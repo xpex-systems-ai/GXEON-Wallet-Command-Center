@@ -3,6 +3,7 @@ import { createQuote } from './quoteEngine.js';
 import { getAccountBalance } from './ledger.js';
 import { getAgentEconomyStore } from './store.js';
 import { submitJobAdmission } from './admissionService.js';
+import { TOPUP_PACKS } from './billingCatalog.js';
 import { TASKMARKET_MCP_TOOLS, callTaskmarketTool } from './taskmarket/mcpTools.js';
 import {
   callBountyTool,
@@ -37,6 +38,15 @@ const MCP_TOOLS = [
   {
     name: 'list_services',
     description: 'List all active GXEON capability services, pricing models, and input schemas',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'list_credit_packs',
+    description: 'List prepaid GXEON request packs available for agent accounts. This is read-only and does not create a checkout or spend money.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -324,6 +334,27 @@ export async function handleMcpRpc(
             id,
             result: {
               content: [{ type: 'text', text: JSON.stringify(services, null, 2) }],
+              isError: false,
+            },
+          };
+        }
+
+        if (toolName === 'list_credit_packs') {
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  currency: 'BRL',
+                  rail: 'PREPAID_STRIPE',
+                  topupEndpoint: '/v1/billing/topup',
+                  packs: Object.values(TOPUP_PACKS),
+                  moneyTruth:
+                    'Listing or creating a checkout is not payment. Credits become available only after verified Stripe settlement.',
+                }, null, 2),
+              }],
               isError: false,
             },
           };
