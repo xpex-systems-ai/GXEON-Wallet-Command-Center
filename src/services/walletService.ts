@@ -98,17 +98,19 @@ export class WalletService {
     // Hydrate the public RustChain watch wallet from the server-side Money Truth endpoint.
     // This is read-only and never persists private keys, signing material, or synthetic balances.
     try {
-      const response = await fetch('/api/v1/money-truth', { cache: 'no-store' });
+      const response = await fetch('/api/integration-status', { cache: 'no-store' });
       if (response.ok) {
-        const moneyTruth = await response.json() as {
-          rtc?: {
+        const integrationStatus = await response.json() as {
+          moneyTruthSnapshot?: {
+            rtc?: {
             address?: string;
             balance?: string | null;
             status?: string;
-            verifiedAt?: string | null;
+              verifiedAt?: string | null;
+            };
           };
         };
-        const rtc = moneyTruth.rtc;
+        const rtc = integrationStatus.moneyTruthSnapshot?.rtc;
         if (
           rtc?.status === 'CONFIRMED' &&
           typeof rtc.balance === 'string' &&
