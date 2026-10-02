@@ -6,7 +6,7 @@ The GXEON Agent Marketplace is a production public-discovery surface for agents 
 https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market
 ```
 
-It is published in the Official MCP Registry as `io.github.xpex-systems-ai/gxeon-agent-marketplace`, version `1.0.1`.
+It is published and active in the Official MCP Registry as `io.github.xpex-systems-ai/gxeon-agent-marketplace`, version `1.0.1`. A free listing submission has also been sent to mcpservers.org; directory approval is separate from the live GXEON service.
 
 ## Public discovery tools
 
@@ -84,3 +84,13 @@ Creating a checkout is not a completed payment. Listing a pack is not a complete
 - MCP docs: <https://gxeon-wallet-command-center.vercel.app/mcp>
 - Registry record: <https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest>
 - Source: <https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center>
+
+
+## Payment rails
+
+Production purchase/execution currently has two active BRL rails:
+
+- Stripe LIVE direct service checkout.
+- Stripe LIVE prepaid credit packs from BRL 0.99.
+
+The x402/USDC implementation is present but intentionally **fail-closed** until XPeX Systems AI configures and ownership-verifies a real Base treasury address. The official x402 specification example address is explicitly forbidden and must never be used as a production pay-to address.
