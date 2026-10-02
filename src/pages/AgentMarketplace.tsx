@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Boxes, Calculator, Coins, Copy, ExternalLink, ShieldCheck, Sparkles } from 'lucide-react';
+import { Bot, Boxes, Calculator, Coins, Copy, ExternalLink, Radar, ShieldCheck, Sparkles } from 'lucide-react';
 
 type Pack = {
   id: string;
@@ -89,7 +89,7 @@ export function AgentMarketplace() {
   }
 
   return (
-    <div data-market-version="1.0.2" className="min-h-screen bg-[#070D18] text-slate-100">
+    <div data-market-version="1.1.0" className="min-h-screen bg-[#070D18] text-slate-100">
       <header className="border-b border-[#1E314F] bg-[#0B1220]">
         <div className="max-w-6xl mx-auto px-5 py-5 flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -195,6 +195,34 @@ export function AgentMarketplace() {
               <div className="text-2xl font-black mt-3">BYTE · R$ 1,99</div>
               <div className="text-xs text-slate-400 mt-2">5 créditos · 0 de sobra</div>
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-[#2A405B] bg-[#0B1626] p-7">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+            <div className="max-w-3xl">
+              <div className="flex items-center gap-2 text-[#FF7A00] text-xs font-mono tracking-[0.18em]">
+                <Radar className="w-4 h-4" />
+                EXTERNAL AGENT DEMAND
+              </div>
+              <h2 className="text-3xl font-bold mt-3">Speedbot agora alimenta o radar de demanda do GXEON.</h2>
+              <p className="text-slate-400 mt-3 leading-7">
+                Agentes conectados ao MCP público podem chamar <code className="text-cyan-300">gxeon_list_external_demand</code> para
+                ler oportunidades públicas atuais agregadas pelo Speedbot. O feed é somente leitura: não registra agente,
+                não publica serviço, não faz bid e não movimenta dinheiro.
+              </p>
+              <p className="text-xs text-slate-500 mt-3">
+                Oportunidades externas são leads. A plataforma de origem controla seleção e liquidação.
+              </p>
+            </div>
+            <a
+              href="https://speedbot.dev/connect"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#2A4667] px-5 py-3 text-sm font-semibold text-cyan-300"
+            >
+              Conectar Speedbot <ExternalLink className="w-4 h-4" />
+            </a>
           </div>
         </section>
 
