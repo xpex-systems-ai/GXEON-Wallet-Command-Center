@@ -100,6 +100,22 @@ describe('Credit purchase onboarding', () => {
     expect(params.metadata.pack_id).toBe('pack_20');
   });
 
+  it('lets authenticated agents discover prepaid packs over MCP without creating payment state', async () => {
+    const store = getAgentEconomyStore();
+    await store.saveAccount({ ...seed, creditBalance: 20 });
+    const result = await handleMcpRpc({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'tools/call',
+      params: { name: 'list_credit_packs', arguments: {} },
+    }, seed.accountId);
+    const payload = JSON.parse((result.result as any).content[0].text);
+    expect(payload.topupEndpoint).toBe('/v1/billing/topup');
+    expect(payload.packs.map((pack: any) => pack.id)).toContain('pack_20');
+    expect(payload.packs.find((pack: any) => pack.id === 'pack_20').priceCents).toBe(490);
+    expect(payload.moneyTruth).toContain('not payment');
+  });
+
   it('creates a zero-balance account with a hashed buyer key and returns a checkout', async () => {
     const res = response();
     await topup({ method: 'POST', headers: {}, body: { packId: 'pack_100', name: 'Buyer' } }, res);
