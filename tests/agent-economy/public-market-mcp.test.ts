@@ -29,7 +29,7 @@ describe('Public GXEON agent marketplace MCP', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.result.serverInfo).toEqual({
       name: 'gxeon-public-market',
-      version: '1.0.0',
+      version: '1.0.1',
     });
 
     const listed = await call({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
