@@ -139,6 +139,14 @@ export default async function handler(req: any, res: any) {
           minimumChargeCredits: 2,
           minimumChargeUsdc: 0.01,
         },
+        {
+          serviceId: 'gxeon_api_health_v1',
+          name: 'GXEON API Health',
+          unit: 'endpoint',
+          unitPriceCredits: 10,
+          minimumChargeCredits: 10,
+          billingRail: 'prepaid_credits',
+        },
       ],
       billingRails: ['stripe_live', 'prepaid_credits', 'x402'],
     });
