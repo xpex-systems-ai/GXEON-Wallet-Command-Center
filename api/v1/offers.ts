@@ -43,7 +43,8 @@ export default async function handler(req: any, res: any) {
           unitPriceUsdc: 0.01,
           currency: 'USDC',
           paymentRail: 'x402',
-          status: 'ACTIVE',
+          status: 'PAUSED',
+          blocker: 'x402 treasury ownership verification is required before USDC settlement is advertised as live.',
         },
         {
           offerId: 'off_url_verify_v1',
@@ -54,7 +55,8 @@ export default async function handler(req: any, res: any) {
           unitPriceUsdc: 0.025,
           currency: 'USDC',
           paymentRail: 'x402',
-          status: 'ACTIVE',
+          status: 'PAUSED',
+          blocker: 'x402 treasury ownership verification is required before USDC settlement is advertised as live.',
         },
       ],
     });
