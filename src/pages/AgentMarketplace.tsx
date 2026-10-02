@@ -169,7 +169,7 @@ export function AgentMarketplace() {
               </a>
             </div>
             <p className="mt-4 text-xs text-emerald-300/80">
-              Publicação oficial ativa: io.github.xpex-systems-ai/gxeon-agent-marketplace · v1.0.0
+              Publicação oficial ativa: io.github.xpex-systems-ai/gxeon-agent-marketplace · v1.0.1
             </p>
           </aside>
         </section>

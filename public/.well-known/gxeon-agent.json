@@ -162,7 +162,7 @@
   "marketplace": "/market",
   "officialMcpRegistry": {
     "name": "io.github.xpex-systems-ai/gxeon-agent-marketplace",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "status": "active",
     "registry": "https://registry.modelcontextprotocol.io",
     "latestRecord": "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest",
