@@ -270,7 +270,8 @@ const MCP_TOOLS = [
         },
       },
       required: ['urls'],
-    },,
+    },
+  },
   {
     name: 'gxeon_api_health_v1',
     description: 'Check public REST endpoint availability, latency, expected status, and required top-level JSON fields. Price: 10 credits per endpoint.',
@@ -308,7 +309,6 @@ const MCP_TOOLS = [
       additionalProperties: false,
     },
   }
-  },
 ];
 
 export async function handleMcpRpc(
