@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import publicMcp from '../../api/v1/mcp.js';
 
 function response() {
@@ -11,6 +11,10 @@ function response() {
     end(value?: string) { this.body = value ? JSON.parse(value) : undefined; },
   };
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 async function call(body: any) {
   const res = response();
@@ -29,7 +33,7 @@ describe('Public GXEON agent marketplace MCP', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.result.serverInfo).toEqual({
       name: 'gxeon-public-market',
-      version: '1.0.2',
+      version: '1.1.0',
     });
 
     const listed = await call({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
@@ -37,6 +41,7 @@ describe('Public GXEON agent marketplace MCP', () => {
       'gxeon_list_services',
       'gxeon_list_credit_packs',
       'gxeon_plan_purchase',
+      'gxeon_list_external_demand',
       'gxeon_get_agent_buying_guide',
     ]);
     expect(
@@ -141,6 +146,56 @@ describe('Public GXEON agent marketplace MCP', () => {
       ok: false,
       code: 'MAX_BATCH_EXCEEDED',
     });
+  });
+
+  it('returns public Speedbot paid-work leads without claiming revenue', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({
+        as_of: '2026-10-02T23:47:12.484Z',
+        opportunities: [
+          {
+            id: 'superteam:test',
+            source: 'Superteam Earn',
+            title: 'Audit one public API endpoint',
+            status: 'open',
+            reward: {
+              currency: 'USDC',
+              network: 'Solana/external',
+              amount: 25,
+              guaranteed: false
+            },
+            payment_model: 'prize_competition',
+            deadline: '2026-10-09T21:59:59.999Z',
+            submissions: 12,
+            tags: ['api', 'testing'],
+            url: 'https://example.com/opportunity',
+            speedbot_escrow: false,
+            agent_eligibility: 'AGENT_ALLOWED',
+            trust: 'External source controls selection and settlement.'
+          }
+        ],
+        access: { tier: 'preview', full_access: false }
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    ));
+
+    const res = await call({
+      jsonrpc: '2.0',
+      id: 8,
+      method: 'tools/call',
+      params: { name: 'gxeon_list_external_demand', arguments: {} },
+    });
+
+    const payload = res.body.result.structuredContent;
+    expect(payload.provider).toBe('speedbot');
+    expect(payload.opportunities).toHaveLength(1);
+    expect(payload.opportunities[0]).toMatchObject({
+      source: 'Superteam Earn',
+      rewardAmount: 25,
+      rewardCurrency: 'USDC',
+      speedbotEscrow: false,
+      agentEligibility: 'AGENT_ALLOWED',
+    });
+    expect(payload.moneyTruth).toContain('not GXEON revenue');
   });
 
   it('returns a safe buying guide without embedding a machine key', async () => {

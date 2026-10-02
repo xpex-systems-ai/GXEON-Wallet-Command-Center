@@ -4,6 +4,7 @@ import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
 import { TOPUP_PACKS } from '../../src/agent-economy/billingCatalog.js';
 import { planAgentPurchase } from '../../src/agent-economy/marketPlanner.js';
 import { listAvailableServices } from '../../src/agent-economy/services/registry.js';
+import { fetchSpeedbotExternalOpportunities } from '../../src/agent-economy/connectors/speedbotConnector.js';
 import { sendJson, sendError, parseBody } from './_helper.js';
 import type { AgentScope } from '../../src/agent-economy/types.js';
 
@@ -38,6 +39,12 @@ const PUBLIC_MARKET_TOOLS = [
       required: ['serviceId', 'units'],
       additionalProperties: false,
     },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  {
+    name: 'gxeon_list_external_demand',
+    description: 'List current public paid-work opportunities from the Speedbot external opportunity preview. Read-only; listings are leads, not guaranteed earnings or GXEON revenue.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   {
@@ -117,7 +124,7 @@ async function handlePublicMarketMcp(req: any, res: any) {
   if (req.method === 'GET') {
     sendJson(res, 200, {
       name: 'gxeon-public-market',
-      version: '1.0.2',
+      version: '1.1.0',
       endpoint: '/api/v1/mcp?view=public-market',
       authentication: 'none',
       scope: 'Read-only marketplace discovery and buying guidance',
@@ -154,9 +161,9 @@ async function handlePublicMarketMcp(req: any, res: any) {
           ? body.params.protocolVersion
           : '2026-07-28',
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: 'gxeon-public-market', version: '1.0.2' },
+      serverInfo: { name: 'gxeon-public-market', version: '1.1.0' },
       instructions:
-        'This endpoint is no-auth and read-only. Use it only to discover services, packs, and the documented buying flow.',
+        'This endpoint is no-auth and read-only. Use it to discover GXEON services, prepaid packs, current external agent demand, and the documented buying flow. External opportunity listings are leads, not guaranteed revenue.',
     }));
     return;
   }
@@ -216,6 +223,27 @@ async function handlePublicMarketMcp(req: any, res: any) {
       typeof units === 'number' ? units : Number.NaN
     );
     sendJson(res, 200, publicRpcResult(body.id, publicToolResult(plan)));
+    return;
+  }
+
+  if (name === 'gxeon_list_external_demand') {
+    try {
+      const feed = await fetchSpeedbotExternalOpportunities();
+      sendJson(res, 200, publicRpcResult(body.id, publicToolResult({
+        provider: 'speedbot',
+        asOf: feed.asOf,
+        accessTier: feed.accessTier,
+        fullAccess: feed.fullAccess,
+        opportunities: feed.opportunities,
+        moneyTruth: feed.moneyTruth,
+      })));
+    } catch {
+      sendJson(res, 200, publicRpcResult(body.id, {
+        content: [{ type: 'text', text: 'Speedbot external demand is temporarily unavailable.' }],
+        structuredContent: { error: 'SPEEDBOT_EXTERNAL_DEMAND_UNAVAILABLE' },
+        isError: true,
+      }));
+    }
     return;
   }
 
