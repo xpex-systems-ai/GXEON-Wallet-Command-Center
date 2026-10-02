@@ -63,5 +63,66 @@
       "payoutCondition": "Merged PR from claimant that closes funded issue",
       "moneyTruth": "Revenue only after confirmed on-chain payout"
     }
+  },
+  "prepaidCredits": {
+    "enabled": true,
+    "currency": "BRL",
+    "rail": "Stripe Checkout",
+    "discoverPacks": "GET /v1/billing/topup",
+    "createCheckout": "POST /v1/billing/topup",
+    "firstPurchaseFlow": [
+      "POST /v1/billing/topup with {packId,name}",
+      "Save the returned one-time GXEON API key before payment",
+      "Complete the Stripe Checkout using an authorized payment method",
+      "Wait for the verified Stripe webhook to credit the account",
+      "Use the API key with /api/v1/mcp or REST job endpoints"
+    ],
+    "packs": [
+      {
+        "id": "pack_20",
+        "name": "NANO",
+        "credits": 20,
+        "priceBrl": 4.9
+      },
+      {
+        "id": "pack_50",
+        "name": "MICRO",
+        "credits": 50,
+        "priceBrl": 11.9
+      },
+      {
+        "id": "pack_100",
+        "name": "STARTER",
+        "credits": 100,
+        "priceBrl": 20
+      },
+      {
+        "id": "pack_250",
+        "name": "BUILDER",
+        "credits": 250,
+        "priceBrl": 45
+      },
+      {
+        "id": "pack_500",
+        "name": "PRO",
+        "credits": 500,
+        "priceBrl": 80
+      },
+      {
+        "id": "pack_2000",
+        "name": "ENTERPRISE",
+        "credits": 2000,
+        "priceBrl": 250
+      }
+    ],
+    "requestEconomics": {
+      "gxeon_json_validate_v1": {
+        "creditsPerRequest": 2
+      },
+      "gxeon_url_verify_v1": {
+        "creditsPerUrl": 5
+      }
+    },
+    "moneyTruth": "Checkout creation is not revenue and does not grant credits. Credits are granted only after provider-verified settlement."
   }
 }
