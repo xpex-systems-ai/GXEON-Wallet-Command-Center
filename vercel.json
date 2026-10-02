@@ -4,11 +4,11 @@
   "rewrites": [
     {
       "source": "/.well-known/agent.json",
-      "destination": "/api/a2a?view=card"
+      "destination": "/api/v1/mcp?view=a2a-card"
     },
     {
       "source": "/a2a",
-      "destination": "/api/a2a"
+      "destination": "/api/v1/mcp?view=a2a"
     },
     {
       "source": "/api/taskmarket",
