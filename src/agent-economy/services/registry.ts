@@ -163,7 +163,7 @@ export const SERVICE_REGISTRY: Record<string, ServiceDefinition> = {
     timeoutMs: 15000,
     executionPolicy: 'STRICT_ANTI_SSRF_OUTBOUND',
     riskClass: 'MEDIUM',
-    status: 'DRAFT', // Draft status until promoted
+    status: 'AVAILABLE',
   },
 };
 
