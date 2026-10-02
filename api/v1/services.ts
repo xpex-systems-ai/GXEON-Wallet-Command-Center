@@ -5,6 +5,7 @@ import {
   verifyTreasurySignature,
 } from '../../src/agent-economy/x402/treasuryVerifier.js';
 import { checkBazaarVisibility } from '../../src/agent-economy/connectors/x402BazaarConnector.js';
+import { getTreasuryStatus } from '../../src/agent-economy/x402/networks.js';
 import { sendJson, sendError, parseBody } from './_helper.js';
 
 export default async function handler(req: any, res: any) {
@@ -148,13 +149,19 @@ export default async function handler(req: any, res: any) {
           billingRail: 'prepaid_credits',
         },
       ],
-      billingRails: ['stripe_live', 'prepaid_credits', 'x402'],
+      billingRails: [
+        'stripe_live',
+        'prepaid_credits',
+        ...(getTreasuryStatus().status === 'TREASURY_VERIFIED' ? ['x402'] : []),
+      ],
     });
     return;
   }
 
   // GET /v1/payment-methods
   if (path.endsWith('/payment-methods') || view === 'payment-methods') {
+    const treasury = getTreasuryStatus();
+    const x402Enabled = treasury.status === 'TREASURY_VERIFIED';
     sendJson(res, 200, {
       paymentMethods: [
         {
@@ -175,12 +182,19 @@ export default async function handler(req: any, res: any) {
           rail: 'x402',
           currency: 'USDC',
           protocolVersion: 2,
-          description: 'Native per-call machine payment via Base (EVM) or Solana',
-          supportedNetworks: ['eip155:8453', 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'],
-          gateways: {
-            'gxeon_url_verify_v1': '/x402/url-verify',
-            'gxeon_json_validate_v1': '/x402/json-validate',
-          },
+          enabled: x402Enabled,
+          status: x402Enabled ? 'ACTIVE' : 'CONFIGURATION_REQUIRED',
+          description: x402Enabled
+            ? 'Native per-call machine payment via Base (EVM)'
+            : 'x402 per-call USDC is fail-closed until a real GXEON Base treasury address is ownership-verified.',
+          supportedNetworks: x402Enabled ? ['eip155:8453'] : [],
+          gateways: x402Enabled
+            ? {
+                'gxeon_url_verify_v1': '/x402/url-verify',
+                'gxeon_json_validate_v1': '/x402/json-validate',
+              }
+            : {},
+          ...(x402Enabled ? {} : { blocker: treasury.error || 'Treasury verification required' }),
         },
       ],
     });

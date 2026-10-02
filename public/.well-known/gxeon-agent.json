@@ -16,13 +16,15 @@
   "offers": "/v1/offers",
   "mcp": "/api/v1/mcp",
   "x402": {
-    "enabled": true,
+    "enabled": false,
+    "status": "TREASURY_CONFIGURATION_REQUIRED",
     "network": "eip155:8453",
     "currency": "USDC",
     "capabilities": [
       "/x402/url-verify",
       "/x402/json-validate"
-    ]
+    ],
+    "note": "x402 is implemented but fail-closed until XPeX Systems AI configures and ownership-verifies a real Base treasury address. Prepaid Stripe credits remain live."
   },
   "stripe": {
     "enabled": true,
