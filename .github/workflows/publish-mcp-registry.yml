@@ -33,7 +33,7 @@ jobs:
           INIT=$(curl -fsS -X POST 'https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market' \
             -H 'content-type: application/json' \
             --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28"}}')
-          echo "$INIT" | jq -e '.result.serverInfo.name == "gxeon-public-market" and .result.serverInfo.version == "1.0.1"'
+          echo "$INIT" | jq -e '.result.serverInfo.name == "gxeon-public-market" and .result.serverInfo.version == "1.0.2"'
 
           TOOLS=$(curl -fsS -X POST 'https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market' \
             -H 'content-type: application/json' \
@@ -42,6 +42,7 @@ jobs:
             [.result.tools[].name] == [
               "gxeon_list_services",
               "gxeon_list_credit_packs",
+              "gxeon_plan_purchase",
               "gxeon_get_agent_buying_guide"
             ]'
 
@@ -56,6 +57,6 @@ jobs:
           REGISTRY=$(curl -fsSL 'https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest')
           echo "$REGISTRY" | jq -e '
             .server.name == "io.github.xpex-systems-ai/gxeon-agent-marketplace" and
-            .server.version == "1.0.1" and
+            .server.version == "1.0.2" and
             ._meta["io.modelcontextprotocol.registry/official"].status == "active" and
             ._meta["io.modelcontextprotocol.registry/official"].isLatest == true'

@@ -2,6 +2,7 @@ import { authenticateMachineRequest } from '../../src/agent-economy/auth.js';
 import { handleMcpRpc, JsonRpcRequest } from '../../src/agent-economy/mcpGateway.js';
 import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
 import { TOPUP_PACKS } from '../../src/agent-economy/billingCatalog.js';
+import { planAgentPurchase } from '../../src/agent-economy/marketPlanner.js';
 import { listAvailableServices } from '../../src/agent-economy/services/registry.js';
 import { sendJson, sendError, parseBody } from './_helper.js';
 import type { AgentScope } from '../../src/agent-economy/types.js';
@@ -23,6 +24,20 @@ const PUBLIC_MARKET_TOOLS = [
     name: 'gxeon_list_credit_packs',
     description: 'List live prepaid GXEON request packs. Read-only; does not create a checkout or spend money.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  {
+    name: 'gxeon_plan_purchase',
+    description: 'Plan the lowest-cost prepaid GXEON pack combination for a specific service and number of units. Read-only; it never creates a checkout or spends money.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        serviceId: { type: 'string' },
+        units: { type: 'integer', minimum: 1 },
+      },
+      required: ['serviceId', 'units'],
+      additionalProperties: false,
+    },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   {
@@ -102,7 +117,7 @@ async function handlePublicMarketMcp(req: any, res: any) {
   if (req.method === 'GET') {
     sendJson(res, 200, {
       name: 'gxeon-public-market',
-      version: '1.0.1',
+      version: '1.0.2',
       endpoint: '/api/v1/mcp?view=public-market',
       authentication: 'none',
       scope: 'Read-only marketplace discovery and buying guidance',
@@ -139,7 +154,7 @@ async function handlePublicMarketMcp(req: any, res: any) {
           ? body.params.protocolVersion
           : '2026-07-28',
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: 'gxeon-public-market', version: '1.0.1' },
+      serverInfo: { name: 'gxeon-public-market', version: '1.0.2' },
       instructions:
         'This endpoint is no-auth and read-only. Use it only to discover services, packs, and the documented buying flow.',
     }));
@@ -190,6 +205,17 @@ async function handlePublicMarketMcp(req: any, res: any) {
       moneyTruth:
         'Listing a pack does not create a charge. Credits become spendable only after provider-verified settlement.',
     })));
+    return;
+  }
+
+  if (name === 'gxeon_plan_purchase') {
+    const serviceId = body.params?.arguments?.serviceId;
+    const units = body.params?.arguments?.units;
+    const plan = planAgentPurchase(
+      typeof serviceId === 'string' ? serviceId : '',
+      typeof units === 'number' ? units : Number.NaN
+    );
+    sendJson(res, 200, publicRpcResult(body.id, publicToolResult(plan)));
     return;
   }
 

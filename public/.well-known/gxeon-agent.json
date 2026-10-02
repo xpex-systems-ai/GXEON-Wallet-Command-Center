@@ -156,15 +156,21 @@
     "tools": [
       "gxeon_list_services",
       "gxeon_list_credit_packs",
+      "gxeon_plan_purchase",
       "gxeon_get_agent_buying_guide"
     ],
     "executionMcp": "/api/v1/mcp",
-    "marketplacePage": "/market"
+    "marketplacePage": "/market",
+    "purchasePlanner": {
+      "enabled": true,
+      "tool": "gxeon_plan_purchase",
+      "description": "Read-only pack optimization for a requested service and unit count. It does not create checkout or spend money."
+    }
   },
   "marketplace": "/market",
   "officialMcpRegistry": {
     "name": "io.github.xpex-systems-ai/gxeon-agent-marketplace",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "status": "active",
     "registry": "https://registry.modelcontextprotocol.io",
     "latestRecord": "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest",
