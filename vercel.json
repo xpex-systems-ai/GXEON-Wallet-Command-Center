@@ -3,6 +3,14 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/.well-known/agent.json",
+      "destination": "/api/v1/mcp?view=a2a-card"
+    },
+    {
+      "source": "/a2a",
+      "destination": "/api/v1/mcp?view=a2a"
+    },
+    {
       "source": "/api/taskmarket",
       "destination": "/api/v1/radar?gxeonView=taskmarket"
     },
