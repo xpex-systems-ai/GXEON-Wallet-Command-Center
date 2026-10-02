@@ -30,10 +30,23 @@ jobs:
 
       - name: Smoke public marketplace MCP
         run: |
-          INIT=$(curl -fsS -X POST 'https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market' \
-            -H 'content-type: application/json' \
-            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28"}}')
-          echo "$INIT" | jq -e '.result.serverInfo.name == "gxeon-public-market" and .result.serverInfo.version == "1.0.2"'
+          for ATTEMPT in $(seq 1 18); do
+            INIT=$(curl -fsS -X POST 'https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market' \
+              -H 'content-type: application/json' \
+              --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28"}}' || true)
+
+            if echo "$INIT" | jq -e '.result.serverInfo.name == "gxeon-public-market" and .result.serverInfo.version == "1.0.2"' >/dev/null 2>&1; then
+              break
+            fi
+
+            if [ "$ATTEMPT" -eq 18 ]; then
+              echo "Production MCP did not reach v1.0.2 in time."
+              echo "$INIT"
+              exit 1
+            fi
+
+            sleep 10
+          done
 
           TOOLS=$(curl -fsS -X POST 'https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market' \
             -H 'content-type: application/json' \
