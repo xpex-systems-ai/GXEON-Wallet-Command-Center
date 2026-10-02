@@ -49,7 +49,7 @@ async function handlePublicMarketMcp(req: any, res: any) {
   if (req.method === 'GET') {
     sendJson(res, 200, {
       name: 'gxeon-public-market',
-      version: '1.0.0',
+      version: '1.0.1',
       endpoint: '/api/v1/mcp?view=public-market',
       authentication: 'none',
       scope: 'Read-only marketplace discovery and buying guidance',
@@ -86,7 +86,7 @@ async function handlePublicMarketMcp(req: any, res: any) {
           ? body.params.protocolVersion
           : '2026-07-28',
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: 'gxeon-public-market', version: '1.0.0' },
+      serverInfo: { name: 'gxeon-public-market', version: '1.0.1' },
       instructions:
         'This endpoint is no-auth and read-only. Use it only to discover services, packs, and the documented buying flow.',
     }));
