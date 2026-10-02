@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.xpex-systems-ai/gxeon-agent-marketplace",
   "title": "GXEON Agent Marketplace",
-  "description": "Discover live GXEON machine services, prepaid request packs starting at R$0.99, and the official machine-buyer integration flow.",
+  "description": "Discover GXEON services, prepaid agent packs, and the official machine-buyer integration flow.",
   "websiteUrl": "https://gxeon-wallet-command-center.vercel.app/market",
   "repository": {
     "url": "https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center",
@@ -19,7 +19,11 @@
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "contactEmail": "gxeon.ai@gmail.com",
-      "category": ["developer-tools", "agent-marketplace", "automation"],
+      "category": [
+        "developer-tools",
+        "agent-marketplace",
+        "automation"
+      ],
       "documentationUrl": "https://gxeon-wallet-command-center.vercel.app/mcp"
     }
   }
