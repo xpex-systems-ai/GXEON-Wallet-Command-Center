@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import publicMcp from '../../api/v1/public-mcp.js';
+import publicMcp from '../../api/v1/mcp.js';
 
 function response() {
   const headers: Record<string, string> = {};
@@ -14,7 +14,7 @@ function response() {
 
 async function call(body: any) {
   const res = response();
-  await publicMcp({ method: 'POST', headers: {}, body }, res);
+  await publicMcp({ method: 'POST', url: '/api/v1/mcp?view=public-market', headers: {}, body }, res);
   return res;
 }
 
