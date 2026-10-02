@@ -119,4 +119,4 @@ Current execution capabilities are JSON validation, public URL verification, and
 
 See [the Agent Marketplace integration guide](docs/AGENT_MARKETPLACE.md) for the exact MCP handshake and machine-buyer flow.
 
-Connect existing agents with [LangChain/LangGraph, CrewAI, or the official MCP Python SDK](docs/FRAMEWORK_INTEGRATIONS.md). Ready-to-run read-only examples live in [`examples/frameworks/`](examples/frameworks/). These connectors discover the marketplace; they do not purchase packs or execute paid jobs.
+Connect existing agents with [OpenAI Agents SDK/API, LangChain/LangGraph, CrewAI, or the official MCP Python SDK](docs/FRAMEWORK_INTEGRATIONS.md). Ready-to-run read-only examples live in [`examples/frameworks/`](examples/frameworks/). These connectors discover the marketplace; they do not purchase packs or execute paid jobs.
