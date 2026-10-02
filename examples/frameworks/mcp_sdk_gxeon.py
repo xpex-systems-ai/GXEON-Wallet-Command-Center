@@ -14,7 +14,7 @@ PUBLIC_MCP = "https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=pub
 async def main() -> None:
     async with Client(PUBLIC_MCP) as client:
         tools = await client.list_tools()
-        print("GXEON discovery tools:", tools)
+        print("GXEON discovery tools:", ", ".join(tool.name for tool in tools.tools))
         services = await client.call_tool("gxeon_list_services", {})
         print("Services:", services.structured_content)
         guide = await client.call_tool("gxeon_get_agent_buying_guide", {})
