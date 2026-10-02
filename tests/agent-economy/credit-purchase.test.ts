@@ -74,6 +74,20 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('Credit purchase onboarding', () => {
+  it('publishes micro packs and creates a R$4.90 NANO checkout without granting credits early', async () => {
+    const res = response();
+    await topup({ method: 'POST', headers: {}, body: { packId: 'pack_20', name: 'Nano Buyer' } }, res);
+    expect(res.statusCode).toBe(201);
+    expect(res.body.pack).toMatchObject({ id: 'pack_20', credits: 20, priceCents: 490, currency: 'brl' });
+    expect(res.body.apiKey).toMatch(/^gxa_live_/);
+    const auth = await authenticateMachineRequest('Bearer ' + res.body.apiKey);
+    expect(auth.context?.account.creditBalance).toBe(0);
+    const params = mocks.create.mock.calls[0][0];
+    expect(params.line_items[0].price_data.unit_amount).toBe(490);
+    expect(params.metadata.credits).toBe('20');
+    expect(params.metadata.pack_id).toBe('pack_20');
+  });
+
   it('creates a zero-balance account with a hashed buyer key and returns a checkout', async () => {
     const res = response();
     await topup({ method: 'POST', headers: {}, body: { packId: 'pack_100', name: 'Buyer' } }, res);
