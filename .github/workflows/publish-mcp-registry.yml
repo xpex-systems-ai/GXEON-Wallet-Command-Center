@@ -33,7 +33,7 @@ jobs:
           INIT=$(curl -fsS -X POST 'https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market' \
             -H 'content-type: application/json' \
             --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28"}}')
-          echo "$INIT" | jq -e '.result.serverInfo.name == "gxeon-public-market" and .result.serverInfo.version == "1.0.0"'
+          echo "$INIT" | jq -e '.result.serverInfo.name == "gxeon-public-market" and .result.serverInfo.version == "1.0.1"'
 
           TOOLS=$(curl -fsS -X POST 'https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market' \
             -H 'content-type: application/json' \
