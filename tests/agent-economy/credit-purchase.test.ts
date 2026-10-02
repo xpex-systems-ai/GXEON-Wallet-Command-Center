@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
-import topup from '../../api/v1/billing/topup.js';
+import topup, { TOPUP_PACKS } from '../../api/v1/billing/topup.js';
 import mcp from '../../api/v1/mcp.js';
 import { VercelStripeService, type PaymentStore } from '../../api/_stripe.js';
 import { FirestoreRestClient } from '../../api/_firestoreRest.js';
@@ -74,6 +74,18 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('Credit purchase onboarding', () => {
+  it('publishes six prepaid packs with lower entry pricing and non-increasing unit cost', () => {
+    const packs = Object.values(TOPUP_PACKS);
+    expect(packs.map(pack => pack.id)).toEqual([
+      'pack_20', 'pack_50', 'pack_100', 'pack_250', 'pack_500', 'pack_2000',
+    ]);
+    expect(packs.map(pack => pack.priceCents)).toEqual([490, 1190, 2000, 4500, 8000, 25000]);
+    const unitCosts = packs.map(pack => pack.priceCents / pack.credits);
+    for (let i = 1; i < unitCosts.length; i++) {
+      expect(unitCosts[i]).toBeLessThanOrEqual(unitCosts[i - 1] + Number.EPSILON);
+    }
+  });
+
   it('publishes micro packs and creates a R$4.90 NANO checkout without granting credits early', async () => {
     const res = response();
     await topup({ method: 'POST', headers: {}, body: { packId: 'pack_20', name: 'Nano Buyer' } }, res);
