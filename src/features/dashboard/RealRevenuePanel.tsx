@@ -36,6 +36,7 @@ export interface IntegrationStatus {
   realRevenue: string;
   stripeEnvironment: string;
   metrics?: IntegrationMetrics;
+  moneyTruthSnapshot?: MoneyTruthStatus;
 }
 
 interface MoneyTruthStatus {
@@ -43,13 +44,10 @@ interface MoneyTruthStatus {
   agent: {
     name: string;
     mode: string;
-    defaultPolicy: string;
     status: string;
     canScan: boolean;
     canQualify: boolean;
     canReconcile: boolean;
-    canPrepareActions: boolean;
-    requiresHumanApproval: string[];
   };
   rtc: {
     asset: string;
@@ -62,18 +60,14 @@ interface MoneyTruthStatus {
     experimentalToken: boolean;
   };
   usdc: {
-    asset: string;
     settledRevenue: string;
     settledPayments: number;
-    settlementSource: string | null;
-    settlementStatus: string;
     coinbase: {
       status: string;
       available: string | null;
       hold: string | null;
       openOrders: number | null;
       verifiedAt: string | null;
-      source: string;
     };
   };
   radar: Record<string, unknown> | null;
@@ -87,19 +81,12 @@ export function RealRevenuePanel() {
   const fetchStatus = async () => {
     setLoading(true);
     try {
-      const [integrationRes, moneyTruthRes] = await Promise.all([
-        fetch('/api/integration-status', { cache: 'no-store' }),
-        fetch('/api/v1/money-truth', { cache: 'no-store' }),
-      ]);
+      const integrationRes = await fetch('/api/integration-status', { cache: 'no-store' });
 
       if (integrationRes.ok) {
-        const data = await integrationRes.json();
+        const data = await integrationRes.json() as IntegrationStatus;
         setStatus(data);
-      }
-
-      if (moneyTruthRes.ok) {
-        const data = await moneyTruthRes.json();
-        setMoneyTruth(data);
+        setMoneyTruth(data.moneyTruthSnapshot || null);
       }
     } catch (e) {
       console.warn('Failed to load money truth status:', e);
@@ -262,7 +249,7 @@ export function RealRevenuePanel() {
           </div>
           <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
             <Bot className="w-3 h-3" />
-            {moneyTruth?.agent.defaultPolicy || 'READ_ONLY'} • human gate
+            {moneyTruth?.agent.mode || 'READ_ONLY'} • human gate
           </div>
         </div>
 
