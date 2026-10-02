@@ -153,6 +153,8 @@
       "gxeon_list_credit_packs",
       "gxeon_get_agent_buying_guide"
     ],
-    "executionMcp": "/api/v1/mcp"
-  }
+    "executionMcp": "/api/v1/mcp",
+    "marketplacePage": "/market"
+  },
+  "marketplace": "/market"
 }

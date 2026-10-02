@@ -94,7 +94,7 @@ export function CreditsStore() {
       <header className="border-b border-slate-800 bg-[#0B1220]">
         <div className="max-w-6xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-4">
           <a href="/" className="text-xl font-bold">GXEON<span className="text-[#FF7A00]">.</span></a>
-          <nav className="flex gap-5 text-sm text-slate-400"><a href="/fix">Quick Fix</a><a href="/mcp">Como usar a API</a><a href="/">Painel</a></nav>
+          <nav className="flex gap-5 text-sm text-slate-400"><a href="/market">Agent Market</a><a href="/fix">Quick Fix</a><a href="/mcp">Como usar a API</a><a href="/">Painel</a></nav>
         </div>
       </header>
       <main className="max-w-6xl mx-auto px-4 py-16">
