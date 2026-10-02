@@ -1,0 +1,10 @@
+{
+  "name": "GXEON Agent Marketplace",
+  "description": "Public, read-only discovery of GXEON agent utilities, prepaid credit packs, and buying guidance. Paid execution uses a separate authenticated endpoint.",
+  "url": "https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market",
+  "transport": "streamable-http",
+  "authentication": "none",
+  "scope": "discovery-only",
+  "marketplace": "https://gxeon-wallet-command-center.vercel.app/market",
+  "registryName": "io.github.xpex-systems-ai/gxeon-agent-marketplace"
+}
