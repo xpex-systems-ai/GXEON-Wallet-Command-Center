@@ -93,7 +93,47 @@ export class WalletService {
       }
     }
 
-    return Array.from(mergedMap.values());
+    const mergedWallets = Array.from(mergedMap.values());
+
+    // Hydrate the public RustChain watch wallet from the server-side Money Truth endpoint.
+    // This is read-only and never persists private keys, signing material, or synthetic balances.
+    try {
+      const response = await fetch('/api/integration-status', { cache: 'no-store' });
+      if (response.ok) {
+        const integrationStatus = await response.json() as {
+          moneyTruthSnapshot?: {
+            rtc?: {
+            address?: string;
+            balance?: string | null;
+            status?: string;
+              verifiedAt?: string | null;
+            };
+          };
+        };
+        const rtc = integrationStatus.moneyTruthSnapshot?.rtc;
+        if (
+          rtc?.status === 'CONFIRMED' &&
+          typeof rtc.balance === 'string' &&
+          /^\d+(\.\d+)?$/.test(rtc.balance)
+        ) {
+          return mergedWallets.map((wallet) =>
+            wallet.network === 'rustchain' &&
+            wallet.publicAddress.toLowerCase() === String(rtc.address || '').toLowerCase()
+              ? {
+                  ...wallet,
+                  balance: rtc.balance,
+                  isOnline: true,
+                  updatedAt: rtc.verifiedAt || new Date().toISOString(),
+                }
+              : wallet
+          );
+        }
+      }
+    } catch (error) {
+      console.warn('Live RustChain balance hydration unavailable:', error);
+    }
+
+    return mergedWallets;
   }
 
   async addWallet(

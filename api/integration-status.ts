@@ -12,6 +12,42 @@ import {
   listMergePayOpenBounties,
 } from '../src/agent-economy/connectors/mergePayConnector.js';
 
+const DEFAULT_RTC_WALLET = 'RTC82c21b7f32d0e65c4aa9785d6561a55ff6127269';
+const RUSTCHAIN_BASE_URL = 'https://rustchain.org';
+
+interface RustChainBalanceResponse {
+  amount_i64?: number;
+  amount_rtc?: number;
+  miner_id?: string;
+}
+
+interface RustChainHistoryResponse {
+  total?: number;
+  transactions?: Array<Record<string, unknown>>;
+}
+
+async function fetchReadOnlyJson<T>(url: string, timeoutMs = 8000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`HTTP_${response.status}`);
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function numericSnapshot(name: string): number | null {
+  const raw = String(process.env[name] || '').trim();
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
     res.statusCode = 405;
@@ -48,6 +84,7 @@ export default async function handler(req: any, res: any) {
   let repeatBuyersCount = 0;
   let quotesCount = 0;
   let offersCount = 0;
+  let unifiedRadar: Record<string, unknown> | null = null;
 
   let replaysBlocked = 0;
   let invalidPaymentsBlocked = 0;
@@ -173,10 +210,109 @@ export default async function handler(req: any, res: any) {
       quotesCount = quotesDocs.length;
       const offersDocs = await client.list<any>('offers');
       offersCount = offersDocs.length;
+
+      // Unified read-only radar snapshot
+      unifiedRadar = (await client.get<Record<string, unknown>>('marketplace_agent_state', 'unified'))?.data || null;
     } catch (e) {
       console.warn('Failed to aggregate revenue metrics from Firestore:', e);
     }
   }
+
+  const observedAt = new Date().toISOString();
+  const rtcWallet = String(process.env.GXEON_RTC_WALLET || DEFAULT_RTC_WALLET).trim();
+
+  let rtcSnapshot: Record<string, unknown> = {
+    asset: 'RTC',
+    address: rtcWallet,
+    balance: null,
+    status: 'UNAVAILABLE',
+    source: 'rustchain.org',
+    verifiedAt: null,
+    historyCount: null,
+    experimentalToken: true,
+  };
+
+  try {
+    const [balance, history] = await Promise.all([
+      fetchReadOnlyJson<RustChainBalanceResponse>(
+        `${RUSTCHAIN_BASE_URL}/wallet/balance?address=${encodeURIComponent(rtcWallet)}`
+      ),
+      fetchReadOnlyJson<RustChainHistoryResponse>(
+        `${RUSTCHAIN_BASE_URL}/wallet/history?address=${encodeURIComponent(rtcWallet)}&limit=50`
+      ).catch(() => ({ total: undefined, transactions: [] })),
+    ]);
+
+    if (
+      typeof balance.amount_rtc === 'number' &&
+      Number.isFinite(balance.amount_rtc) &&
+      balance.miner_id === rtcWallet
+    ) {
+      rtcSnapshot = {
+        asset: 'RTC',
+        address: rtcWallet,
+        balance: String(balance.amount_rtc),
+        amountI64: balance.amount_i64 ?? null,
+        status: 'CONFIRMED',
+        source: 'rustchain.org wallet API',
+        verifiedAt: observedAt,
+        historyCount:
+          typeof history.total === 'number'
+            ? history.total
+            : Array.isArray(history.transactions)
+              ? history.transactions.length
+              : null,
+        experimentalToken: true,
+      };
+    }
+  } catch (error) {
+    rtcSnapshot = {
+      ...rtcSnapshot,
+      error: error instanceof Error ? error.message : 'RTC_READ_FAILED',
+    };
+  }
+
+  const coinbaseAvailable = numericSnapshot('GXEON_COINBASE_USDC_AVAILABLE_SNAPSHOT');
+  const coinbaseHold = numericSnapshot('GXEON_COINBASE_USDC_HOLD_SNAPSHOT');
+  const coinbaseOpenOrders = numericSnapshot('GXEON_COINBASE_OPEN_ORDERS_SNAPSHOT');
+  const coinbaseVerifiedAt = String(process.env.GXEON_COINBASE_SNAPSHOT_AT || '').trim() || null;
+  const hasCoinbaseSnapshot =
+    coinbaseAvailable !== null &&
+    coinbaseHold !== null &&
+    coinbaseOpenOrders !== null &&
+    Boolean(coinbaseVerifiedAt);
+
+  const moneyTruthSnapshot = {
+    observedAt,
+    agent: {
+      name: 'GXEON',
+      status: 'ACTIVE',
+      mode: 'READ_ONLY',
+      canScan: true,
+      canQualify: true,
+      canReconcile: true,
+    },
+    rtc: rtcSnapshot,
+    usdc: {
+      settledRevenue: x402SettledUsdc.toFixed(6),
+      settledPayments: x402SettledCount,
+      coinbase: hasCoinbaseSnapshot
+        ? {
+            status: 'READ_ONLY_SNAPSHOT',
+            available: coinbaseAvailable?.toFixed(6),
+            hold: coinbaseHold?.toFixed(6),
+            openOrders: coinbaseOpenOrders,
+            verifiedAt: coinbaseVerifiedAt,
+          }
+        : {
+            status: 'EXTERNAL_CONNECTOR_REQUIRED',
+            available: null,
+            hold: null,
+            openOrders: null,
+            verifiedAt: null,
+          },
+    },
+    radar: unifiedRadar,
+  };
 
   const stripeNetRevenue = stripeGrossRevenue > stripeRefunds ? stripeGrossRevenue - stripeRefunds : 0;
   const realStripeRevenueStr = `R$${stripeNetRevenue.toFixed(2)}`;
@@ -246,6 +382,7 @@ export default async function handler(req: any, res: any) {
   res.end(
     JSON.stringify({
       taskmarket: taskmarketStatus,
+      moneyTruthSnapshot,
       stripeConfigured: Boolean(stripeKey),
       webhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
       durableStoreConfigured,
