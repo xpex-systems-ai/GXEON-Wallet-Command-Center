@@ -772,6 +772,7 @@ export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
     const builtins = [
       { workerId: 'worker_url_verify_01', capability: 'gxeon_url_verify_v1', concurrency: 10 },
       { workerId: 'worker_json_validate_01', capability: 'gxeon_json_validate_v1', concurrency: 50 },
+      { workerId: 'worker_api_health_01', capability: 'gxeon_api_health_v1', concurrency: 10 },
     ];
     for (const builtin of builtins) {
       await this.client.createIfAbsent('workers', builtin.workerId, {
