@@ -143,10 +143,12 @@ export function CreditsStore() {
             <section key={pack.id} className={'bg-[#0B1220] rounded-2xl p-7 border flex flex-col ' + (pack.id === 'pack_250' ? 'border-[#FF7A00]' : 'border-slate-800')}>
               <div className="flex justify-between items-center gap-2 mb-5"><h2 className="font-mono text-sm">{pack.name}</h2><span className="text-xs bg-slate-800 p-2 rounded">{pack.credits} créditos</span></div>
               <p className="text-4xl font-bold">{currency(pack.priceCents / 100)}</p>
-              <p className="text-xs text-slate-400 mt-2 mb-6">{(pack.priceCents / 100 / pack.credits).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 3 })} por crédito · {pack.credits >= 5 ? `até ${Math.floor(pack.credits / 5)} URLs ou ` : ''}${Math.floor(pack.credits / 2)} validações JSON</p>
+              <p className="text-xs text-slate-400 mt-2 mb-6">{(pack.priceCents / 100 / pack.credits).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 3 })} por crédito · {pack.credits >= 5 ? `até ${Math.floor(pack.credits / 5)} URLs ou ${Math.floor(pack.credits / 2)} validações JSON` : `${Math.floor(pack.credits / 2)} validação JSON`}</p>
               <ul className="space-y-3 text-sm text-slate-300 mb-8 flex-1">
                 {[
-                  pack.credits / 5 + ' verificações de URL ou ' + pack.credits / 2 + ' validações JSON',
+                  pack.credits >= 5
+                    ? Math.floor(pack.credits / 5) + ' verificações de URL ou ' + Math.floor(pack.credits / 2) + ' validações JSON'
+                    : Math.floor(pack.credits / 2) + ' validação JSON',
                   'Combine os serviços usando o mesmo saldo',
                   'Acesso por API REST e MCP',
                   'Resultado estruturado e registro de execução',
