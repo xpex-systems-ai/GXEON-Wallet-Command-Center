@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Boxes, Coins, Copy, ExternalLink, ShieldCheck, Sparkles } from 'lucide-react';
+import { Bot, Boxes, Calculator, Coins, Copy, ExternalLink, ShieldCheck, Sparkles } from 'lucide-react';
 
 type Pack = {
   id: string;
@@ -144,7 +144,7 @@ export function AgentMarketplace() {
             <Bot className="w-7 h-7 text-[#00D4FF]" />
             <h3 className="font-bold text-xl mt-4">Public Market MCP</h3>
             <p className="text-sm text-slate-400 mt-3 leading-6">
-              Sem autenticação e somente leitura para descoberta de serviços, packs e fluxo de compra.
+              Sem autenticação e somente leitura para descoberta de serviços, packs, planejamento da compra e fluxo seguro de integração.
             </p>
             <code className="block break-all mt-5 rounded-xl bg-[#07101C] border border-[#1B364A] p-4 text-xs text-cyan-300">
               {MARKET_MCP}
@@ -169,9 +169,33 @@ export function AgentMarketplace() {
               </a>
             </div>
             <p className="mt-4 text-xs text-emerald-300/80">
-              Publicação oficial ativa: io.github.xpex-systems-ai/gxeon-agent-marketplace · v1.0.1
+              Publicação oficial ativa: io.github.xpex-systems-ai/gxeon-agent-marketplace · v1.0.2
             </p>
           </aside>
+        </section>
+
+        <section className="rounded-3xl border border-[#2E3D65] bg-[#0B1425] p-7">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+            <div className="max-w-3xl">
+              <div className="flex items-center gap-2 text-[#00D4FF] text-xs font-mono tracking-[0.18em]">
+                <Calculator className="w-4 h-4" />
+                AGENT DEMAND PLANNER
+              </div>
+              <h2 className="text-3xl font-bold mt-3">O agente informa a demanda. O GXEON calcula o menor custo.</h2>
+              <p className="text-slate-400 mt-3 leading-7">
+                A ferramenta pública <code className="text-cyan-300">gxeon_plan_purchase</code> recebe
+                o serviço e a quantidade de unidades e devolve a combinação de packs mais barata,
+                créditos necessários, sobra e custo total em BRL. É somente leitura: não cria checkout
+                e não movimenta dinheiro.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-[#254461] bg-[#07111D] p-5 min-w-[270px]">
+              <div className="text-xs text-slate-500">Exemplo</div>
+              <div className="font-mono text-sm text-cyan-300 mt-2">1 × URL Verify</div>
+              <div className="text-2xl font-black mt-3">BYTE · R$ 1,99</div>
+              <div className="text-xs text-slate-400 mt-2">5 créditos · 0 de sobra</div>
+            </div>
+          </div>
         </section>
 
         <section>
