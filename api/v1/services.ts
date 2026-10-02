@@ -159,7 +159,7 @@ export default async function handler(req: any, res: any) {
         {
           rail: 'prepaid_credits',
           currency: 'BRL',
-          description: 'Prepaid agent request packs from R$ 4,90 via Stripe Live Checkout. No subscription.',
+          description: 'Prepaid agent request packs from R$ 0,99 via Stripe Live Checkout. No subscription.',
           packsEndpoint: '/v1/billing/topup',
           topupEndpoint: '/v1/billing/topup',
         },
