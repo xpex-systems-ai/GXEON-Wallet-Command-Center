@@ -118,3 +118,5 @@ The public discovery endpoint is no-auth and read-only. It provides `gxeon_list_
 Current execution capabilities are JSON validation, public URL verification, and public API health checks. Paid execution uses a separate authenticated API key after verified payment settlement. A checkout session, a visible pack, or a job submission is not revenue and does not grant credits.
 
 See [the Agent Marketplace integration guide](docs/AGENT_MARKETPLACE.md) for the exact MCP handshake and machine-buyer flow.
+
+Connect existing agents with [LangChain/LangGraph, CrewAI, or the official MCP Python SDK](docs/FRAMEWORK_INTEGRATIONS.md). Ready-to-run read-only examples live in [`examples/frameworks/`](examples/frameworks/). These connectors discover the marketplace; they do not purchase packs or execute paid jobs.

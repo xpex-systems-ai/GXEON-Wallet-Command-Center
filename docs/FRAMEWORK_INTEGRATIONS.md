@@ -41,6 +41,14 @@ include the returned agent in your own Crew and Task. The example uses
 consumer's own configured LLM; this integration does **not** kick off a
 Crew or pay for inference.
 
+## Official MCP Python SDK
+
+Install `pip install mcp` and run
+`python examples/frameworks/mcp_sdk_gxeon.py`. This example was tested
+against the public production endpoint: it lists tools, reads services, and
+reads the buying guide without an LLM or a GXEON key. The official SDK can
+also be embedded in other agent runtimes.
+
 ## Any Streamable HTTP MCP client
 
 Configure a remote server URL (not a local `command` or SSE endpoint):
