@@ -139,6 +139,9 @@
       },
       "gxeon_url_verify_v1": {
         "creditsPerUrl": 5
+      },
+      "gxeon_api_health_v1": {
+        "creditsPerEndpoint": 10
       }
     },
     "moneyTruth": "Checkout creation is not revenue and does not grant credits. Credits are granted only after provider-verified settlement."
