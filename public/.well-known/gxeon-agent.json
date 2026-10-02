@@ -142,5 +142,17 @@
       }
     },
     "moneyTruth": "Checkout creation is not revenue and does not grant credits. Credits are granted only after provider-verified settlement."
+  },
+  "publicMarketplaceMcp": {
+    "enabled": true,
+    "endpoint": "/api/v1/public-mcp",
+    "authentication": "none",
+    "scope": "read_only_discovery",
+    "tools": [
+      "gxeon_list_services",
+      "gxeon_list_credit_packs",
+      "gxeon_get_agent_buying_guide"
+    ],
+    "executionMcp": "/api/v1/mcp"
   }
 }
