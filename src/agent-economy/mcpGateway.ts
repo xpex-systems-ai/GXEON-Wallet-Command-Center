@@ -272,6 +272,43 @@ const MCP_TOOLS = [
       required: ['urls'],
     },
   },
+  {
+    name: 'gxeon_api_health_v1',
+    description: 'Check public REST endpoint availability, latency, expected status, and required top-level JSON fields. Price: 10 credits per endpoint.',
+    serviceId: 'gxeon_api_health_v1',
+    paymentProtocol: 'prepaid_credits',
+    metadata: {
+      serviceId: 'gxeon_api_health_v1',
+      version: '1.0.0',
+      pricing: { credits: 10 },
+      paymentRails: ['prepaid_credits'],
+      executionLimits: { timeoutMs: 15000, maxEndpoints: 20 },
+      security: { executionPolicy: 'STRICT_ANTI_SSRF_OUTBOUND' },
+    },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        endpoints: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: 'object',
+            properties: {
+              url: { type: 'string' },
+              method: { type: 'string', enum: ['GET', 'HEAD'] },
+              expectedStatus: { type: 'integer' },
+              requiredFields: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['url'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['endpoints'],
+      additionalProperties: false,
+    },
+  }
 ];
 
 export async function handleMcpRpc(
@@ -675,9 +712,18 @@ export async function handleMcpRpc(
           };
         }
 
-        if (toolName === 'gxeon_json_validate_v1' || toolName === 'gxeon_url_verify_v1') {
+        if (
+          toolName === 'gxeon_json_validate_v1' ||
+          toolName === 'gxeon_url_verify_v1' ||
+          toolName === 'gxeon_api_health_v1'
+        ) {
           const isJson = toolName === 'gxeon_json_validate_v1';
-          const quantity = isJson ? 1 : Array.isArray(args.urls) ? args.urls.length : 0;
+          const isApiHealth = toolName === 'gxeon_api_health_v1';
+          const quantity = isJson
+            ? 1
+            : isApiHealth
+              ? Array.isArray(args.endpoints) ? args.endpoints.length : 0
+              : Array.isArray(args.urls) ? args.urls.length : 0;
           const quote = await createQuote({ accountId, serviceId: toolName, quantity });
           if (!quote.success || !quote.quote) {
             return { jsonrpc: '2.0', id, result: {

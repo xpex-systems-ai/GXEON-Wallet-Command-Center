@@ -296,7 +296,12 @@ describe('Production storage and paid execution', () => {
     const create = vi.spyOn(FirestoreRestClient.prototype, 'createIfAbsent').mockResolvedValue({ created: true, document: { data: {} } });
     vi.spyOn(FirestoreRestClient.prototype, 'listStrict').mockResolvedValue([{ data: { workerId: 'registered' } }]);
     expect(await new FirestoreAgentEconomyStore().listWorkers()).toEqual([{ workerId: 'registered' }]);
-    expect(create).toHaveBeenCalledTimes(2);
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(create.mock.calls.map(call => call[1])).toEqual([
+      'worker_url_verify_01',
+      'worker_json_validate_01',
+      'worker_api_health_01',
+    ]);
   });
 
   it('executes direct JSON MCP through the ledger and refuses further work after the balance is spent', async () => {

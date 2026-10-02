@@ -162,7 +162,7 @@ export function CreditsStore() {
             </section>
           ))}
         </div>
-        <p className="text-center text-sm text-slate-400 mt-8">URL Verify: 5 créditos por URL. JSON Validate: 2 créditos por validação.</p>
+        <p className="text-center text-sm text-slate-400 mt-8">URL Verify: 5 créditos por URL. JSON Validate: 2 créditos por validação. API Health: 10 créditos por endpoint.</p>
         <div className="max-w-xl mx-auto text-center text-xs text-slate-400 mt-10 space-y-3">
           <p className="flex items-center justify-center gap-2 text-emerald-400"><ShieldCheck className="w-4 h-4" />Pagamento processado pela Stripe</p>
           <p>O saldo é liberado após a confirmação do pagamento. Em seguida, use a chave salva para consultar o saldo e executar os serviços.</p>
