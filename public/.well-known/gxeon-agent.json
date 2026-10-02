@@ -159,5 +159,13 @@
     "executionMcp": "/api/v1/mcp",
     "marketplacePage": "/market"
   },
-  "marketplace": "/market"
+  "marketplace": "/market",
+  "officialMcpRegistry": {
+    "name": "io.github.xpex-systems-ai/gxeon-agent-marketplace",
+    "version": "1.0.0",
+    "status": "active",
+    "registry": "https://registry.modelcontextprotocol.io",
+    "latestRecord": "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest",
+    "remote": "https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market"
+  }
 }

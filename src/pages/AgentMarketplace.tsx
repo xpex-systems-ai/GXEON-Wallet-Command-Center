@@ -32,6 +32,8 @@ type ServiceResponse = {
 
 const MARKET_MCP =
   'https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market';
+const OFFICIAL_MCP_REGISTRY =
+  'https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest';
 
 function brl(cents: number) {
   return (cents / 100).toLocaleString('pt-BR', {
@@ -147,14 +149,28 @@ export function AgentMarketplace() {
             <code className="block break-all mt-5 rounded-xl bg-[#07101C] border border-[#1B364A] p-4 text-xs text-cyan-300">
               {MARKET_MCP}
             </code>
-            <button
-              type="button"
-              onClick={copyMcp}
-              className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-white"
-            >
-              <Copy className="w-4 h-4" />
-              {copied ? 'Copiado' : 'Copiar endpoint'}
-            </button>
+            <div className="mt-4 flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                onClick={copyMcp}
+                className="inline-flex items-center gap-2 text-sm font-semibold text-white"
+              >
+                <Copy className="w-4 h-4" />
+                {copied ? 'Copiado' : 'Copiar endpoint'}
+              </button>
+              <a
+                href={OFFICIAL_MCP_REGISTRY}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-300"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Official MCP Registry
+              </a>
+            </div>
+            <p className="mt-4 text-xs text-emerald-300/80">
+              Publicação oficial ativa: io.github.xpex-systems-ai/gxeon-agent-marketplace · v1.0.0
+            </p>
           </aside>
         </section>
 
