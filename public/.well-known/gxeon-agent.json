@@ -175,5 +175,13 @@
     "registry": "https://registry.modelcontextprotocol.io",
     "latestRecord": "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest",
     "remote": "https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market"
+  },
+  "externalDemand": {
+    "provider": "Speedbot",
+    "discovery": "https://speedbot.dev/api/opportunities",
+    "pluginMcp": "https://speedbot.dev/mcp/core",
+    "gxeonTool": "gxeon_list_external_demand",
+    "scope": "read_only_public_preview",
+    "settlementTruth": "External sources decide selection and settlement. Listings are leads, not GXEON revenue."
   }
 }
