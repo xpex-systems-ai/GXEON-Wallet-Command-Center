@@ -17,6 +17,8 @@ export const Footer: React.FC = () => {
           <span className="text-slate-600">|</span>
           <a href="/ecosystem" className="text-slate-400 hover:text-[#00D4FF] transition-colors">Ecossistema aberto</a>
           <span className="text-slate-600">|</span>
+          <a href="/guides/bottube-api" className="text-slate-400 hover:text-[#00D4FF] transition-colors">BoTTube API Guide</a>
+          <span className="text-slate-600">|</span>
           <span className="flex items-center gap-1 text-slate-400">
             <Terminal className="w-3.5 h-3.5 text-[#00D4FF]" /> Bridge: 127.0.0.1:8790
           </span>
