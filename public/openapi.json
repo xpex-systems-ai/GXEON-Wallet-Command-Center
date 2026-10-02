@@ -430,6 +430,9 @@
                   "packId": {
                     "type": "string",
                     "enum": [
+                      "pack_2",
+                      "pack_5",
+                      "pack_10",
                       "pack_20",
                       "pack_50",
                       "pack_100",

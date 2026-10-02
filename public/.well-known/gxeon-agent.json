@@ -79,6 +79,24 @@
     ],
     "packs": [
       {
+        "id": "pack_2",
+        "name": "PICO",
+        "credits": 2,
+        "priceBrl": 0.99
+      },
+      {
+        "id": "pack_5",
+        "name": "BYTE",
+        "credits": 5,
+        "priceBrl": 1.99
+      },
+      {
+        "id": "pack_10",
+        "name": "MINI",
+        "credits": 10,
+        "priceBrl": 2.9
+      },
+      {
         "id": "pack_20",
         "name": "NANO",
         "credits": 20,

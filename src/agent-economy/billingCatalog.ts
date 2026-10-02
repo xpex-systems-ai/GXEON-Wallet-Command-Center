@@ -9,6 +9,30 @@ export interface TopupPack {
 }
 
 export const TOPUP_PACKS: Record<string, TopupPack> = {
+  pack_2: {
+    id: 'pack_2',
+    name: 'PICO',
+    credits: 2,
+    priceCents: 99,
+    currency: 'brl',
+    audience: 'micro',
+  },
+  pack_5: {
+    id: 'pack_5',
+    name: 'BYTE',
+    credits: 5,
+    priceCents: 199,
+    currency: 'brl',
+    audience: 'micro',
+  },
+  pack_10: {
+    id: 'pack_10',
+    name: 'MINI',
+    credits: 10,
+    priceCents: 290,
+    currency: 'brl',
+    audience: 'micro',
+  },
   pack_20: {
     id: 'pack_20',
     name: 'NANO',
