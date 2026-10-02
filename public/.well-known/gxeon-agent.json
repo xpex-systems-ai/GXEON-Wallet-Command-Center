@@ -145,7 +145,7 @@
   },
   "publicMarketplaceMcp": {
     "enabled": true,
-    "endpoint": "/api/v1/public-mcp",
+    "endpoint": "/api/v1/mcp?view=public-market",
     "authentication": "none",
     "scope": "read_only_discovery",
     "tools": [
