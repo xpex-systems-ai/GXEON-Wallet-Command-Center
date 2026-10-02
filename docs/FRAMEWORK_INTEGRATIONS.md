@@ -8,6 +8,25 @@ It supports Streamable HTTP, requires no GXEON key, and exposes only
 They do not open Stripe Checkout, buy credits, submit jobs, or grant execution
 access. Prices are catalog information, not settled revenue.
 
+## OpenAI Agents SDK and Agents API
+
+For a no-model connectivity check, install `pip install openai-agents` and run
+`python examples/frameworks/openai_agents_sdk_gxeon.py`. This opens a
+Streamable HTTP connection to the public GXEON MCP endpoint, checks exactly
+the three read-only tool names and constructs an SDK `Agent` with the
+connected `MCPServerStreamableHttp`. It was tested against production.
+It deliberately does not call `Runner.run`: a model run requires the
+consumer's OpenAI API key and may incur inference charges.
+
+For the separately hosted **Agents API**, insert
+[`openai_agents_api_gxeon.json`](../examples/frameworks/openai_agents_api_gxeon.json)
+as an item in your agent's `tools` array. It specifies the public HTTP
+MCP server, service-origin connection and a three-tool allowlist. Creating
+an actual Agents API session requires credentials and permissions from the
+consuming OpenAI organization. The JSON is a connection recipe, not an
+activated agent, published directory entry, or proof of a model run.
+See the [official MCP connection guide](https://developers.openai.com/api/docs/guides/agents-api/tools/mcp).
+
 ## LangChain / LangGraph
 
 With Python 3.10+, install `pip install "langchain[mcp]>=1.4.0"` and run
