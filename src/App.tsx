@@ -20,6 +20,7 @@ import { QuickFixLanding } from './pages/QuickFixLanding';
 import { CreditsStore } from './pages/CreditsStore';
 import { McpDocs } from './pages/McpDocs';
 import { Ecosystem } from './pages/Ecosystem';
+import { AgentMarketplace } from './pages/AgentMarketplace';
 import { BoTTubeIntegrationGuide } from './pages/BoTTubeIntegrationGuide';
 
 import {
@@ -262,6 +263,9 @@ export function App() {
   }
   if (currentPath === '/ecosystem') {
     return <Ecosystem />;
+  }
+  if (currentPath === '/market') {
+    return <AgentMarketplace />;
   }
   if (currentPath === '/guides/bottube-api') {
     return <BoTTubeIntegrationGuide />;
