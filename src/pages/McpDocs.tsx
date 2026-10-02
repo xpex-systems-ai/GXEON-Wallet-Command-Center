@@ -18,9 +18,17 @@ export function McpDocs() {
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
+  const publicDiscoverySnippet = `{
+  "mcpServers": {
+    "gxeon-public-market": {
+      "url": "https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market"
+    }
+  }
+}`;
+
   const claudeConfigSnippet = `{
   "mcpServers": {
-    "gxeon": {
+    "gxeon-execution": {
       "command": "npx",
       "args": [
         "-y",
@@ -89,7 +97,7 @@ export function McpDocs() {
             GXEON MCP Server
           </h1>
           <p className="text-slate-300 text-base md:text-lg">
-            Conecte agentes como Claude, Cursor, LangChain ou CrewAI às ferramentas de auditoria e verificação do GXEON com liquidação automática de créditos.
+            Descubra o GXEON sem autenticação pelo MCP público e, após a compra confirmada de créditos, conecte Claude, Cursor, LangChain, CrewAI e outros clientes MCP ao endpoint privado de execução.
           </p>
         </div>
 
@@ -154,14 +162,17 @@ export function McpDocs() {
               </div>
             </div>
 
-            <div className="bg-[#0B1220] border border-slate-800 p-5 rounded-xl opacity-75">
+            <div className="bg-[#0B1220] border border-slate-800 p-5 rounded-xl">
               <div className="flex items-center justify-between mb-2">
-                <span className="font-mono text-sm font-semibold text-slate-400">gxeon_api_health_v1</span>
-                <span className="text-xs bg-slate-800 text-slate-500 px-2 py-0.5 rounded font-mono">Em breve</span>
+                <span className="font-mono text-sm font-semibold text-[#FF7A00]">gxeon_api_health_v1</span>
+                <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">10 créditos / endpoint</span>
               </div>
-              <p className="text-xs text-slate-400">
-                Observabilidade pontual de endpoints REST, headers de segurança e tempos de resposta de borda.
+              <p className="text-xs text-slate-300 mb-3">
+                Verifica disponibilidade HTTP, latência e assertions de campos em endpoints REST públicos com proteção anti-SSRF.
               </p>
+              <div className="text-[11px] font-mono text-slate-500 bg-slate-950 p-2 rounded">
+                Input: &#123; "endpoints": [&#123; "url": "https://api.exemplo.com/health", "expectedStatus": 200 &#125;] &#125;
+              </div>
             </div>
           </div>
         </section>
@@ -171,7 +182,28 @@ export function McpDocs() {
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
-                1. Configuração no Claude Desktop (claude_desktop_config.json)
+                1. Descoberta pública — sem chave
+              </h3>
+              <button
+                onClick={() => copyToClipboard(publicDiscoverySnippet, 0)}
+                className="text-xs text-slate-400 hover:text-white flex items-center gap-1 font-mono"
+              >
+                {copiedIndex === 0 ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedIndex === 0 ? 'Copiado!' : 'Copiar JSON'}
+              </button>
+            </div>
+            <pre className="bg-[#0B1220] border border-slate-800 p-4 rounded-xl text-xs font-mono text-cyan-300 overflow-x-auto leading-relaxed">
+              {publicDiscoverySnippet}
+            </pre>
+            <p className="text-xs text-slate-400 mt-3">
+              Expõe somente leitura: serviços, packs e guia oficial de compra. Não cria checkout, não cobra e não retorna credenciais.
+            </p>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                2. Execução autenticada no Claude Desktop
               </h3>
               <button
                 onClick={() => copyToClipboard(claudeConfigSnippet, 1)}
@@ -189,7 +221,7 @@ export function McpDocs() {
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
-                2. Chamada Direta via cURL (JSON-RPC 2.0)
+                3. Execução autenticada via cURL (JSON-RPC 2.0)
               </h3>
               <button
                 onClick={() => copyToClipboard(directCurlSnippet, 2)}
@@ -209,7 +241,7 @@ export function McpDocs() {
         <div className="bg-gradient-to-r from-slate-900 via-[#0B1220] to-slate-900 border border-slate-800 p-8 rounded-2xl text-center">
           <h3 className="text-xl font-bold text-white mb-2">Pronto para integrar ao seu agente?</h3>
           <p className="text-xs text-slate-300 mb-6 max-w-lg mx-auto">
-            Pacotes a partir de R$ 20,00. Salve sua chave antes do checkout; os créditos ficam disponíveis após a confirmação do pagamento.
+            Packs a partir de R$ 0,99. Salve a chave de máquina em um cofre privado antes do checkout; créditos só ficam disponíveis após confirmação verificável do pagamento.
           </p>
           <a
             href="/credits"
