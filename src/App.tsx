@@ -20,6 +20,7 @@ import { QuickFixLanding } from './pages/QuickFixLanding';
 import { CreditsStore } from './pages/CreditsStore';
 import { McpDocs } from './pages/McpDocs';
 import { Ecosystem } from './pages/Ecosystem';
+import { BoTTubeIntegrationGuide } from './pages/BoTTubeIntegrationGuide';
 
 import {
   WalletItem,
@@ -261,6 +262,9 @@ export function App() {
   }
   if (currentPath === '/ecosystem') {
     return <Ecosystem />;
+  }
+  if (currentPath === '/guides/bottube-api') {
+    return <BoTTubeIntegrationGuide />;
   }
 
   // Auth Gate check: If Firebase is configured and user is unauthenticated
