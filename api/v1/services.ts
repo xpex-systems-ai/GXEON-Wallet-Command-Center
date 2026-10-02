@@ -159,8 +159,9 @@ export default async function handler(req: any, res: any) {
         {
           rail: 'prepaid_credits',
           currency: 'BRL',
-          description: 'Top-up credits via Stripe Live Checkout (Pix / Card)',
-          topupEndpoint: '/api/v1/billing/topup',
+          description: 'Prepaid agent request packs from R$ 4,90 via Stripe Live Checkout. No subscription.',
+          packsEndpoint: '/v1/billing/topup',
+          topupEndpoint: '/v1/billing/topup',
         },
         {
           rail: 'x402',
