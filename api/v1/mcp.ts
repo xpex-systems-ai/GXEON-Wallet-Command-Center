@@ -5,7 +5,7 @@ import { sendJson, sendError, parseBody } from './_helper.js';
 import type { AgentScope } from '../../src/agent-economy/types.js';
 
 const BUYER_TOOLS: Record<string, AgentScope> = {
-  list_services: 'services:read', get_quote: 'quotes:create', submit_job: 'jobs:create',
+  list_services: 'services:read', list_credit_packs: 'services:read', get_quote: 'quotes:create', submit_job: 'jobs:create',
   get_job: 'jobs:read', get_result: 'results:read', get_balance: 'balance:read',
   gxeon_json_validate_v1: 'jobs:create', gxeon_url_verify_v1: 'jobs:create',
 };
