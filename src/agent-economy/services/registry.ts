@@ -163,7 +163,7 @@ export const SERVICE_REGISTRY: Record<string, ServiceDefinition> = {
     timeoutMs: 15000,
     executionPolicy: 'STRICT_ANTI_SSRF_OUTBOUND',
     riskClass: 'MEDIUM',
-    status: 'AVAILABLE',
+    status: 'DRAFT', // Worker exists, but production promotion remains a separate release gate.
   },
 };
 
