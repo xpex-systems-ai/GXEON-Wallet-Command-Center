@@ -101,7 +101,7 @@ export function CreditsStore() {
         <div className="text-center max-w-3xl mx-auto mb-12">
           <div className="inline-flex items-center gap-2 text-emerald-400 text-xs mb-4"><Coins className="w-4 h-4" /> CRÉDITOS PRÉ-PAGOS</div>
           <h1 className="text-4xl md:text-5xl font-extrabold mb-4">GXEON Machine Credits</h1>
-          <p className="text-slate-300">Verifique URLs e valide JSON por API ou MCP. Compre uma vez e use seu saldo a cada execução.</p>
+          <p className="text-slate-300">Pacotes a partir de R$ 4,90 para agentes comprarem capacidade sob demanda. Use o saldo por API ou MCP, sem assinatura.</p>
         </div>
         {returnStatus && (
           <div role="status" className="max-w-xl mx-auto mb-8 rounded-xl p-5 bg-slate-900 border border-slate-700 text-sm">
@@ -138,12 +138,12 @@ export function CreditsStore() {
           </section>
         )}
         </div>
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
           {Object.values(TOPUP_PACKS).map(pack => (
-            <section key={pack.id} className={'bg-[#0B1220] rounded-2xl p-7 border flex flex-col ' + (pack.id === 'pack_500' ? 'border-[#FF7A00]' : 'border-slate-800')}>
+            <section key={pack.id} className={'bg-[#0B1220] rounded-2xl p-7 border flex flex-col ' + (pack.id === 'pack_250' ? 'border-[#FF7A00]' : 'border-slate-800')}>
               <div className="flex justify-between items-center gap-2 mb-5"><h2 className="font-mono text-sm">{pack.name}</h2><span className="text-xs bg-slate-800 p-2 rounded">{pack.credits} créditos</span></div>
               <p className="text-4xl font-bold">{currency(pack.priceCents / 100)}</p>
-              <p className="text-xs text-slate-400 mt-2 mb-6">{(pack.priceCents / 100 / pack.credits).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 3 })} por crédito</p>
+              <p className="text-xs text-slate-400 mt-2 mb-6">{(pack.priceCents / 100 / pack.credits).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 3 })} por crédito · até {Math.floor(pack.credits / 5)} URLs ou {Math.floor(pack.credits / 2)} validações JSON</p>
               <ul className="space-y-3 text-sm text-slate-300 mb-8 flex-1">
                 {[
                   pack.credits / 5 + ' verificações de URL ou ' + pack.credits / 2 + ' validações JSON',
