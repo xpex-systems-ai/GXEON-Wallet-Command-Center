@@ -74,30 +74,33 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('Credit purchase onboarding', () => {
-  it('publishes six prepaid packs with lower entry pricing and non-increasing unit cost', () => {
+  it('publishes nine prepaid packs from R$0.99 with non-increasing unit cost', () => {
     const packs = Object.values(TOPUP_PACKS);
     expect(packs.map(pack => pack.id)).toEqual([
-      'pack_20', 'pack_50', 'pack_100', 'pack_250', 'pack_500', 'pack_2000',
+      'pack_2', 'pack_5', 'pack_10', 'pack_20', 'pack_50',
+      'pack_100', 'pack_250', 'pack_500', 'pack_2000',
     ]);
-    expect(packs.map(pack => pack.priceCents)).toEqual([490, 1190, 2000, 4500, 8000, 25000]);
+    expect(packs.map(pack => pack.priceCents)).toEqual([
+      99, 199, 290, 490, 1190, 2000, 4500, 8000, 25000,
+    ]);
     const unitCosts = packs.map(pack => pack.priceCents / pack.credits);
     for (let i = 1; i < unitCosts.length; i++) {
       expect(unitCosts[i]).toBeLessThanOrEqual(unitCosts[i - 1] + Number.EPSILON);
     }
   });
 
-  it('publishes micro packs and creates a R$4.90 NANO checkout without granting credits early', async () => {
+  it('creates a R$0.99 PICO checkout without granting credits early', async () => {
     const res = response();
-    await topup({ method: 'POST', headers: {}, body: { packId: 'pack_20', name: 'Nano Buyer' } }, res);
+    await topup({ method: 'POST', headers: {}, body: { packId: 'pack_2', name: 'Pico Buyer' } }, res);
     expect(res.statusCode).toBe(201);
-    expect(res.body.pack).toMatchObject({ id: 'pack_20', credits: 20, priceCents: 490, currency: 'brl' });
+    expect(res.body.pack).toMatchObject({ id: 'pack_2', credits: 2, priceCents: 99, currency: 'brl' });
     expect(res.body.apiKey).toMatch(/^gxa_live_/);
     const auth = await authenticateMachineRequest('Bearer ' + res.body.apiKey);
     expect(auth.context?.account.creditBalance).toBe(0);
     const params = mocks.create.mock.calls[0][0];
-    expect(params.line_items[0].price_data.unit_amount).toBe(490);
-    expect(params.metadata.credits).toBe('20');
-    expect(params.metadata.pack_id).toBe('pack_20');
+    expect(params.line_items[0].price_data.unit_amount).toBe(99);
+    expect(params.metadata.credits).toBe('2');
+    expect(params.metadata.pack_id).toBe('pack_2');
   });
 
   it('lets authenticated agents discover prepaid packs over MCP without creating payment state', async () => {
@@ -111,8 +114,8 @@ describe('Credit purchase onboarding', () => {
     }, seed.accountId);
     const payload = JSON.parse((result.result as any).content[0].text);
     expect(payload.topupEndpoint).toBe('/v1/billing/topup');
-    expect(payload.packs.map((pack: any) => pack.id)).toContain('pack_20');
-    expect(payload.packs.find((pack: any) => pack.id === 'pack_20').priceCents).toBe(490);
+    expect(payload.packs.map((pack: any) => pack.id)).toContain('pack_2');
+    expect(payload.packs.find((pack: any) => pack.id === 'pack_2').priceCents).toBe(99);
     expect(payload.moneyTruth).toContain('not payment');
   });
 
