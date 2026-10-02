@@ -1,0 +1,15 @@
+{
+  "type": "mcp",
+  "server_label": "gxeon_public_market",
+  "transport": {
+    "type": "http",
+    "server_url": "https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market"
+  },
+  "connection_origin": "service",
+  "required": true,
+  "allowed_tools": [
+    "gxeon_list_services",
+    "gxeon_list_credit_packs",
+    "gxeon_get_agent_buying_guide"
+  ]
+}
