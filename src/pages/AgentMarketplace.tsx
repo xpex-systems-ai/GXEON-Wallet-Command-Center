@@ -89,7 +89,7 @@ export function AgentMarketplace() {
   }
 
   return (
-    <div className="min-h-screen bg-[#070D18] text-slate-100">
+    <div data-market-version="1.0.2" className="min-h-screen bg-[#070D18] text-slate-100">
       <header className="border-b border-[#1E314F] bg-[#0B1220]">
         <div className="max-w-6xl mx-auto px-5 py-5 flex flex-wrap items-center justify-between gap-4">
           <div>
