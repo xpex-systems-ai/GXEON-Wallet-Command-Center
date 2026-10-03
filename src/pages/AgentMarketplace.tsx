@@ -126,7 +126,7 @@ export function AgentMarketplace() {
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <a
-                href="/credits"
+                href="/credits?pack=pack_2"
                 className="rounded-xl bg-[#FF7A00] px-5 py-3 text-sm font-black text-black"
               >
                 Comprar capacidade
@@ -288,7 +288,7 @@ export function AgentMarketplace() {
                 <div className="text-3xl font-black mt-4">{brl(pack.priceCents)}</div>
                 <p className="text-sm text-slate-400 mt-2">{pack.credits} créditos</p>
                 <a
-                  href="/credits"
+                  href={`/credits?pack=${encodeURIComponent(pack.id)}`}
                   className="mt-5 inline-flex text-sm font-semibold text-cyan-300"
                 >
                   Comprar pack
