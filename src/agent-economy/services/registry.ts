@@ -54,7 +54,7 @@ export const SERVICE_REGISTRY: Record<string, ServiceDefinition> = {
       type: 'object',
       properties: {
         csv: { type: 'string', description: 'CSV text, up to 512,000 characters' },
-        delimiter: { type: 'string', enum: [',', ';', '\\t', '|'] },
+        delimiter: { type: 'string', enum: [',', ';', '\t', '|'] },
         hasHeader: { type: 'boolean' },
       },
       required: ['csv'],
