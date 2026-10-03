@@ -200,6 +200,17 @@ export class MemoryAgentEconomyStore implements IAgentEconomyStore {
         averageLatencyMs: 320,
         version: '1.0.0',
       },
+      {
+        workerId: 'worker_csv_audit_01',
+        capabilities: ['gxeon_csv_audit_v1'],
+        status: 'ONLINE',
+        health: 1.0,
+        maxConcurrency: 50,
+        currentLoad: 0,
+        successRate: 1.0,
+        averageLatencyMs: 10,
+        version: '1.0.0',
+      },
     ];
 
     for (const w of defaultWorkers) {
@@ -773,6 +784,7 @@ export class FirestoreAgentEconomyStore implements IAgentEconomyStore {
       { workerId: 'worker_url_verify_01', capability: 'gxeon_url_verify_v1', concurrency: 10 },
       { workerId: 'worker_json_validate_01', capability: 'gxeon_json_validate_v1', concurrency: 50 },
       { workerId: 'worker_api_health_01', capability: 'gxeon_api_health_v1', concurrency: 10 },
+      { workerId: 'worker_csv_audit_01', capability: 'gxeon_csv_audit_v1', concurrency: 50 },
     ];
     for (const builtin of builtins) {
       await this.client.createIfAbsent('workers', builtin.workerId, {
