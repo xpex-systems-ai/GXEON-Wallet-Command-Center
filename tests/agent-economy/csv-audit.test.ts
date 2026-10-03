@@ -8,7 +8,7 @@ import type { Job } from '../../src/agent-economy/types.js';
 describe('GXEON CSV Audit', () => {
   it('audits a clean quoted CSV in the zero-network worker', () => {
     const output = executeCsvAuditWorker({
-      csv: 'name,city\\n"Ana","Brasília"\\n"João","Goiânia"',
+      csv: 'name,city\n"Ana","Brasília"\n"João","Goiânia"',
     });
 
     expect(output.qualityPass).toBe(true);
@@ -20,7 +20,7 @@ describe('GXEON CSV Audit', () => {
 
   it('reports data-quality problems without failing execution', () => {
     const output = executeCsvAuditWorker({
-      csv: 'id,name,name\\n1,Ana,Ana\\n1,Ana,Ana\\n2,,Bia\\n3,Caio',
+      csv: 'id,name,name\n1,Ana,Ana\n1,Ana,Ana\n2,,Bia\n3,Caio',
     });
 
     expect(output.qualityPass).toBe(false);
@@ -42,7 +42,7 @@ describe('GXEON CSV Audit', () => {
 
   it('passes QA when the audit worker returns the required result shape', () => {
     const service = getService('gxeon_csv_audit_v1')!;
-    const input = { csv: 'a,b\\n1,2' };
+    const input = { csv: 'a,b\n1,2' };
     const output = executeCsvAuditWorker(input);
     const job = {
       jobId: 'job_csv_test',
