@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Coins, ShieldCheck, ArrowRight, CheckCircle2, Lock, Cpu, AlertCircle, Download } from 'lucide-react';
-import { TOPUP_PACKS } from '../agent-economy/billingCatalog';
+import { TOPUP_PACKS, getTopupPack } from '../agent-economy/billingCatalog';
 
 interface Checkout {
   checkoutUrl: string;
@@ -11,6 +11,7 @@ interface Checkout {
 const currency = (amount: number) => amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export function CreditsStore() {
+  const selectedPack = getTopupPack(new URLSearchParams(window.location.search).get('pack'));
   const [agentName, setAgentName] = useState('');
   const [existingKey, setExistingKey] = useState('');
   const [loadingPack, setLoadingPack] = useState<string | null>(null);
@@ -112,6 +113,11 @@ export function CreditsStore() {
         )}
         <section className="max-w-xl mx-auto mb-10 bg-[#0B1220] border border-slate-800 rounded-2xl p-6">
           <h2 className="font-semibold mb-4 flex items-center gap-2"><Cpu className="w-4 h-4 text-[#FF7A00]" /> Sua conta de créditos</h2>
+          {selectedPack && (
+            <p role="status" className="mb-4 rounded-lg border border-cyan-800 bg-cyan-950/40 px-4 py-3 text-sm text-cyan-200">
+              Pack selecionado: <strong>{selectedPack.name}</strong> · {selectedPack.credits} créditos · {currency(selectedPack.priceCents / 100)}
+            </p>
+          )}
           <label htmlFor="agent-name" className="block text-sm mb-2">Nome do agente ou projeto</label>
           <input id="agent-name" maxLength={100} value={agentName} onChange={e => setAgentName(e.target.value)}
             placeholder="Meu projeto" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-3 mb-4" />
@@ -120,6 +126,12 @@ export function CreditsStore() {
             onChange={e => { setExistingKey(e.target.value); setBalance(null); }} placeholder="gxa_live_… (opcional)"
             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-3 font-mono text-sm" />
           <p className="text-xs text-slate-400 mt-3">Na primeira compra, você recebe uma chave para salvar antes de pagar. Guarde-a para acessar os serviços e recarregar.</p>
+          {selectedPack && (
+            <button type="button" disabled={loadingPack !== null || Boolean(checkout?.apiKey)} onClick={() => handleCheckout(selectedPack.id)}
+              className="mt-5 w-full rounded-xl bg-[#FF7A00] py-3 text-sm font-bold text-black disabled:opacity-50">
+              {loadingPack === selectedPack.id ? 'Preparando…' : `Continuar com ${selectedPack.name}`}
+            </button>
+          )}
           {existingKey.trim() && <button onClick={checkBalance} disabled={checkingBalance} className="mt-4 text-sm text-cyan-400 disabled:opacity-50">{checkingBalance ? 'Consultando…' : 'Consultar saldo'}</button>}
           {balance !== null && <p role="status" className="mt-3 text-emerald-400">{balance} créditos disponíveis</p>}
         </section>
