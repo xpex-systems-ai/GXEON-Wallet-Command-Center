@@ -20,6 +20,10 @@ import {
   executeApiHealthWorker,
   ApiHealthInput,
 } from './workers/apiHealthWorker.js';
+import {
+  executeCsvAuditWorker,
+  CsvAuditInput,
+} from './workers/csvAuditWorker.js';
 
 export interface ExecuteJobResult {
   job: Job;
@@ -105,6 +109,8 @@ export class GxeonCommander {
           rawOutput = executeJsonValidateWorker(job.input as unknown as JsonValidateInput);
         } else if (service.serviceId === 'gxeon_api_health_v1') {
           rawOutput = await executeApiHealthWorker(job.input as unknown as ApiHealthInput);
+        } else if (service.serviceId === 'gxeon_csv_audit_v1') {
+          rawOutput = executeCsvAuditWorker(job.input as unknown as CsvAuditInput);
         } else {
           throw new Error(`Capability router: no execution runner for ${service.serviceId}`);
         }

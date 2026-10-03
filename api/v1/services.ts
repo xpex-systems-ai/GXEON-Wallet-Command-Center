@@ -148,6 +148,16 @@ export default async function handler(req: any, res: any) {
           minimumChargeCredits: 10,
           billingRail: 'prepaid_credits',
         },
+        {
+          serviceId: 'gxeon_csv_audit_v1',
+          name: 'GXEON CSV Audit',
+          unit: 'file',
+          unitPriceCredits: 2,
+          minimumChargeCredits: 2,
+          billingRail: 'prepaid_credits',
+          entryPack: 'PICO',
+          entryPriceBrl: 0.99,
+        },
       ],
       billingRails: [
         'stripe_live',

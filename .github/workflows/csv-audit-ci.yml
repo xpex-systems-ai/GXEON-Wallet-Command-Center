@@ -1,0 +1,28 @@
+name: CSV Audit CI
+
+on:
+  push:
+    branches:
+      - feat/gxeon-csv-audit-v1
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run tests/agent-economy/csv-audit.test.ts
+      - run: npm run build
+      - run: npm run lint

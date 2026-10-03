@@ -44,6 +44,40 @@ export const SERVICE_REGISTRY: Record<string, ServiceDefinition> = {
     status: 'AVAILABLE',
   },
 
+  gxeon_csv_audit_v1: {
+    serviceId: 'gxeon_csv_audit_v1',
+    version: '1.0.0',
+    name: 'GXEON CSV Audit',
+    description:
+      'Zero-network CSV quality audit for uneven rows, duplicate headers or records, blank rows, and empty cells.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        csv: { type: 'string', description: 'CSV text, up to 512,000 characters' },
+        delimiter: { type: 'string', enum: [',', ';', '\t', '|'] },
+        hasHeader: { type: 'boolean' },
+      },
+      required: ['csv'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        qualityPass: { type: 'boolean' },
+        summary: { type: 'object' },
+        results: { type: 'array' },
+      },
+      required: ['qualityPass', 'summary', 'results'],
+    },
+    unit: 'file',
+    unitPriceCredits: 2,
+    minimumChargeCredits: 2,
+    maxBatch: 1,
+    timeoutMs: 5000,
+    executionPolicy: 'ZERO_NETWORK_SANDBOX',
+    riskClass: 'LOW',
+    status: 'AVAILABLE',
+  },
+
   gxeon_url_verify_v1: {
     serviceId: 'gxeon_url_verify_v1',
     version: '1.0.0',

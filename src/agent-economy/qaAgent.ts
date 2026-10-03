@@ -102,6 +102,21 @@ export function validateExecutionWithQaAgent(
     if (inputCount !== outputCount) {
       errors.push(`Endpoints input count (${inputCount}) does not match results (${outputCount})`);
     }
+  } else if (service.serviceId === 'gxeon_csv_audit_v1') {
+    const results = (out.results as Array<Record<string, unknown>>) || [];
+    inputCount = 1;
+    outputCount = results.length;
+
+    if (
+      typeof out.qualityPass !== 'boolean' ||
+      !out.summary ||
+      results.length !== 1 ||
+      typeof results[0]?.rowCount !== 'number' ||
+      typeof results[0]?.columnCount !== 'number' ||
+      !Array.isArray(results[0]?.unevenRows)
+    ) {
+      errors.push('CSV audit output is missing the required structured audit fields');
+    }
   }
 
   return {
