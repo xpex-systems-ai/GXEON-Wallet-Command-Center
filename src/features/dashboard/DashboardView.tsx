@@ -17,6 +17,7 @@ import { NavTab } from '../../components/layout/Sidebar';
 import { walletRegistry } from '../../wallets/registry';
 import { QuantumTreasuryView } from './QuantumTreasuryView';
 import { RealRevenuePanel } from './RealRevenuePanel';
+import { SwapRadarPanel } from './SwapRadarPanel';
 
 interface DashboardViewProps {
   wallets: WalletItem[];
@@ -91,6 +92,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Real Revenue & Money Truth */}
       <RealRevenuePanel />
+
+      {/* Multi-asset conversion intelligence: discovery only, no signing or asset movement */}
+      <SwapRadarPanel />
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
