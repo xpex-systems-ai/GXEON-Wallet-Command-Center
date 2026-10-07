@@ -30,7 +30,7 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Install web dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
       - name: Build web shell
         run: npm run build
       - name: Create Android project
