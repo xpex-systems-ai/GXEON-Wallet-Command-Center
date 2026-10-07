@@ -319,7 +319,7 @@ export function App() {
   const bountyStats = bountyService.getStats();
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0B1220] text-slate-100 selection:bg-[#FF7A00] selection:text-black">
+    <div className="min-h-screen flex flex-col bg-[#070A0F] text-slate-100 selection:bg-white selection:text-black">
       {/* Top Cyber Navigation Bar */}
       <Navbar
         bridgeHealth={bridgeHealth}
@@ -331,7 +331,7 @@ export function App() {
       />
 
       {/* Main Body Area */}
-      <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row">
+      <div className="flex-1 w-full flex flex-col md:flex-row">
         {/* Navigation Sidebar */}
         <Sidebar
           currentTab={currentTab}
@@ -341,7 +341,7 @@ export function App() {
         />
 
         {/* Dynamic Tab Content Area */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 xl:p-10 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.035),transparent_28%)]">
           {currentTab === 'dashboard' && (
             <DashboardView
               wallets={wallets}
