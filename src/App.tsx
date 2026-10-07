@@ -47,6 +47,12 @@ export function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [bypassLocalMode, setBypassLocalMode] = useState(false);
+  // The signed Android shell performs local biometric/device-credential verification
+  // before opening /agentfi?native=1. This grants UI access only; it never grants
+  // signing authority or cloud identity.
+  const nativeOperatorMode =
+    currentPathSafe() === '/agentfi' &&
+    new URLSearchParams(window.location.search).get('native') === '1';
 
   const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
   const [wallets, setWallets] = useState<WalletItem[]>([]);
@@ -61,6 +67,10 @@ export function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const isConfigured = isFirebaseConfigured();
+
+  function currentPathSafe() {
+    return window.location.pathname.toLowerCase().replace(/\/$/, '');
+  }
 
   const addToast = (
     type: ToastMessage['type'],
@@ -277,13 +287,13 @@ export function App() {
   const isBypassedInDev = isDevMode && bypassLocalMode;
 
   // AgentFi is an owner-only surface: never render it before the production auth gate.
-  if (currentPath === '/agentfi' && (!isConfigured || (!currentUser && !isBypassedInDev))) {
+  if (currentPath === '/agentfi' && !nativeOperatorMode && (!isConfigured || (!currentUser && !isBypassedInDev))) {
     if (!isConfigured) {
       return <div className="min-h-screen flex items-center justify-center bg-[#0B1220] text-amber-300 font-mono text-xs p-6 text-center">AGENTFI LOCKED // Firebase identity gate is required in production.</div>;
     }
   }
 
-  if (isConfigured && !currentUser && !isBypassedInDev) {
+  if (isConfigured && !nativeOperatorMode && !currentUser && !isBypassedInDev) {
     if (!authChecked) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-[#0B1220] text-slate-400 font-mono text-xs">
