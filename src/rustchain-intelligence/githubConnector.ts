@@ -6,8 +6,6 @@ const ALLOWED_REPO = 'Scottcjn/rustchain-bounties';
 export async function fetchIssueEvidence(issue: number, claimant: string, wallet: string): Promise<ContributionRecord> {
   if (!Number.isInteger(issue) || issue <= 0) throw new Error('INVALID_ISSUE');
   const headers: Record<string, string> = { Accept: 'application/vnd.github+json', 'User-Agent': 'GXEON-RustChain-Intelligence/1.0' };
-  const token = process.env.GITHUB_TOKEN?.trim();
-  if (token) headers.Authorization = `Bearer ${token}`;
   const [issueResponse, commentsResponse] = await Promise.all([
     fetch(`${API}/repos/${ALLOWED_REPO}/issues/${issue}`, { headers, redirect: 'error' }),
     fetch(`${API}/repos/${ALLOWED_REPO}/issues/${issue}/comments?per_page=100`, { headers, redirect: 'error' }),
