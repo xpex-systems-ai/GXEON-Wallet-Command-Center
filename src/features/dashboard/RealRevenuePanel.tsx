@@ -57,6 +57,8 @@ interface MoneyTruthStatus {
     source: string;
     verifiedAt: string | null;
     historyCount: number | null;
+    pendingRtc?: number;
+    pendingTransactions?: number;
     experimentalToken: boolean;
   };
   usdc: {
@@ -183,7 +185,9 @@ export function RealRevenuePanel() {
           </div>
           <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
             <WalletCards className="w-3 h-3" />
-            {rtcConfirmed ? 'RustChain API verificada' : 'Aguardando leitura autoritativa'}
+            {rtcConfirmed
+              ? `RustChain API verificada • pendente: ${moneyTruth?.rtc.pendingRtc || 0} RTC (${moneyTruth?.rtc.pendingTransactions || 0} tx)`
+              : 'Aguardando leitura autoritativa'}
           </div>
         </div>
 
