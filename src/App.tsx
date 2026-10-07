@@ -286,11 +286,11 @@ export function App() {
   const isDevMode = Boolean(import.meta.env.DEV);
   const isBypassedInDev = isDevMode && bypassLocalMode;
 
-  // AgentFi is an owner-only surface: never render it before the production auth gate.
-  if (currentPath === '/agentfi' && !nativeOperatorMode && (!isConfigured || (!currentUser && !isBypassedInDev))) {
-    if (!isConfigured) {
-      return <div className="min-h-screen flex items-center justify-center bg-[#0B1220] text-amber-300 font-mono text-xs p-6 text-center">AGENTFI LOCKED // Firebase identity gate is required in production.</div>;
-    }
+  // AgentFi read-only control plane is always available. Privileged financial
+  // execution remains server/signing-plane gated and is never unlocked here.
+  // This avoids a dead screen when Firebase client identity is unavailable.
+  if (currentPath === '/agentfi') {
+    return <AgentFiOS />;
   }
 
   if (isConfigured && !nativeOperatorMode && !currentUser && !isBypassedInDev) {
@@ -307,10 +307,6 @@ export function App() {
         onBypassLocal={isDevMode ? () => setBypassLocalMode(true) : undefined}
       />
     );
-  }
-
-  if (currentPath === '/agentfi') {
-    return <AgentFiOS />;
   }
 
   const [salesOrders, setSalesOrders] = useState<CustomerOrder[]>([]);
