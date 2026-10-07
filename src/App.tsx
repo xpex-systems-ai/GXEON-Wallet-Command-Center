@@ -22,6 +22,7 @@ import { McpDocs } from './pages/McpDocs';
 import { Ecosystem } from './pages/Ecosystem';
 import { AgentMarketplace } from './pages/AgentMarketplace';
 import { BoTTubeIntegrationGuide } from './pages/BoTTubeIntegrationGuide';
+import { AgentFiOS } from './pages/AgentFiOS';
 
 import {
   WalletItem,
@@ -266,6 +267,9 @@ export function App() {
   }
   if (currentPath === '/market') {
     return <AgentMarketplace />;
+  }
+  if (currentPath === '/agentfi') {
+    return <AgentFiOS />;
   }
   if (currentPath === '/guides/bottube-api') {
     return <BoTTubeIntegrationGuide />;
