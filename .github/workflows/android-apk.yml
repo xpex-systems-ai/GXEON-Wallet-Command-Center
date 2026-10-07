@@ -1,0 +1,52 @@
+name: GXEON Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/android-installable-agentfi
+    paths:
+      - 'android/**'
+      - 'capacitor.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install web dependencies
+        run: npm ci
+      - name: Build web shell
+        run: npm run build
+      - name: Create Android project
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+      - name: Build installable debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+      - name: Normalize APK filename
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk GXEON-AgentFi-OS.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GXEON-AgentFi-OS-Android
+          path: GXEON-AgentFi-OS.apk
+          if-no-files-found: error
+          retention-days: 30
