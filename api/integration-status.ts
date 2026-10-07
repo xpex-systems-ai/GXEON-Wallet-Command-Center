@@ -23,7 +23,7 @@ interface RustChainBalanceResponse {
 
 interface RustChainHistoryResponse {
   total?: number;
-  transactions?: Array<Record<string, unknown>>;
+  transactions?: Array<{ amount?: number; status?: string; tx_hash?: string | null; type?: string }>;
 }
 
 async function fetchReadOnlyJson<T>(url: string, timeoutMs = 8000): Promise<T> {
@@ -261,6 +261,14 @@ export default async function handler(req: any, res: any) {
             : Array.isArray(history.transactions)
               ? history.transactions.length
               : null,
+        pendingRtc: Array.isArray(history.transactions)
+          ? history.transactions
+              .filter((tx) => tx.status === 'pending' && typeof tx.amount === 'number')
+              .reduce((sum, tx) => sum + Number(tx.amount), 0)
+          : 0,
+        pendingTransactions: Array.isArray(history.transactions)
+          ? history.transactions.filter((tx) => tx.status === 'pending').length
+          : 0,
         experimentalToken: true,
       };
     }
