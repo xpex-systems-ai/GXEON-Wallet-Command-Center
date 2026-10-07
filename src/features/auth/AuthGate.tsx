@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Shield, Lock, Mail, KeyRound, AlertCircle, ArrowRight, UserCheck } from 'lucide-react';
-import { loginWithEmail, registerWithEmail } from '../../firebase/auth';
+import { Shield, Lock, Mail, KeyRound, AlertCircle, ArrowRight } from 'lucide-react';
+import { loginWithEmail } from '../../firebase/auth';
 import { syncUserProfile } from '../../services/firestore/userRepository';
 
 interface AuthGateProps {
@@ -9,10 +9,8 @@ interface AuthGateProps {
 }
 
 export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, onBypassLocal }) => {
-  const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -31,11 +29,6 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, onBypassLoc
       return;
     }
 
-    if (isRegister && password !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
-
     if (password.length < 6) {
       setError('Password must be at least 6 characters.');
       return;
@@ -44,13 +37,8 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, onBypassLoc
     setLoading(true);
 
     try {
-      if (isRegister) {
-        const user = await registerWithEmail(email, password);
-        await syncUserProfile(user.uid, user.email || email);
-      } else {
-        const user = await loginWithEmail(email, password);
-        await syncUserProfile(user.uid, user.email || email);
-      }
+      const user = await loginWithEmail(email, password);
+      await syncUserProfile(user.uid, user.email || email);
       onAuthenticated();
     } catch (err: unknown) {
       const fbErr = err as { code?: string; message?: string };
@@ -134,55 +122,18 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticated, onBypassLoc
             </div>
           </div>
 
-          {isRegister && (
-            <div>
-              <label className="block text-xs font-mono text-slate-300 mb-1.5">CONFIRM PASSWORD</label>
-              <div className="relative">
-                <KeyRound className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                <input
-                  type="password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full bg-[#111C30] border border-[#1E314F] rounded-lg pl-9 pr-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#FF7A00] font-mono"
-                />
-              </div>
-            </div>
-          )}
 
           <button
             type="submit"
             disabled={loading}
             className="w-full mt-2 py-3 px-4 rounded-lg bg-gradient-to-r from-[#FF7A00] to-[#E06A00] hover:from-[#FF8B1F] hover:to-[#FF7A00] text-black font-mono font-bold text-sm tracking-wider uppercase transition-all shadow-glow-orange flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            {loading ? (
-              <span>AUTHENTICATING...</span>
-            ) : isRegister ? (
-              <>
-                <UserCheck className="w-4 h-4" />
-                CREATE OPERATOR ACCOUNT
-              </>
-            ) : (
-              <>
-                <span>ACCESS COMMAND CENTER</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
+            {loading ? <span>AUTHENTICATING...</span> : <><span>ACCESS COMMAND CENTER</span><ArrowRight className="w-4 h-4" /></>}
           </button>
         </form>
 
         <div className="mt-6 pt-4 border-t border-[#1E314F] flex flex-col items-center gap-3 text-xs text-slate-400 font-mono">
-          <button
-            type="button"
-            onClick={() => {
-              setIsRegister(!isRegister);
-              setError(null);
-            }}
-            className="text-[#00D4FF] hover:underline"
-          >
-            {isRegister ? 'Already have an operator account? Login' : 'Need a new operator account? Register'}
-          </button>
+          <div className="text-slate-500 text-[11px]">OWNER-ONLY // account provisioning is administrative</div>
 
           {showDevBypass && (
             <button

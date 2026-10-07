@@ -1,0 +1,14 @@
+{
+  "name": "GXEON AgentFi OS",
+  "short_name": "GXEON",
+  "description": "Private owner-only GXEON AgentFi operator terminal",
+  "start_url": "/agentfi",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0B1220",
+  "theme_color": "#0B1220",
+  "orientation": "portrait-primary",
+  "icons": [
+    {"src":"/gxeon-icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}

@@ -22,6 +22,7 @@ import { McpDocs } from './pages/McpDocs';
 import { Ecosystem } from './pages/Ecosystem';
 import { AgentMarketplace } from './pages/AgentMarketplace';
 import { BoTTubeIntegrationGuide } from './pages/BoTTubeIntegrationGuide';
+import { AgentFiOS } from './pages/AgentFiOS';
 
 import {
   WalletItem,
@@ -275,6 +276,13 @@ export function App() {
   const isDevMode = Boolean(import.meta.env.DEV);
   const isBypassedInDev = isDevMode && bypassLocalMode;
 
+  // AgentFi is an owner-only surface: never render it before the production auth gate.
+  if (currentPath === '/agentfi' && (!isConfigured || (!currentUser && !isBypassedInDev))) {
+    if (!isConfigured) {
+      return <div className="min-h-screen flex items-center justify-center bg-[#0B1220] text-amber-300 font-mono text-xs p-6 text-center">AGENTFI LOCKED // Firebase identity gate is required in production.</div>;
+    }
+  }
+
   if (isConfigured && !currentUser && !isBypassedInDev) {
     if (!authChecked) {
       return (
@@ -289,6 +297,10 @@ export function App() {
         onBypassLocal={isDevMode ? () => setBypassLocalMode(true) : undefined}
       />
     );
+  }
+
+  if (currentPath === '/agentfi') {
+    return <AgentFiOS />;
   }
 
   const [salesOrders, setSalesOrders] = useState<CustomerOrder[]>([]);
