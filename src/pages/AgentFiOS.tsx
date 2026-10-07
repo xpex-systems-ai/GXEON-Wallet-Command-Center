@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bot, BriefcaseBusiness, CheckCircle2, Coins, GitBranch, LockKeyhole, Radar, ShieldCheck, WalletCards, Zap } from 'lucide-react';
+import { Bot, BriefcaseBusiness, CheckCircle2, Coins, LockKeyhole, Radar, ShieldCheck, WalletCards } from 'lucide-react';
 
 type Truth = {
   rtc?: { balance: string | null; status: string };
