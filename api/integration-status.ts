@@ -235,10 +235,10 @@ export default async function handler(req: any, res: any) {
   try {
     const [balance, history] = await Promise.all([
       fetchReadOnlyJson<RustChainBalanceResponse>(
-        `${RUSTCHAIN_BASE_URL}/wallet/balance?address=${encodeURIComponent(rtcWallet)}`
+        `${RUSTCHAIN_BASE_URL}/wallet/balance?miner_id=${encodeURIComponent(rtcWallet)}`
       ),
       fetchReadOnlyJson<RustChainHistoryResponse>(
-        `${RUSTCHAIN_BASE_URL}/wallet/history?address=${encodeURIComponent(rtcWallet)}&limit=50`
+        `${RUSTCHAIN_BASE_URL}/wallet/history?miner_id=${encodeURIComponent(rtcWallet)}&limit=50`
       ).catch(() => ({ total: undefined, transactions: [] })),
     ]);
 
