@@ -268,9 +268,6 @@ export function App() {
   if (currentPath === '/market') {
     return <AgentMarketplace />;
   }
-  if (currentPath === '/agentfi') {
-    return <AgentFiOS />;
-  }
   if (currentPath === '/guides/bottube-api') {
     return <BoTTubeIntegrationGuide />;
   }
@@ -278,6 +275,13 @@ export function App() {
   // Auth Gate check: If Firebase is configured and user is unauthenticated
   const isDevMode = Boolean(import.meta.env.DEV);
   const isBypassedInDev = isDevMode && bypassLocalMode;
+
+  // AgentFi is an owner-only surface: never render it before the production auth gate.
+  if (currentPath === '/agentfi' && (!isConfigured || (!currentUser && !isBypassedInDev))) {
+    if (!isConfigured) {
+      return <div className="min-h-screen flex items-center justify-center bg-[#0B1220] text-amber-300 font-mono text-xs p-6 text-center">AGENTFI LOCKED // Firebase identity gate is required in production.</div>;
+    }
+  }
 
   if (isConfigured && !currentUser && !isBypassedInDev) {
     if (!authChecked) {
@@ -293,6 +297,10 @@ export function App() {
         onBypassLocal={isDevMode ? () => setBypassLocalMode(true) : undefined}
       />
     );
+  }
+
+  if (currentPath === '/agentfi') {
+    return <AgentFiOS />;
   }
 
   const [salesOrders, setSalesOrders] = useState<CustomerOrder[]>([]);
