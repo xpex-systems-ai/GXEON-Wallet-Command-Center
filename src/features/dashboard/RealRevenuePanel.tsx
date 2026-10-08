@@ -90,37 +90,38 @@ export function RealRevenuePanel() {
 
   const fetchStatus = async () => {
     setLoading(true);
-    try {
-      // Independent reads: Base can fail without hiding Stripe, RTC and the other rails.
-      const [integrationResult, baseResult] = await Promise.allSettled([
-        fetch('/api/integration-status', { cache: 'no-store' }),
-        fetch('/api/integration-status?view=base-wallet', { cache: 'no-store' }),
-      ]);
 
-      if (integrationResult.status === 'fulfilled' && integrationResult.value.ok) {
-        const data = await integrationResult.value.json() as IntegrationStatus;
-        setStatus(data);
-        setMoneyTruth(data.moneyTruthSnapshot || null);
-      }
-
-      if (baseResult.status === 'fulfilled') {
-        try {
-          const data = await baseResult.value.json() as BaseWalletSnapshot;
-          setBaseWallet(baseResult.value.ok && data.status === 'CONFIRMED_ONCHAIN'
-            ? data : { status: 'UNAVAILABLE', observedAt: new Date().toISOString(),
-              address: '0x9465810ae36b0af3c682ba6fca0fd83e0a3ef428',
-              chainId: 8453, balances: null });
-        } catch {
-          setBaseWallet(null);
+    // Requests are independent. A slow Base RPC must never delay Stripe/RTC metrics.
+    const metricsPromise = (async () => {
+      try {
+        const response = await fetch('/api/integration-status', { cache: 'no-store' });
+        if (response.ok) {
+          const data = await response.json() as IntegrationStatus;
+          setStatus(data);
+          setMoneyTruth(data.moneyTruthSnapshot || null);
         }
-      } else {
+      } catch (error) {
+        console.warn('Failed to load money truth status:', error);
+      } finally {
+        setLoading(false);
+      }
+    })();
+
+    const basePromise = (async () => {
+      try {
+        const response = await fetch('/api/integration-status?view=base-wallet', { cache: 'no-store' });
+        const data = await response.json() as BaseWalletSnapshot;
+        setBaseWallet(response.ok && data.status === 'CONFIRMED_ONCHAIN'
+          ? data
+          : { status: 'UNAVAILABLE', observedAt: new Date().toISOString(),
+              address: '', chainId: 8453, balances: null });
+      } catch {
         setBaseWallet(null);
       }
-    } catch (e) {
-      console.warn('Failed to load money truth status:', e);
-    } finally {
-      setLoading(false);
-    }
+    })();
+
+    // Each promise commits its own state as soon as it finishes.
+    await Promise.allSettled([metricsPromise, basePromise]);
   };
 
   useEffect(() => {
@@ -302,14 +303,17 @@ export function RealRevenuePanel() {
               <WalletCards className="h-4 w-4" /> GXEON Official Wallet — Base (8453)
             </div>
             <p className="mt-1 text-[11px] font-mono text-slate-400 break-all">
-              0x9465810ae36b0af3c682ba6fca0fd83e0a3ef428
+              {baseWallet?.status === 'CONFIRMED_ONCHAIN'
+                ? baseWallet.address : 'Aguardando identificação confirmada pela Base'}
             </p>
           </div>
-          <a href="https://basescan.org/address/0x9465810ae36b0af3c682ba6fca0fd83e0a3ef428"
-             target="_blank" rel="noopener noreferrer"
-             className="text-xs text-cyan-400 hover:underline inline-flex items-center gap-1">
-            BaseScan <ExternalLink className="w-3 h-3" />
-          </a>
+          {baseWallet?.status === 'CONFIRMED_ONCHAIN' && baseWallet.explorer && (
+            <a href={baseWallet.explorer}
+               target="_blank" rel="noopener noreferrer"
+               className="text-xs text-cyan-400 hover:underline inline-flex items-center gap-1">
+              BaseScan <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <div className="rounded-lg bg-slate-900/80 p-3">
