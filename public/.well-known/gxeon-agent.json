@@ -157,6 +157,7 @@
       "gxeon_list_services",
       "gxeon_list_credit_packs",
       "gxeon_plan_purchase",
+      "gxeon_list_external_demand",
       "gxeon_get_agent_buying_guide"
     ],
     "executionMcp": "/api/v1/mcp",
