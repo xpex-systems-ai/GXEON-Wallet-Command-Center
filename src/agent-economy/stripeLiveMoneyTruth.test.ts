@@ -43,6 +43,19 @@ describe('Stripe account-wide money truth from real provider snapshots', () => {
       otherCurrencyPaidCharges: 1, pagesFetched: 2,
     });
   });
+  it('counts only BRL disputes in the displayed BRL charge cohort', async () => {
+    const r = await reconcileLiveCharges(async () => ({
+      data: [
+        { ...successful('ch_brl_disputed'), disputed: true },
+        { ...successful('ch_usd_disputed'), currency: 'usd', disputed: true },
+      ],
+      has_more: false,
+    }));
+    expect(r.status).toBe('PROVIDER_VERIFIED');
+    expect(r.paidCharges).toBe(1);
+    expect(r.disputedCharges).toBe(1);
+    expect(r.otherCurrencyPaidCharges).toBe(1);
+  });
   it('uses captured amount, never a larger authorized amount', async () => {
     const r = await reconcileLiveCharges(async () => ({
       data: [{ ...successful('ch_partial', 2000, 400), amount_captured: 1000 }],
