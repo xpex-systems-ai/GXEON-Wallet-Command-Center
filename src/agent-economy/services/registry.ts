@@ -49,11 +49,11 @@ export const SERVICE_REGISTRY: Record<string, ServiceDefinition> = {
     version: '1.0.0',
     name: 'GXEON CSV Audit',
     description:
-      'Zero-network CSV quality audit for uneven rows, duplicate headers or records, blank rows, and empty cells.',
+      'Zero-network CSV quality audit for uneven rows, duplicate headers or records, blank rows, and empty cells. Limits: 512,000 characters, 10,000 rows, 500 columns.',
     inputSchema: {
       type: 'object',
       properties: {
-        csv: { type: 'string', description: 'CSV text, up to 512,000 characters' },
+        csv: { type: 'string', description: 'CSV text: up to 512,000 characters, 10,000 rows and 500 columns' },
         delimiter: { type: 'string', enum: [',', ';', '\t', '|'] },
         hasHeader: { type: 'boolean' },
       },
