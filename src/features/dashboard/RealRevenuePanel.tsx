@@ -73,20 +73,48 @@ interface MoneyTruthStatus {
   radar: Record<string, unknown> | null;
 }
 
+interface BaseWalletSnapshot {
+  status: 'CONFIRMED_ONCHAIN' | 'UNAVAILABLE';
+  observedAt: string;
+  address: string;
+  chainId: number;
+  balances: { eth: string; usdc: string } | null;
+  explorer?: string;
+}
+
 export function RealRevenuePanel() {
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [moneyTruth, setMoneyTruth] = useState<MoneyTruthStatus | null>(null);
   const [loading, setLoading] = useState(false);
+  const [baseWallet, setBaseWallet] = useState<BaseWalletSnapshot | null>(null);
 
   const fetchStatus = async () => {
     setLoading(true);
     try {
-      const integrationRes = await fetch('/api/integration-status', { cache: 'no-store' });
+      // Independent reads: Base can fail without hiding Stripe, RTC and the other rails.
+      const [integrationResult, baseResult] = await Promise.allSettled([
+        fetch('/api/integration-status', { cache: 'no-store' }),
+        fetch('/api/base-wallet', { cache: 'no-store' }),
+      ]);
 
-      if (integrationRes.ok) {
-        const data = await integrationRes.json() as IntegrationStatus;
+      if (integrationResult.status === 'fulfilled' && integrationResult.value.ok) {
+        const data = await integrationResult.value.json() as IntegrationStatus;
         setStatus(data);
         setMoneyTruth(data.moneyTruthSnapshot || null);
+      }
+
+      if (baseResult.status === 'fulfilled') {
+        try {
+          const data = await baseResult.value.json() as BaseWalletSnapshot;
+          setBaseWallet(baseResult.value.ok && data.status === 'CONFIRMED_ONCHAIN'
+            ? data : { status: 'UNAVAILABLE', observedAt: new Date().toISOString(),
+              address: '0x9465810ae36b0af3c682ba6fca0fd83e0a3ef428',
+              chainId: 8453, balances: null });
+        } catch {
+          setBaseWallet(null);
+        }
+      } else {
+        setBaseWallet(null);
       }
     } catch (e) {
       console.warn('Failed to load money truth status:', e);
@@ -265,6 +293,46 @@ export function RealRevenuePanel() {
             Taskmarket • MergePay • RustChain • x402
           </div>
         </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-cyan-500/30 bg-[#0B1220] p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-cyan-400">
+              <WalletCards className="h-4 w-4" /> GXEON Official Wallet — Base (8453)
+            </div>
+            <p className="mt-1 text-[11px] font-mono text-slate-400 break-all">
+              0x9465810ae36b0af3c682ba6fca0fd83e0a3ef428
+            </p>
+          </div>
+          <a href="https://basescan.org/address/0x9465810ae36b0af3c682ba6fca0fd83e0a3ef428"
+             target="_blank" rel="noopener noreferrer"
+             className="text-xs text-cyan-400 hover:underline inline-flex items-center gap-1">
+            BaseScan <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="rounded-lg bg-slate-900/80 p-3">
+            <div className="text-[11px] uppercase font-mono text-slate-400">Native USDC</div>
+            <div className="mt-1 font-mono font-bold text-emerald-400">
+              {baseWallet?.status === 'CONFIRMED_ONCHAIN' && baseWallet.balances
+                ? `${baseWallet.balances.usdc} USDC` : 'UNAVAILABLE'}
+            </div>
+          </div>
+          <div className="rounded-lg bg-slate-900/80 p-3">
+            <div className="text-[11px] uppercase font-mono text-slate-400">Gas / ETH</div>
+            <div className="mt-1 font-mono font-bold text-slate-200">
+              {baseWallet?.status === 'CONFIRMED_ONCHAIN' && baseWallet.balances
+                ? `${baseWallet.balances.eth} ETH` : 'UNAVAILABLE'}
+            </div>
+          </div>
+        </div>
+        <p className="mt-2 text-[11px] font-mono text-slate-500">
+          {baseWallet?.status === 'CONFIRMED_ONCHAIN'
+            ? `On-chain verificado em ${baseWallet.observedAt} · somente leitura`
+            : 'Leitura da Base não confirmada · nenhuma receita presumida'}
+          {' · '} saldo na carteira não equivale a bounty liquidada ou saque disponível.
+        </p>
       </div>
 
       <div className="mt-4 p-3 bg-slate-900/80 border border-slate-800/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400 font-mono">
