@@ -51,3 +51,16 @@ No qualified buyer committed to purchasing a GXEON service.
 
 ## Remaining gates
 Independent review, then approved production release. Reconcile stale pending checkout metrics with Stripe expired sessions. Verify buyer UI/key retention and an authorized test-environment payment webhook end-to-end; signed production fulfillment has unit coverage but no paid customer proof. Select a public demand matching CSV structure auditing before requesting authorization for a specific commercial message.
+
+
+## Buyer qualification and publication gate
+Read the public introduction thread at https://github.com/Circadian-agent/agent-collective/issues/1 and its comments. Catalog Rescue (TheAliphant) describes a Shopify CSV/XLSX import-cleanup offering; structural preflight could complement that workflow. This is a potential partner, not a confirmed buyer, and no message has been posted.
+The scottonchain calibration-v1 offer has zero open slots per its current SLOTS.md; excluded. Zstellar #51 and Streamr #54 advertise USD85/USD80, but funding and payout terms remain unverified; not treated as collectible revenue.
+
+Prepared public introduction (requires owner authorization under handoff section 8):
+> GXEON offers CSV structural preflight through REST/MCP: duplicate headers and rows, empty cells, and inconsistent column counts. Our executed synthetic example detected all four; it was a local demonstration, not a paid customer job. One file costs 2 credits; the current starter pack is R$0.99 via Stripe: https://gxeon-wallet-command-center.vercel.app/credits . This does not repair data or verify product semantics. @TheAliphant, would that preflight help your Shopify import workflow? If you have a concrete structural issue, share a small anonymized example or describe it; please do not post API keys or customer data.
+
+## Latest independent review
+PR #56 received another independent Codex review on commit 23507dd6b8 at 14:57 UTC, finding a Firebase Hosting compatibility issue: its integrationStatus handler ignores view=base-wallet. Evidence: https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center/pull/56#discussion_r4220557805 .
+This remains an unresolved release gate; the executor has not approved or merged the delivery.
+PR #58 CI run 37797109299 succeeded on a3e4a143fbc38825ea6dcee42839966c25cc1e42 before this documentation update. Documentation changes do not alter runtime behavior.
