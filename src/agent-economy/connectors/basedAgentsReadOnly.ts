@@ -85,14 +85,16 @@ export function normalizeBasedAgentsTask(raw: unknown): BasedAgentsTask | null {
   const value = string(bounty.amount_display);
   const isPaid = Boolean(value && /^\d+(?:\.\d{1,6})?$/.test(value) && Number(value) > 0);
   const escrow = record(obj.escrow);
-  const escrowVerified = isPaid && escrow.status === 'funded' && obj.payment_verified === 1;
+  // Provider flags alone are not independent USDC escrow verification.
+  // Never elevate a publicly advertised reward to VERIFIED_ESCROW without a chain proof.
+  const providerClaimsFunded = escrow.status === 'funded' || obj.payment_verified === 1;
   const desc = string(obj.description) || '';
-  const fundingStatus: FundingStatus = !isPaid ? 'FREE_REPUTATION'
-    : escrowVerified ? 'VERIFIED_ESCROW' : 'UNVERIFIED_BOUNTY';
+  const fundingStatus: FundingStatus = !isPaid ? 'FREE_REPUTATION' : 'UNVERIFIED_BOUNTY';
   const riskFlags: string[] = [];
   if (isPaid) {
     riskFlags.push('CLAIM_BOND_1_USDC_REQUIRED');
-    if (!escrowVerified) riskFlags.push('BOUNTY_FUNDING_NOT_VERIFIED');
+    riskFlags.push('BOUNTY_FUNDING_NOT_VERIFIED');
+    if (providerClaimsFunded) riskFlags.push('PROVIDER_REPORTS_FUNDED_NOT_ONCHAIN_VERIFIED');
     if (/cashback|revenue guard|paid cycle|revenue across|minimum revenue|settled .{0,55} revenue/i.test(desc)) {
       riskFlags.push('PAID_USAGE_OR_REVENUE_CONDITION');
     }
