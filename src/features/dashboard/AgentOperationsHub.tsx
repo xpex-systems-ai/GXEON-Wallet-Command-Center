@@ -6,7 +6,7 @@ import { fetchSharedBaseWallet, type BaseWalletSnapshot } from './sharedBaseWall
 type Funding = 'VERIFIED_ESCROW' | 'UNVERIFIED_BOUNTY' | 'FREE_REPUTATION';
 interface Task {
   taskId: string; title: string; descriptionSummary: string; status: string;
-  bountyUsdc: string | null; fundingStatus: Funding; isPaid: boolean;
+  bountyUsdc: string | null; bountyNetwork: string | null; fundingStatus: Funding; isPaid: boolean;
   bondUsdc: string | null; taskUrl: string; riskFlags: string[];
   requiresCapabilities: string[]; payoutState: string | null;
 }
@@ -61,6 +61,16 @@ const riskDescriptions: Record<string, string> = {
   PAID_USAGE_OR_REVENUE_CONDITION: 'Exige compra, uso pago ou gerar receita antes da recompensa',
 };
 const friendlyRisk = (key: string) => riskDescriptions[key] || key.replace(/_/g, ' ').toLowerCase();
+const taskNetworkLabel = (network: string | null) => {
+  const id = (network || '').trim().toLowerCase();
+  if (['eip155:8453', 'base', 'base-mainnet', '8453'].includes(id)) return 'USDC · Base mainnet';
+  if (id.includes('sepolia') || id.includes('testnet') || id === 'eip155:84532' || id === '84532') {
+    return 'USDC TESTNET · sem valor de saque';
+  }
+  return 'USDC · rede não verificada';
+};
+const isTestnetNetwork = (network: string | null) =>
+  /sepolia|testnet|84532/i.test(network || '');
 const statusTime = (iso: string) => {
   const d = Date.parse(iso);
   return Number.isNaN(d) ? 'Data não disponível' : new Date(d).toLocaleString('pt-BR');
@@ -193,7 +203,7 @@ export function AgentOperationsHub({ onAgentEconomy }: { onAgentEconomy?: () => 
               <div key={task.taskId} className="rounded-lg border border-slate-800 p-3 bg-slate-950/40 space-y-2">
                 <div className="flex justify-between gap-2">
                   <h4 className="text-sm text-slate-100 font-medium">{task.title}</h4>
-                  <span className="text-emerald-300 text-sm whitespace-nowrap font-bold font-mono">{task.bountyUsdc} USDC</span>
+                  <span className={`text-sm font-bold font-mono ${isTestnetNetwork(task.bountyNetwork) ? 'text-amber-300' : 'text-emerald-300'}`}>{task.bountyUsdc} {taskNetworkLabel(task.bountyNetwork)}</span>
                 </div>
                 <p className="text-xs text-slate-400 line-clamp-2">{task.descriptionSummary}</p>
                 <span className="text-xs text-amber-300">{fundingLabel[task.fundingStatus]}</span>
