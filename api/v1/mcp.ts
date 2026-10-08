@@ -1,4 +1,5 @@
 import { authenticateMachineRequest } from '../../src/agent-economy/auth.js';
+import { readOfficialBaseWallet } from '../../src/agent-economy/baseWalletOnchain.js';
 import { handleMcpRpc, JsonRpcRequest } from '../../src/agent-economy/mcpGateway.js';
 import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
 import { TOPUP_PACKS } from '../../src/agent-economy/billingCatalog.js';
@@ -15,6 +16,12 @@ const BUYER_TOOLS: Record<string, AgentScope> = {
 };
 
 const PUBLIC_MARKET_TOOLS = [
+  {
+    name: 'gxeon_get_official_base_wallet',
+    description: 'Read the public official GXEON Base mainnet wallet ETH and Circle native USDC balances with an observed block and timestamp. Read-only; holdings are NOT confirmed agent earnings or withdrawable revenue.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
   {
     name: 'gxeon_list_services',
     description: 'List currently available GXEON capabilities and prepaid-credit economics. Read-only.',
@@ -188,6 +195,19 @@ async function handlePublicMarketMcp(req: any, res: any) {
   }
 
   const name = body.params?.name;
+  if (name === 'gxeon_get_official_base_wallet') {
+    const wallet = await readOfficialBaseWallet();
+    if (wallet.status !== 'CONFIRMED_ONCHAIN') {
+      sendJson(res, 200, publicRpcResult(body.id, {
+        content: [{ type: 'text', text: 'Official Base wallet RPC currently unavailable. No zero balance inferred.' }],
+        structuredContent: wallet, isError: true,
+      }));
+      return;
+    }
+    sendJson(res, 200, publicRpcResult(body.id, publicToolResult(wallet)));
+    return;
+  }
+
   if (name === 'gxeon_list_services') {
     sendJson(res, 200, publicRpcResult(body.id, publicToolResult({
       services: listAvailableServices().map(service => ({

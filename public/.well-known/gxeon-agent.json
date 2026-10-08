@@ -154,9 +154,11 @@
     "authentication": "none",
     "scope": "read_only_discovery",
     "tools": [
+      "gxeon_get_official_base_wallet",
       "gxeon_list_services",
       "gxeon_list_credit_packs",
       "gxeon_plan_purchase",
+      "gxeon_list_external_demand",
       "gxeon_get_agent_buying_guide"
     ],
     "executionMcp": "/api/v1/mcp",
@@ -183,5 +185,17 @@
     "gxeonTool": "gxeon_list_external_demand",
     "scope": "read_only_public_preview",
     "settlementTruth": "External sources decide selection and settlement. Listings are leads, not GXEON revenue."
+  },
+  "officialBaseWallet": {
+    "enabled": true,
+    "network": "eip155:8453",
+    "chainId": 8453,
+    "address": "0x9465810ae36b0af3c682ba6fca0fd83e0a3ef428",
+    "currency": "USDC",
+    "nativeUsdcContract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "readOnlyEndpoint": "/api/integration-status?view=base-wallet",
+    "mcpTool": "gxeon_get_official_base_wallet",
+    "permissions": "READ_ONLY",
+    "moneyTruth": "On-chain wallet holdings are not settled bounty earnings or withdrawable revenue"
   }
 }

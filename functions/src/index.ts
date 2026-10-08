@@ -93,6 +93,37 @@ export const integrationStatus = onRequest(
       return;
     }
 
+    // Firebase Hosting rewrites this route to this function. Delegate the public
+    // wallet view to the canonical Vercel reader; never return Stripe status as
+    // a wallet snapshot or allow a caller-selected upstream URL.
+    if (req.query.view === 'base-wallet') {
+      res.set('Cache-Control', 'no-store');
+      const unavailable = {
+        status: 'UNAVAILABLE', observedAt: new Date().toISOString(),
+        address: '0x9465810ae36b0af3c682ba6fca0fd83e0a3ef428',
+        chainId: 8453, balances: null,
+      };
+      try {
+        const upstream = await fetch(
+          'https://gxeon-wallet-command-center.vercel.app/api/integration-status?view=base-wallet',
+          { signal: AbortSignal.timeout(12000), redirect: 'error' },
+        );
+        const snapshot = await upstream.json() as Record<string, any>;
+        if (!upstream.ok || snapshot.status !== 'CONFIRMED_ONCHAIN'
+          || snapshot.chainId !== 8453
+          || String(snapshot.address).toLowerCase() !== unavailable.address
+          || typeof snapshot.balances?.eth !== 'string'
+          || typeof snapshot.balances?.usdc !== 'string') {
+          res.status(503).json(unavailable);
+          return;
+        }
+        res.status(200).json(snapshot);
+      } catch {
+        res.status(503).json(unavailable);
+      }
+      return;
+    }
+
     try {
       const hasStripeSecret = Boolean(stripeSecretKey.value());
       const hasWebhookSecret = Boolean(stripeWebhookSecret.value());

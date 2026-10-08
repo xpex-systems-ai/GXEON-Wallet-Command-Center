@@ -1,0 +1,34 @@
+name: GXEON Base Wallet Read-Only Gates
+
+on:
+  push:
+    branches:
+      - feat/official-base-wallet-readonly
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "api/integration-status.ts"
+      - "api/v1/mcp.ts"
+      - "src/agent-economy/baseWalletOnchain.ts"
+      - "src/agent-economy/baseWallet.test.ts"
+      - "src/features/dashboard/RealRevenuePanel.tsx"
+      - ".github/workflows/gxeon-base-wallet-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Typecheck, unit tests, production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test -- src/agent-economy/baseWallet.test.ts
+      - run: npm run build

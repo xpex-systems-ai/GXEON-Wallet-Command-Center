@@ -38,6 +38,7 @@ describe('Public GXEON agent marketplace MCP', () => {
 
     const listed = await call({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
     expect(listed.body.result.tools.map((tool: any) => tool.name)).toEqual([
+      'gxeon_get_official_base_wallet',
       'gxeon_list_services',
       'gxeon_list_credit_packs',
       'gxeon_plan_purchase',
