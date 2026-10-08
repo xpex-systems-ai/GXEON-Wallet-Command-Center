@@ -2,6 +2,7 @@
 import { paymentStoreConfigured, paymentStoreHealth } from './_store.js';
 import { FirestoreRestClient } from './_firestoreRest.js';
 import type { CreditPurchase } from '../src/agent-economy/store.js';
+import { readStripeLiveMoneyTruth, formatBrlCents } from '../src/agent-economy/stripeLiveMoneyTruth.js';
 import { readTaskmarketStatus } from '../src/agent-economy/taskmarket/taskmarketRadar.js';
 import {
   callBountyTool,
@@ -314,8 +315,13 @@ export default async function handler(req: any, res: any) {
     radar: unifiedRadar,
   };
 
-  const stripeNetRevenue = stripeGrossRevenue > stripeRefunds ? stripeGrossRevenue - stripeRefunds : 0;
-  const realStripeRevenueStr = `R$${stripeNetRevenue.toFixed(2)}`;
+  // Money truth is provider-authoritative, NOT inferred from local orders/events or
+  // a `cs_live_` ID prefix. A partial/offline provider scan does not mean R$0.
+  const stripeProvider = await readStripeLiveMoneyTruth();
+  const stripeProviderVerified = stripeProvider.status === 'PROVIDER_VERIFIED';
+  const realStripeRevenueStr = stripeProviderVerified
+    ? formatBrlCents(stripeProvider.capturedMinusRefundedBRLCents)
+    : 'INDISPONÍVEL';
   const realMachineRevenueStr = `$${x402SettledUsdc.toFixed(4)} USDC`;
   const avgRevPerJobStr = x402SettledCount > 0 ? `$${(x402SettledUsdc / x402SettledCount).toFixed(4)} USDC` : '$0.0000 USDC';
 
@@ -390,6 +396,7 @@ export default async function handler(req: any, res: any) {
       storeMode: durableStoreConfigured ? 'FIRESTORE_REST_WIF' : 'UNAVAILABLE',
       liveMode: isLiveKey,
       realRevenue: realStripeRevenueStr,
+      stripeProviderMoneyTruth: stripeProvider,
       stripeEnvironment,
       livePaymentsConfigured: isLiveKey,
       liveWebhookConfigured: Boolean(process.env.STRIPE_LIVE_WEBHOOK_SECRET || (isLiveKey && process.env.STRIPE_WEBHOOK_SECRET)),
@@ -402,11 +409,19 @@ export default async function handler(req: any, res: any) {
         liveProbe: mergePayLiveProbe,
       },
       metrics: {
-        stripeGrossRevenue: `R$${stripeGrossRevenue.toFixed(2)}`,
-        stripeRefunds: `R$${stripeRefunds.toFixed(2)}`,
+        // Account-wide Stripe LIVE captured charges (including other company products).
+        // Amounts reflect captured minus refunded, EXCLUDING fees, payout status and disputes.
+        stripeGrossRevenue: stripeProviderVerified ? formatBrlCents(stripeProvider.grossBRLCents) : 'INDISPONÍVEL',
+        stripeRefunds: stripeProviderVerified ? formatBrlCents(stripeProvider.refundedBRLCents) : 'INDISPONÍVEL',
         stripeNetRevenue: realStripeRevenueStr,
-        successfulPayments,
+        successfulPayments: stripeProviderVerified ? stripeProvider.paidCharges : null,
+        // Local checkout-created orders are NOT Stripe funds pending settlement.
         pendingPayments,
+        internalOrderSignals: { localSuccessfulOrderEvents: successfulPayments,
+          localGrossBrl: Number(stripeGrossRevenue.toFixed(2)),
+          localRefundsBrl: Number(stripeRefunds.toFixed(2)),
+          checkoutOrdersAwaitingPayment: pendingPayments,
+          status: 'UNVERIFIED_INTERNAL_STORE' },
         failedPayments,
         creditsSold,
         creditsConsumed,
