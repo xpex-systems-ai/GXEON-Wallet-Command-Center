@@ -40,7 +40,7 @@ The authorized refresh invokes a **read-only Stripe LIVE Charges API** scan,
 using `created.gte` for a **rolling 30-day window**. It reads
 `amount_captured` (not `amount`, which could be higher after partial capture)
 and subtracts `amount_refunded`. It excludes failed, uncaptured and test charges.
-The scope covers **all products in the connected Stripe account**; it is
+The scope is a **charge-creation cohort**: charges created in the last 30 days, minus all refunds currently recorded for those same charges (regardless of refund date). Refunds issued today against older charges are **excluded**. This is not a calendar-period cashflow or payout figure. It covers **all products in the connected Stripe account**; it is
 not GXEON-specific, and does not include fees, account balance, payout status,
 or charge disputes.
 
