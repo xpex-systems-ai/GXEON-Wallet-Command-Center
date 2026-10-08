@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, ArrowUpRight, Bot, CheckCircle2, CircleAlert, Clock3, CreditCard, ExternalLink, Globe2, RefreshCw, Shield, Wallet } from 'lucide-react';
+import { Activity, ArrowUpRight, Bot, CheckCircle2, CircleAlert, Clock3, CreditCard, ExternalLink, RefreshCw, Shield, Wallet } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 
 type Funding = 'VERIFIED_ESCROW' | 'UNVERIFIED_BOUNTY' | 'FREE_REPUTATION';
@@ -37,7 +37,7 @@ interface WalletSnapshot {
 type CardLink = { title: string; description: string; url: string; category: string; external?: boolean };
 const LINKS: CardLink[] = [
   { title: 'BasedAgents', description: 'Tarefas e bounties em USDC · Base', url: 'https://basedagents.ai/tasks', category: 'TRABALHO' },
-  { title: 'GXEON Taskmarket', description: 'Radar, análise de risco e provas de trabalho', url: '/taskmarket', category: 'TRABALHO' },
+  { title: 'GXEON Taskmarket', description: 'Radar, análise de risco e provas de trabalho', url: '/api/taskmarket', category: 'TRABALHO' },
   { title: 'AgentBounties', description: 'Microbounties; conferir caução e financiamento', url: 'https://agentbounties.app', category: 'TRABALHO' },
   { title: 'GXEON Marketplace', description: 'Serviços, créditos e compradores', url: '/market', category: 'VENDA' },
   { title: 'MCP Público', description: 'Descoberta técnica para agentes externos', url: '/mcp', category: 'DISTRIBUIÇÃO' },
@@ -63,7 +63,7 @@ const statusTime = (iso: string) => {
 };
 
 /** BasedAgents and Coinbase Wallet are independent read-only providers. No signing, purchases or claims. */
-export function AgentOperationsHub() {
+export function AgentOperationsHub({ onAgentEconomy }: { onAgentEconomy?: () => void }) {
   const [based, setBased] = useState<BasedAgentsSnapshot | null>(null);
   const [wallet, setWallet] = useState<WalletSnapshot | null>(null);
   const [basedError, setBasedError] = useState<string | null>(null);
@@ -165,14 +165,17 @@ export function AgentOperationsHub() {
       <Card className="space-y-3">
         <div className="flex items-center gap-2"><Activity size={18} className="text-[#00D4FF]"/><h3 className="text-white font-semibold">Acessos diretos do ecossistema</h3></div>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
-          {LINKS.map(link => (
-            <a key={link.title} href={link.url} target="_blank" rel="noopener noreferrer"
-              className="group rounded-xl border border-[#27415F] bg-[#0B1220] p-3 hover:border-cyan-700 transition-colors">
+          {LINKS.map(link => {
+            const content = <>
               <span className="text-[10px] text-[#00D4FF] font-mono">{link.category}</span>
               <span className="flex gap-1 items-center text-sm font-semibold text-white mt-2">{link.title}<ExternalLink size={12} className="text-slate-500 group-hover:text-cyan-300"/></span>
               <span className="text-xs text-slate-400 mt-1 block">{link.description}</span>
-            </a>
-          ))}
+            </>;
+            const css = 'group rounded-xl border border-[#27415F] bg-[#0B1220] p-3 hover:border-cyan-700 transition-colors text-left';
+            return link.title === 'GXEON Taskmarket' && onAgentEconomy
+              ? <button type="button" key={link.title} onClick={onAgentEconomy} className={css}>{content}</button>
+              : <a key={link.title} href={link.url} target="_blank" rel="noopener noreferrer" className={css}>{content}</a>;
+          })}
         </div>
       </Card>
 
