@@ -11,7 +11,7 @@ export const SERVICE_REGISTRY: Record<string, ServiceDefinition> = {
     version: '1.0.0',
     name: 'GXEON JSON Validate',
     description:
-      'High-performance JSON syntax validation and schema conformance verification with zero outbound network footprint.',
+      'JSON syntax validation and basic top-level type, required-field and property-type checks with zero outbound network footprint. Full JSON Schema conformance is not supported.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -20,7 +20,7 @@ export const SERVICE_REGISTRY: Record<string, ServiceDefinition> = {
         },
         schema: {
           type: 'object',
-          description: 'Optional JSON Schema for structure assertion',
+          description: 'Optional basic schema: top-level type, required fields and property types only; nested schemas and other JSON Schema keywords are not supported',
         },
       },
       required: ['payload'],
