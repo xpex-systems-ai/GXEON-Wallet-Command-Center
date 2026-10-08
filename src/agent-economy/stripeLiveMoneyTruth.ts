@@ -116,7 +116,7 @@ export async function reconcileLiveCharges(
           capturedMinusRefundedBRLCents: gross - refunded,
           otherCurrencyPaidCharges: otherCurrencies,
           disputedCharges: disputed,
-          note: '30-DAY CHARGE-CREATION COHORT: captured BRL charges created in the last 30 days, minus cumulative refunds issued against THOSE charges regardless of refund date. NOT refunds issued during the period on older charges. Not lifetime revenue, GXEON-only income, bank balance, payout, or current-period cashflow. Excludes fees, disputes, and other currencies.',
+          note: '30-DAY CHARGE-CREATION COHORT: captured BRL charges created in the last 30 days, minus cumulative refunds issued against THOSE charges regardless of refund date. NOT refunds issued during the period on older charges. Not lifetime revenue, GXEON-only income, bank balance, payout, or current-period cashflow. Fees and dispute reversals are NOT adjusted; disputed charges remain included and are reported separately. Other currencies are not converted.',
         };
       }
       const next = page.data[page.data.length - 1]?.id;
@@ -142,7 +142,9 @@ export async function readStripeLiveMoneyTruth(): Promise<PublicStripeMoneyTruth
   const promise = (async () => {
     try {
       const client = new Stripe(stripeKey, {
-        apiVersion: '2025-02-24.acacia' as any,
+        // Basil distinguishes an uncaptured authorization release from an actual refund.
+        // Acacia may incorrectly expose releases in amount_refunded for partial captures.
+        apiVersion: '2025-03-31.basil' as any,
         timeout: 6500,
         maxNetworkRetries: 0,
       });
