@@ -80,3 +80,20 @@ or wallet signatures are created by this change.
   advertising "net withdrawable revenue".
 
 **THE EXECUTOR DOES NOT APPROVE ITS OWN DELIVERY.**
+
+## Independent review remediation recorded 2026-10-08
+
+- **Captured amount correctness:** Stripe `amount_captured`, not authorised `amount`, is counted. Refunds must not exceed captured amount; regression tests cover partial capture.
+- **No Stripe API abuse through public dashboards:** Public `GET /api/integration-status` reads a durable Firestore snapshot only. Refresh path `GET /api/cron/stripe-money-truth` is protected by the configured production `CRON_SECRET` and rejects preview environments. A daily Vercel cron calls it in production. Each read uses five pages maximum and a strict 30-day interval; an incomplete interval returns `PARTIAL` rather than a false zero. This is **not lifetime income**.
+- **Cross-account protection:** The persisted snapshot is bound to the configured LIVE Stripe API credential using a server-side cryptographic binding; changed/replaced credentials make prior records `UNAVAILABLE` pending an authorized fresh refresh. Raw credentials are never written to Firestore or exposed publicly.
+- **Snapshot freshness:** A snapshot can remain valid for up to 36 hours; its `observedAt` date/time is displayed in both UI consumers to avoid presenting yesterday's data as instantaneous. Provider refresh failure doesn't overwrite last fully verified snapshot.
+- **Disputes:** Both revenue cards warn about `disputedCharges > 0`; captured-minus-refunded is **not** the account's available cash nor a dispute-adjusted payout. For accurate withdrawable funds, separately reconcile balances, Stripe fees, all disputes and payout events.
+- **Deployment constraint:** Vercel returned HTTP 402 `api-deployments-free-per-day` while attempting a new preview after the last patch. No plan upgrade, spending, production deploy or quota bypass was performed. GitHub CI runs separately and may pass even when the new preview is blocked.
+
+### Operations checklist before production merge
+
+- [ ] Independent Codex review of the **latest commit**, particularly credential binding, dispute visibility, period boundaries and freshness validation.
+- [ ] Vercel preview for latest commit when deploy quota resets; check `stripeProviderMoneyTruth=UNAVAILABLE` with no preview credentials.
+- [ ] Production cron and Firestore permissions health: verify the cron refresh after merge and correct `PROVIDER_VERIFIED` persisted read.
+- [ ] Independently reconcile Stripe LIVE account after cron and confirm zero paid Checkout sessions is consistent with displayed captured-charge snapshot.
+- [ ] Do not label a captured charge a GXEON purchase or withdrawable cash before product-level Checkout linkage and Stripe available balance are reconciled.
