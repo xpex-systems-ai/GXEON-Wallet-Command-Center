@@ -1,5 +1,5 @@
 import { authenticateMachineRequest } from '../../src/agent-economy/auth.js';
-import { readOfficialBaseWallet } from '../base-wallet.js';
+import { readOfficialBaseWallet } from '../../src/agent-economy/baseWalletOnchain.js';
 import { handleMcpRpc, JsonRpcRequest } from '../../src/agent-economy/mcpGateway.js';
 import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
 import { TOPUP_PACKS } from '../../src/agent-economy/billingCatalog.js';
