@@ -24,6 +24,8 @@ export const AgentEconomyView: React.FC = () => {
   const [radarQuery, setRadarQuery] = useState<string>('verification');
   const [realRevenue, setRealRevenue] = useState<string>('INDISPONÍVEL');
   const [stripeProof, setStripeProof] = useState<boolean>(false);
+  const [stripeProviderObservedAt, setStripeProviderObservedAt] = useState<string | null>(null);
+  const [stripeDisputedCharges, setStripeDisputedCharges] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchRadar = async (overrideQuery?: string) => {
@@ -49,6 +51,8 @@ export const AgentEconomyView: React.FC = () => {
       .then((data) => {
         const verified = data.stripeProviderMoneyTruth?.status === 'PROVIDER_VERIFIED';
         setStripeProof(verified);
+        setStripeProviderObservedAt(verified ? data.stripeProviderMoneyTruth.observedAt : null);
+        setStripeDisputedCharges(verified ? data.stripeProviderMoneyTruth.disputedCharges : null);
         setRealRevenue(verified ? (data.realRevenue || 'INDISPONÍVEL') : 'INDISPONÍVEL');
       })
       .catch(() => {});
@@ -172,8 +176,15 @@ export const AgentEconomyView: React.FC = () => {
             </div>
             <div className="text-2xl font-bold text-emerald-400">{realRevenue}</div>
             <div className="text-xs text-slate-400 mt-1">
-              {stripeProof ? 'Provedor verificado · antes de taxas e repasses' : 'Aguardando snapshot verificado · não inferir receita'}
+              {stripeProof && stripeProviderObservedAt
+                ? `Stripe confirmado em ${new Date(stripeProviderObservedAt).toLocaleString('pt-BR')} · antes de taxas e repasses`
+                : 'Aguardando snapshot verificado · não inferir receita'}
             </div>
+            {stripeProof && (stripeDisputedCharges ?? 0) > 0 && (
+              <p role="status" className="mt-2 text-xs font-medium text-amber-300">
+                {stripeDisputedCharges} cobrança(s) contestadas no período; valor capturado não é saldo disponível.
+              </p>
+            )}
           </div>
         </div>
       )}
