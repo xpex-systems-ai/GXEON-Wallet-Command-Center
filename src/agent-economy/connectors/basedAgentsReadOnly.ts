@@ -18,8 +18,6 @@ const record = (value: unknown): UnknownRecord =>
     ? value as UnknownRecord : {};
 const string = (value: unknown): string | null =>
   typeof value === 'string' && value.length > 0 ? value : null;
-const count = (value: unknown): number | null =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 
 export type FundingStatus = 'VERIFIED_ESCROW' | 'UNVERIFIED_BOUNTY' | 'FREE_REPUTATION';
 export interface BasedAgentsTask {
