@@ -1,5 +1,6 @@
 // GXEON_BOUNTY_LIVE_PROBE_DEPLOY_MARKER
 import { paymentStoreConfigured, paymentStoreHealth } from './_store.js';
+import { readOfficialBaseWallet } from '../src/agent-economy/baseWalletOnchain.js';
 import { FirestoreRestClient } from './_firestoreRest.js';
 import type { CreditPurchase } from '../src/agent-economy/store.js';
 import { readTaskmarketStatus } from '../src/agent-economy/taskmarket/taskmarketRadar.js';
@@ -53,6 +54,17 @@ export default async function handler(req: any, res: any) {
     res.statusCode = 405;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+    return;
+  }
+
+  // Reuse this serverless function: avoid exceeding Vercel Hobby's function count.
+  const view = String(req.query?.view || new URL(req.url || '/', 'http://localhost').searchParams.get('view') || '');
+  if (view === 'base-wallet') {
+    const wallet = await readOfficialBaseWallet();
+    res.statusCode = wallet.status === 'CONFIRMED_ONCHAIN' ? 200 : 503;
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(wallet));
     return;
   }
 
