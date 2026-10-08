@@ -171,13 +171,13 @@ export const AgentEconomyView: React.FC = () => {
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs uppercase tracking-wider font-semibold">Capturado menos estornos (Stripe · 30 dias)</span>
+              <span className="text-xs uppercase tracking-wider font-semibold">Coorte Stripe · cobranças criadas nos últimos 30 dias</span>
               <CreditCard className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="text-2xl font-bold text-emerald-400">{realRevenue}</div>
             <div className="text-xs text-slate-400 mt-1">
               {stripeProof && stripeProviderObservedAt
-                ? `Stripe confirmado em ${new Date(stripeProviderObservedAt).toLocaleString('pt-BR')} · antes de taxas e repasses`
+                ? `Coorte de cobranças verificada em ${new Date(stripeProviderObservedAt).toLocaleString('pt-BR')} · estornos atuais destas cobranças, antes de taxas e repasses`
                 : 'Aguardando snapshot verificado · não inferir receita'}
             </div>
             {stripeProof && (stripeDisputedCharges ?? 0) > 0 && (
