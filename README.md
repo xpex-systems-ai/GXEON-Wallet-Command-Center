@@ -105,18 +105,35 @@ See [SECURITY.md](SECURITY.md) for full disclosure and operational guidelines.
 Never commit `.env` files or secret keys to source control.
 
 
-## GXEON Agent Marketplace
+## GXEON Agent Marketplace — remote MCP for developers and agents
 
-GXEON also operates a public, machine-readable marketplace for AI agents that need small, verifiable API utility jobs.
+GXEON is a **human-operated**, machine-readable marketplace of small, auditable API utility jobs. Its public MCP lets agents **discover services and inspect pricing without authentication, charging money, or accessing a wallet**.
 
-- **Marketplace:** <https://gxeon-wallet-command-center.vercel.app/market>
-- **Public discovery MCP (Streamable HTTP):** `https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market`
-- **Official MCP Registry:** [`io.github.xpex-systems-ai/gxeon-agent-marketplace`](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest)
+- **Public marketplace:** <https://gxeon-wallet-command-center.vercel.app/market>
+- **Remote discovery MCP (Streamable HTTP):** `https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market`
+- **Live service catalog:** <https://gxeon-wallet-command-center.vercel.app/v1/services>
+- **Live prepaid packs:** <https://gxeon-wallet-command-center.vercel.app/v1/billing/topup>
+- **Registry:** [`io.github.xpex-systems-ai/gxeon-agent-marketplace`](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest)
+- **Client installation guide:** [`llms-install.md`](llms-install.md)
+- **Machine-readable discovery:** [`public/llms.txt`](public/llms.txt) and [agent manifest](public/.well-known/gxeon-agent.json)
+- **Global directory/submission ledger:** [`docs/GXEON-DISTRIBUTION-2026-10-08.md`](docs/GXEON-DISTRIBUTION-2026-10-08.md)
+- **400×400 PNG brand asset:** [`public/gxeon-logo-400.png`](public/gxeon-logo-400.png)
 
-The public discovery endpoint is no-auth and read-only. It provides `gxeon_list_services`, `gxeon_list_credit_packs`, and `gxeon_get_agent_buying_guide`.
+### Public MCP tools observed in production
 
-Current execution capabilities are JSON validation, public URL verification, and public API health checks. Paid execution uses a separate authenticated API key after verified payment settlement. A checkout session, a visible pack, or a job submission is not revenue and does not grant credits.
+`gxeon_list_services`, `gxeon_list_credit_packs`, `gxeon_plan_purchase`, `gxeon_list_external_demand`, `gxeon_get_agent_buying_guide`.
 
-See [the Agent Marketplace integration guide](docs/AGENT_MARKETPLACE.md) for the exact MCP handshake and machine-buyer flow.
+### Authenticated execution capabilities
 
-Connect existing agents with [OpenAI Agents SDK/API, LangChain/LangGraph, CrewAI, or the official MCP Python SDK](docs/FRAMEWORK_INTEGRATIONS.md). Ready-to-run read-only examples live in [`examples/frameworks/`](examples/frameworks/). These connectors discover the marketplace; they do not purchase packs or execute paid jobs.
+| Service | Cost |
+|---|---|
+| JSON Validate | 2 credits/payload |
+| CSV Audit | 2 credits/file |
+| URL Verify | 5 credits/public URL |
+| API Health | 10 credits/public endpoint |
+
+Paid execution is a **separate** authenticated MCP/REST process, using a buyer-issued API key and credits that are usable **only after verified payment settlement**. The public MCP does not run paid tasks, create purchases, sign wallet transactions, move cryptocurrency or guarantee revenue. The wallet read-only addition is under a separate, not-yet-merged PR until approved.
+
+For safety boundaries and exact MCP handshake, see [the Agent Marketplace integration guide](docs/AGENT_MARKETPLACE.md). For [OpenAI Agents SDK/API, LangChain/LangGraph, CrewAI and official Python MCP SDK](docs/FRAMEWORK_INTEGRATIONS.md), see the discovery-only examples in [`examples/frameworks/`](examples/frameworks/).
+
+**Money truth:** Service availability, public listings and checkout creation do not prove external purchases, credit settlement, fulfillment, or withdrawable funds.
