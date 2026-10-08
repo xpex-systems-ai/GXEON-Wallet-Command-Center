@@ -112,7 +112,7 @@ export async function reconcileLiveCharges(
           note: 'Live captured charges in BRL across the connected Stripe account, less charge refunds. Excludes Stripe fees, disputes, payout status and other currencies; NOT a withdrawable balance.',
         };
       }
-      const next = page.data.at(-1)?.id;
+      const next = page.data[page.data.length - 1]?.id;
       if (!next || next === cursor) return blank(observedAt, 'PARTIAL', pagesFetched);
       cursor = next;
     }
@@ -135,7 +135,7 @@ export async function readStripeLiveMoneyTruth(): Promise<PublicStripeMoneyTruth
   const promise = (async () => {
     try {
       const client = new Stripe(stripeKey, {
-        apiVersion: '2025-02-24.acacia' as Stripe.LatestApiVersion,
+        apiVersion: '2025-02-24.acacia' as any,
         timeout: 6500,
         maxNetworkRetries: 0,
       });
