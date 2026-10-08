@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   BASEDAGENTS_AGENT_ID, GXEON_OFFICIAL_BASE_ADDRESS,
-  normalizeBasedAgentsTask, readBasedAgentsSnapshot,
+  normalizeBasedAgentsTask, readBasedAgentsSnapshot, getCachedBasedAgentsSnapshot,
 } from './basedAgentsReadOnly';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -48,6 +48,14 @@ describe('BasedAgents read-only task normalization', () => {
     expect(task.riskFlags).toContain('BOUNTY_FUNDING_NOT_VERIFIED');
     expect(task.riskFlags).toContain('CLAIM_BOND_POLICY_VERIFY_LIVE');
   });
+  it('preserves Base Sepolia payout network instead of treating test USDC as mainnet', () => {
+    const task = normalizeBasedAgentsTask({
+      ...openTask(), bounty: { amount_display: '3.00', network: 'eip155:84532' },
+    })!;
+    expect(task.bountyNetwork).toBe('eip155:84532');
+    expect(task.fundingStatus).toBe('UNVERIFIED_BOUNTY');
+  });
+
   it('flags paid-usage conditions and keeps free tasks distinct', () => {
     const conditional = normalizeBasedAgentsTask({
       ...openTask(), description: 'Minimum revenue generated across paid cycles',
@@ -124,6 +132,35 @@ describe('GXEON BasedAgents snapshot', () => {
     expect(snapshot.errors).toContain('BASEDAGENTS_PAYOUT_ADDRESS_CHANGED');
   });
 
+  it('alerts when profile wallet disappears instead of treating identity as unchanged', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/agents/')) return okay({
+        agent_id: BASEDAGENTS_AGENT_ID, name: 'GXEON-AI',
+        wallet_address: null, wallet_verified: false,
+      });
+      return okay({ tasks: [] });
+    }));
+    const result = await readBasedAgentsSnapshot();
+    expect(result.status).toBe('PARTIAL');
+    expect(result.agent.expectedPayoutWalletMatches).toBe(false);
+    expect(result.errors).toContain('BASEDAGENTS_PAYOUT_ADDRESS_CHANGED');
+  });
+
+  it('preserves security profile alerts if ALL public task pages are unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/agents/')) return okay({
+        agent_id: BASEDAGENTS_AGENT_ID, name: 'GXEON-AI',
+        wallet_address: '0x1111111111111111111111111111111111111111',
+      });
+      throw new Error('task feed offline');
+    }));
+    const result = await readBasedAgentsSnapshot();
+    expect(result.status).toBe('PARTIAL');
+    expect(result.market.openTasksVisible).toBeNull();
+    expect(result.agent.expectedPayoutWalletMatches).toBe(false);
+    expect(result.errors).toContain('BASEDAGENTS_PAYOUT_ADDRESS_CHANGED');
+  });
+
   it('labels 20 returned claims as capped, never an authoritative total', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url.includes('/agents/')) return okay({
@@ -154,6 +191,23 @@ describe('GXEON BasedAgents snapshot', () => {
     const snapshot = await readBasedAgentsSnapshot();
     expect(snapshot.status).toBe('UNAVAILABLE');
     expect(cancelled).toBe(true);
+  });
+
+  it('coalesces concurrent unauthenticated dashboard reads into one provider call batch', async () => {
+    const mock = vi.fn(async (url: string) => {
+      if (url.includes('/agents/')) return okay({
+        agent_id: BASEDAGENTS_AGENT_ID,
+        wallet_address: '0x4898359899c8d5bd0BD93541F2783EcD85fAb581',
+      });
+      return okay({ tasks: [] });
+    });
+    vi.stubGlobal('fetch', mock);
+    const [first, second] = await Promise.all([
+      getCachedBasedAgentsSnapshot(), getCachedBasedAgentsSnapshot(),
+    ]);
+    expect(first).toBe(second);
+    expect(first.agent.expectedPayoutWalletMatches).toBe(true);
+    expect(mock).toHaveBeenCalledTimes(6);
   });
 
   it('fails closed when every public page is unavailable', async () => {
