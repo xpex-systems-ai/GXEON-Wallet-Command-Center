@@ -9,7 +9,10 @@ export const GXEON_OFFICIAL_BASE_ADDRESS = '0x9465810ae36b0af3c682ba6fca0fd83e0a
 const ORIGIN = 'https://api.basedagents.ai';
 const PAGE_SIZE = 20;
 const MAX_PAGES = 3;
-const DEFAULT_TIMEOUT_MS = 7000;
+const DEFAULT_TIMEOUT_MS = 6000;
+const MAX_RESPONSE_BYTES = 256_000;
+const PUBLIC_CACHE_TTL_MS = 60_000;
+const ERROR_CACHE_TTL_MS = 12_000;
 const TASK_ID = /^task_[a-zA-Z0-9]+$/;
 
 type UnknownRecord = Record<string, unknown>;
@@ -138,7 +141,7 @@ async function readJson(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<U
     });
     if (!response.ok) throw new Error('BASEDAGENTS_HTTP_' + response.status);
     const size = Number(response.headers.get('content-length') || 0);
-    if (size > 2_000_000) throw new Error('BASEDAGENTS_RESPONSE_TOO_LARGE');
+    if (size > MAX_RESPONSE_BYTES) throw new Error('BASEDAGENTS_RESPONSE_TOO_LARGE');
     // Bound decoded streaming bytes before buffering them, including chunked or compressed responses.
     if (!response.body) throw new Error('BASEDAGENTS_RESPONSE_STREAM_REQUIRED');
     const reader = response.body.getReader();
@@ -150,7 +153,7 @@ async function readJson(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<U
         const chunk = await reader.read();
         if (chunk.done) break;
         receivedBytes += chunk.value.byteLength;
-        if (receivedBytes > 2_000_000) {
+        if (receivedBytes > MAX_RESPONSE_BYTES) {
           await reader.cancel();
           throw new Error('BASEDAGENTS_RESPONSE_TOO_LARGE');
         }
@@ -270,4 +273,24 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
     },
     errors,
   };
+}
+
+/**
+ * Coalesce unauthenticated pollers into one bounded upstream read per instance.
+ * Client no-store can still refresh the page; the UI always shows observedAt.
+ * Serverless instances do not share this cache, so upstream rate limiting remains relevant.
+ */
+let publicSnapshotCache: { expiresAt: number; promise: Promise<BasedAgentsSnapshot> } | null = null;
+export async function getCachedBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
+  const now = Date.now();
+  if (publicSnapshotCache && publicSnapshotCache.expiresAt > now) {
+    return publicSnapshotCache.promise;
+  }
+  const promise = readBasedAgentsSnapshot();
+  publicSnapshotCache = { expiresAt: now + PUBLIC_CACHE_TTL_MS, promise };
+  const snapshot = await promise;
+  if (snapshot.status === 'UNAVAILABLE' && publicSnapshotCache?.promise === promise) {
+    publicSnapshotCache.expiresAt = Math.min(publicSnapshotCache.expiresAt, Date.now() + ERROR_CACHE_TTL_MS);
+  }
+  return snapshot;
 }
