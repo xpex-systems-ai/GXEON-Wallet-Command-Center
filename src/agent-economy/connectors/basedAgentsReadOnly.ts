@@ -198,8 +198,11 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
   const claimed = settled[MAX_PAGES]; // After the public open-task pages.
   const authored = settled[MAX_PAGES + 1];
   const profile = settled[MAX_PAGES + 2];
-  const profileData = profile.status === 'fulfilled' ? profile.value : null;
-  if (!profileData?.agent_id) errors.push('AGENT_PROFILE_UNAVAILABLE');
+  // HTTP 200 alone is not a valid agent identity. Never accept fields from a
+  // malformed profile or a different agent id as GXEON's payout evidence.
+  const rawProfile = profile.status === 'fulfilled' ? profile.value : null;
+  const profileData = rawProfile?.agent_id === BASEDAGENTS_AGENT_ID ? rawProfile : null;
+  if (!profileData) errors.push('AGENT_PROFILE_UNAVAILABLE');
   const claimedList = claimed.status === 'fulfilled' && Array.isArray(claimed.value.tasks)
     ? claimed.value.tasks : null;
   if (!claimedList) errors.push('CLAIMED_TASKS_UNAVAILABLE');
@@ -214,8 +217,11 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
   const actualWallet = profileMatchesIdentity ? string(profileData?.wallet_address) : null;
   // Missing or replaced wallets are identity drift, not a neutral "unavailable" match.
   // Return null only when the profile request itself failed.
+  const registeredNetwork = profileData ? string(profileData.wallet_network) : null;
+  const isBaseMainnet = registeredNetwork === 'eip155:8453';
+  // Matching the EVM address on another chain is NOT matching a Base payout wallet.
   const expectedPayoutWalletMatches = !profileData ? null
-    : profileMatchesIdentity && Boolean(actualWallet)
+    : profileMatchesIdentity && Boolean(actualWallet) && isBaseMainnet
       && (actualWallet?.toLowerCase() === BASEDAGENTS_PAYOUT_ADDRESS.toLowerCase());
   if (expectedPayoutWalletMatches === false) errors.push('BASEDAGENTS_PAYOUT_ADDRESS_CHANGED');
   const walletVerified = profileData && typeof profileData.wallet_verified === 'boolean'
