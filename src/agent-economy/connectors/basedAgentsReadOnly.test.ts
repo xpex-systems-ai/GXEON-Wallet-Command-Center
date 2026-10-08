@@ -90,6 +90,7 @@ describe('GXEON BasedAgents snapshot', () => {
       if (url.includes('/agents/')) return okay({
         agent_id: BASEDAGENTS_AGENT_ID, name: 'GXEON-AI', status: 'active',
         wallet_address: '0x4898359899c8d5bd0BD93541F2783EcD85fAb581',
+        wallet_network: 'eip155:8453',
         wallet_verified: true, capabilities: ['code-reviw'],
         contact_endpoint: null, webhook_url: null,
       });
@@ -123,6 +124,31 @@ describe('GXEON BasedAgents snapshot', () => {
         agent_id: BASEDAGENTS_AGENT_ID, name: 'GXEON-AI',
         wallet_address: '0x1111111111111111111111111111111111111111',
         wallet_verified: true,
+      });
+      return okay({ tasks: [] });
+    }));
+    const snapshot = await readBasedAgentsSnapshot();
+    expect(snapshot.status).toBe('PARTIAL');
+    expect(snapshot.agent.expectedPayoutWalletMatches).toBe(false);
+    expect(snapshot.errors).toContain('BASEDAGENTS_PAYOUT_ADDRESS_CHANGED');
+  });
+
+  it('does not accept malformed HTTP-200 profile as payout wallet drift or a verified identity', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+      url.includes('/agents/') ? okay({ wallet_verified: true }) : okay({ tasks: [] })));
+    const snapshot = await readBasedAgentsSnapshot();
+    expect(snapshot.status).toBe('PARTIAL');
+    expect(snapshot.agent.walletVerified).toBeNull();
+    expect(snapshot.agent.expectedPayoutWalletMatches).toBeNull();
+    expect(snapshot.errors).toContain('AGENT_PROFILE_UNAVAILABLE');
+    expect(snapshot.errors).not.toContain('BASEDAGENTS_PAYOUT_ADDRESS_CHANGED');
+  });
+  it('rejects a correct address registered to Base Sepolia instead of Base mainnet', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/agents/')) return okay({
+        agent_id: BASEDAGENTS_AGENT_ID, name: 'GXEON-AI',
+        wallet_address: '0x4898359899c8d5bd0BD93541F2783EcD85fAb581',
+        wallet_network: 'eip155:84532', wallet_verified: true,
       });
       return okay({ tasks: [] });
     }));
@@ -166,6 +192,7 @@ describe('GXEON BasedAgents snapshot', () => {
       if (url.includes('/agents/')) return okay({
         agent_id: BASEDAGENTS_AGENT_ID, name: 'GXEON-AI',
         wallet_address: '0x4898359899c8d5bd0BD93541F2783EcD85fAb581',
+        wallet_network: 'eip155:8453',
         wallet_verified: true,
       });
       if (url.includes('claimer=')) return okay({ tasks: Array.from({ length: 20 }, (_, i) => ({ task_id: 'task_' + i })) });
@@ -198,6 +225,7 @@ describe('GXEON BasedAgents snapshot', () => {
       if (url.includes('/agents/')) return okay({
         agent_id: BASEDAGENTS_AGENT_ID,
         wallet_address: '0x4898359899c8d5bd0BD93541F2783EcD85fAb581',
+        wallet_network: 'eip155:8453',
       });
       return okay({ tasks: [] });
     });
