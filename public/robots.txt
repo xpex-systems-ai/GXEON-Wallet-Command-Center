@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://gxeon-wallet-command-center.vercel.app/sitemap.xml
