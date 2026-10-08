@@ -146,14 +146,18 @@ export async function readStripeLiveMoneyTruth(): Promise<PublicStripeMoneyTruth
         timeout: 6500,
         maxNetworkRetries: 0,
       });
+      // Pin the exact 30-day boundaries across all pagination calls.
+      const observedAt = new Date().toISOString();
+      const windowEndUnix = Math.floor(Date.parse(observedAt) / 1000);
+      const windowStartUnix = Math.max(0, windowEndUnix - 30 * 86400);
       return await reconcileLiveCharges(async cursor => {
         const response = await client.charges.list({
           limit: 100,
-          created: { gte: Math.max(0, Math.floor(Date.now() / 1000) - 30 * 86400) },
+          created: { gte: windowStartUnix, lte: windowEndUnix },
           ...(cursor ? { starting_after: cursor } : {}),
         });
         return { data: response.data, has_more: response.has_more };
-      });
+      }, observedAt, windowStartUnix);
     } catch {
       return blank(new Date().toISOString(), 'UNAVAILABLE');
     }
