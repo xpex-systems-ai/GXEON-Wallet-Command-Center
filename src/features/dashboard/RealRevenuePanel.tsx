@@ -164,13 +164,13 @@ export function RealRevenuePanel() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
         <div className="bg-[#0B1220] p-4 rounded-xl border border-slate-800">
           <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1">
-            Receita Líquida Real
+            Receita após reembolsos
           </div>
           <div className="text-2xl font-black font-mono text-emerald-400">
-            {metrics.stripeNetRevenue}
+            {status ? metrics.stripeNetRevenue : 'UNAVAILABLE'}
           </div>
           <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3 text-emerald-500" /> Liquidado no Stripe
+            <ShieldCheck className="w-3 h-3 text-emerald-500" /> Tarifas Stripe ainda não descontadas
           </div>
         </div>
 
