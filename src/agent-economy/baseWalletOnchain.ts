@@ -26,6 +26,15 @@ export async function readOfficialBaseWallet() {
       transport: http(process.env.BASE_READONLY_RPC_URL || 'https://mainnet.base.org',
         { timeout: 8000, retryCount: 1 }),
     });
+    // 'chain: base' configures the client; it does not authenticate the RPC server.
+    const rpcChainId = await client.getChainId();
+    if (rpcChainId !== base.id) {
+      return {
+        status: 'UNAVAILABLE' as const, observedAt, chainId: base.id,
+        address: GXEON_BASE_WALLET, balances: null,
+        error: 'BASE_RPC_CHAIN_MISMATCH',
+      };
+    }
     // Pin both balances to the same confirmed block for auditable reconciliation.
     const blockNumber = await client.getBlockNumber();
     const [eth, usdc] = await Promise.all([
