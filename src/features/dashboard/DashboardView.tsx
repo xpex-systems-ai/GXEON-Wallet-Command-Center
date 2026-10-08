@@ -17,6 +17,7 @@ import { NavTab } from '../../components/layout/Sidebar';
 import { walletRegistry } from '../../wallets/registry';
 import { QuantumTreasuryView } from './QuantumTreasuryView';
 import { RealRevenuePanel } from './RealRevenuePanel';
+import { AgentOperationsHub } from './AgentOperationsHub';
 import { SwapRadarPanel } from './SwapRadarPanel';
 
 interface DashboardViewProps {
@@ -92,6 +93,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Real Revenue & Money Truth */}
       <RealRevenuePanel />
+
+      {/* GXEON microtask markets and Coinbase Wallet watch-only operations cards. */}
+      <AgentOperationsHub onAgentEconomy={() => onNavigate('agent-economy')} />
 
       {/* Multi-asset conversion intelligence: discovery only, no signing or asset movement */}
       <SwapRadarPanel />
