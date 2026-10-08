@@ -165,7 +165,7 @@ export function RealRevenuePanel() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
         <div className="bg-[#0B1220] p-4 rounded-xl border border-slate-800">
           <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1">
-            Stripe LIVE: capturado menos estornos
+            Stripe LIVE: capturado menos estornos (30 dias)
           </div>
           <div className="text-2xl font-black font-mono text-emerald-400">
             {metrics.stripeNetRevenue}
@@ -219,7 +219,7 @@ export function RealRevenuePanel() {
 
         <div className="bg-[#0B1220] p-4 rounded-xl border border-slate-800">
           <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1">
-            Cobranças Stripe / Reembolsos
+            Cobranças Stripe / Reembolsos (30 dias)
           </div>
           <div className="text-xl font-bold font-mono text-slate-200">
             {metrics.stripeGrossRevenue}
