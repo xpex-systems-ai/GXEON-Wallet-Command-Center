@@ -51,3 +51,10 @@
   backdrop-filter: blur(12px);
   border: 1px solid rgba(30, 49, 79, 0.8);
 }
+
+
+/* GXEON premium wallet shell */
+:root { color-scheme: dark; }
+body { background: #070A0F; }
+* { scrollbar-width: thin; scrollbar-color: rgba(148,163,184,.18) transparent; }
+::selection { background: rgba(255,255,255,.92); color: #070A0F; }

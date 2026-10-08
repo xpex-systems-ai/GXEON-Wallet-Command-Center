@@ -8,6 +8,9 @@ import {
   WalletCards,
   Radar,
   CircleDollarSign,
+  BriefcaseBusiness,
+  Activity,
+  LockKeyhole,
 } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
@@ -158,6 +161,35 @@ export function RealRevenuePanel() {
           >
             Abrir /fix <ExternalLink className="w-3 h-3" />
           </a>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
+        {[
+          { label: 'Portfolio', icon: WalletCards, active: true },
+          { label: 'Agent Economy', icon: Bot, active: moneyTruth?.agent.status === 'ACTIVE' },
+          { label: 'Earn / Jobs', icon: BriefcaseBusiness, active: radarActive },
+          { label: 'Activity & Security', icon: Activity, active: true },
+        ].map(({ label, icon: Icon, active }) => (
+          <div key={label} className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 font-mono text-xs ${active ? 'border-slate-700 bg-slate-900/90 text-white' : 'border-slate-800 bg-[#0B1220] text-slate-500'}`}>
+            <Icon className="w-3.5 h-3.5" />
+            <span>{label}</span>
+            <span className={`ml-auto h-1.5 w-1.5 rounded-full ${active ? 'bg-emerald-400' : 'bg-slate-700'}`} />
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-950 to-[#0B1220] p-5">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-mono">GXEON Portfolio</div>
+            <div className="mt-1 text-2xl font-black text-white">Wallet + Agent Economy</div>
+            <div className="mt-1 text-xs text-slate-500">Confirmed assets stay separate from pending work and opportunities.</div>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+            <LockKeyhole className="w-3.5 h-3.5 text-emerald-400" />
+            READ-ONLY • HUMAN GATE
+          </div>
         </div>
       </div>
 
