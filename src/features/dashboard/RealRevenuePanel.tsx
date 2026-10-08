@@ -102,8 +102,6 @@ export function RealRevenuePanel() {
         }
       } catch (error) {
         console.warn('Failed to load money truth status:', error);
-      } finally {
-        setLoading(false);
       }
     })();
 
@@ -120,8 +118,13 @@ export function RealRevenuePanel() {
       }
     })();
 
-    // Each promise commits its own state as soon as it finishes.
-    await Promise.allSettled([metricsPromise, basePromise]);
+    // Commit independent responses immediately; the UI refresh gate stays closed
+    // until both have settled, preventing older wallet responses racing a new refresh.
+    try {
+      await Promise.allSettled([metricsPromise, basePromise]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
