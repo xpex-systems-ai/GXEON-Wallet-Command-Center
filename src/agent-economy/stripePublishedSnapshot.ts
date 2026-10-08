@@ -6,6 +6,7 @@
  * There is deliberately no public Stripe API polling or untrusted fallback.
  */
 import { FirestoreRestClient, isFirestoreRestConfigured } from '../../api/_firestoreRest.js';
+import { createHmac } from 'node:crypto';
 import {
   readStripeLiveMoneyTruth, type PublicStripeMoneyTruth,
 } from './stripeLiveMoneyTruth.js';
@@ -13,6 +14,18 @@ import {
 const COLLECTION = 'financial_provider_snapshots';
 const DOCUMENT = 'stripe_live_30day_charges';
 const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
+
+// The Stripe account's currently configured LIVE credential is bound to the
+// snapshot, without ever storing or publishing the raw API key. A key change
+// (including switching to another Stripe account) invalidates the prior record
+// until a new authenticated cron refresh verifies this credential.
+interface StoredStripeProof { snapshot: PublicStripeMoneyTruth; credentialBinding: string; }
+export function stripeCredentialBinding(): string | null {
+  const key = (process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API_KEY || '').trim();
+  if (!/^(sk_live_|rk_live_)/.test(key)) return null;
+  return createHmac('sha256', key).update('gxeon-money-truth-account-binding-v1').digest('hex');
+}
+
 
 export function unavailableStripeMoneyTruth(observedAt = new Date().toISOString()): PublicStripeMoneyTruth {
   return {
@@ -56,12 +69,20 @@ export function isFreshVerifiedSnapshot(value: unknown, now = Date.now()): value
 
 export async function readPublishedStripeMoneyTruth(
   store?: Pick<FirestoreRestClient, 'get'>,
+  currentBinding = stripeCredentialBinding(),
 ): Promise<PublicStripeMoneyTruth> {
-  if (!isFirestoreRestConfigured() && !store) return unavailableStripeMoneyTruth();
+  // Missing/rotated Stripe credential: do not replay even a fresh snapshot.
+  if (!currentBinding || (!isFirestoreRestConfigured() && !store)) {
+    return unavailableStripeMoneyTruth();
+  }
   try {
     const client = store || new FirestoreRestClient();
-    const value = (await client.get<PublicStripeMoneyTruth>(COLLECTION, DOCUMENT))?.data;
-    return isFreshVerifiedSnapshot(value) ? value : unavailableStripeMoneyTruth();
+    const record = (await client.get<StoredStripeProof>(COLLECTION, DOCUMENT))?.data;
+    if (!record || record.credentialBinding !== currentBinding) {
+      return unavailableStripeMoneyTruth();
+    }
+    return isFreshVerifiedSnapshot(record.snapshot)
+      ? record.snapshot : unavailableStripeMoneyTruth();
   } catch {
     return unavailableStripeMoneyTruth();
   }
@@ -70,11 +91,17 @@ export async function readPublishedStripeMoneyTruth(
 export async function refreshPublishedStripeMoneyTruth(
   store?: Pick<FirestoreRestClient, 'set'>,
   fetchProvider = readStripeLiveMoneyTruth,
+  currentBinding = stripeCredentialBinding(),
 ): Promise<PublicStripeMoneyTruth> {
   // Only call behind CRON_SECRET-authenticated backend entrypoint.
+  if (!currentBinding) return unavailableStripeMoneyTruth();
   const result = await fetchProvider();
   if (!isFreshVerifiedSnapshot(result)) return result;
   const client = store || new FirestoreRestClient();
-  await client.set(COLLECTION, DOCUMENT, result as unknown as Record<string, unknown>);
+  const stored: StoredStripeProof = {
+    snapshot: result, credentialBinding: currentBinding,
+  };
+  await client.set(COLLECTION, DOCUMENT, stored as unknown as Record<string, unknown>);
+  // The credential binding remains server-only; return only public aggregate data.
   return result;
 }
