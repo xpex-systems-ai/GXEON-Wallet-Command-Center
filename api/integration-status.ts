@@ -64,6 +64,7 @@ export default async function handler(req: any, res: any) {
   const stripeEnvironment = isLiveKey ? 'LIVE' : (stripeKey ? 'TEST' : 'UNCONFIGURED');
 
   let stripeGrossRevenue = 0;
+  let revenueAggregationVerified = false;
   let stripeRefunds = 0;
   let successfulPayments = 0;
   let pendingPayments = 0;
@@ -106,8 +107,8 @@ export default async function handler(req: any, res: any) {
       }
 
       // 2. Stripe Events & Orders (BRL Rail)
-      const events = await client.list<any>('stripe_events');
-      const orders = await client.list<any>('orders');
+      const events = await client.listStrict<any>('stripe_events');
+      const orders = await client.listStrict<any>('orders');
       auditEvents = events.map(({ data }) => ({ eventId: data.eventId, type: data.type, processedAt: data.processedAt }));
       auditOrders = orders.map(({ data }) => ({ id: data.id, state: data.state, amountBrl: data.amountBrl, updatedAt: data.updatedAt }));
       const countedOrders = new Set<string>();
@@ -177,6 +178,8 @@ export default async function handler(req: any, res: any) {
           creditsConsumed += (entry.data.amountCredits || 0);
         }
       }
+
+      revenueAggregationVerified = true;
 
       // 5. Machine Revenue (USDC Rail - Section 10)
       const revenueDocs = await client.list<{ amountUsdc: number; status: string }>('machine_revenue');
@@ -387,6 +390,7 @@ export default async function handler(req: any, res: any) {
       webhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
       durableStoreConfigured,
       firestoreConnected,
+      revenueAggregationVerified,
       storeMode: durableStoreConfigured ? 'FIRESTORE_REST_WIF' : 'UNAVAILABLE',
       liveMode: isLiveKey,
       realRevenue: realStripeRevenueStr,
