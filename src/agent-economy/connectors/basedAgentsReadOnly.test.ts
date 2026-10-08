@@ -43,6 +43,14 @@ describe('BasedAgents read-only task normalization', () => {
     expect(free.bondUsdc).toBeNull();
     expect(free.isPaid).toBe(false);
   });
+  it('does not treat provider escrow=true as blockchain proof', () => {
+    const task = normalizeBasedAgentsTask({
+      ...openTask(), payment_verified: 1, escrow: { status: 'funded' },
+    })!;
+    expect(task.fundingStatus).toBe('UNVERIFIED_BOUNTY');
+    expect(task.riskFlags).toContain('PROVIDER_REPORTS_FUNDED_NOT_ONCHAIN_VERIFIED');
+  });
+
   it('does not treat strings or spoofed escrow metadata as verified payments', () => {
     const task = normalizeBasedAgentsTask({
       ...openTask(), payment_verified: '1', escrow: { status: 'funded' },
