@@ -116,7 +116,7 @@ export async function reconcileLiveCharges(
           capturedMinusRefundedBRLCents: gross - refunded,
           otherCurrencyPaidCharges: otherCurrencies,
           disputedCharges: disputed,
-          note: 'LAST 30 DAYS ONLY: Live captured BRL charges across connected Stripe account, minus charge refunds. Not lifetime revenue, GXEON-only income, bank balance or payout. Excludes Stripe fees, disputes and other currencies.',
+          note: '30-DAY CHARGE-CREATION COHORT: captured BRL charges created in the last 30 days, minus cumulative refunds issued against THOSE charges regardless of refund date. NOT refunds issued during the period on older charges. Not lifetime revenue, GXEON-only income, bank balance, payout, or current-period cashflow. Excludes fees, disputes, and other currencies.',
         };
       }
       const next = page.data[page.data.length - 1]?.id;
