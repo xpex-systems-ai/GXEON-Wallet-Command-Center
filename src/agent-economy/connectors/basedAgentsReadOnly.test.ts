@@ -13,10 +13,24 @@ const openTask = (taskId = 'task_Test123') => ({
   bounty: { amount_display: '0.25', network: 'base' },
   payment_status: 'pending',
 });
-const okay = (body: object) => ({
-  ok: true, headers: { get: () => null },
-  text: async () => JSON.stringify(body),
-});
+const okay = (body: object) => {
+  const bytes = new TextEncoder().encode(JSON.stringify(body));
+  return {
+    ok: true, headers: { get: () => null },
+    body: { getReader: () => {
+      let consumed = false;
+      return {
+        read: async () => {
+          if (consumed) return { done: true as const, value: undefined };
+          consumed = true;
+          return { done: false as const, value: bytes };
+        },
+        cancel: async () => undefined,
+        releaseLock: () => undefined,
+      };
+    } },
+  };
+};
 
 describe('BasedAgents read-only task normalization', () => {
   it('rejects arbitrary HTML / URLs and non-open tasks', () => {
@@ -27,11 +41,12 @@ describe('BasedAgents read-only task normalization', () => {
     const task = normalizeBasedAgentsTask(openTask())!;
     expect(task).toMatchObject({
       taskId: 'task_Test123', isPaid: true, fundingStatus: 'UNVERIFIED_BOUNTY',
-      bountyUsdc: '0.25', bondUsdc: '1',
+      bountyUsdc: '0.25', bondUsdc: null,
       requiresHumanBondApproval: true,
       taskUrl: 'https://basedagents.ai/tasks/task_Test123',
     });
     expect(task.riskFlags).toContain('BOUNTY_FUNDING_NOT_VERIFIED');
+    expect(task.riskFlags).toContain('CLAIM_BOND_POLICY_VERIFY_LIVE');
   });
   it('flags paid-usage conditions and keeps free tasks distinct', () => {
     const conditional = normalizeBasedAgentsTask({
@@ -81,6 +96,8 @@ describe('GXEON BasedAgents snapshot', () => {
       ourClaimsVisible: 0, verifiedEscrowVisible: 0, fullyScanned: true,
     });
     expect(snapshot.agent.walletVerified).toBe(true);
+    expect(snapshot.agent.expectedPayoutWalletMatches).toBe(true);
+    expect(snapshot.market.ourClaimsCountIsCapped).toBe(false);
     expect(snapshot.agent.walletAddress?.toLowerCase()).not.toBe(GXEON_OFFICIAL_BASE_ADDRESS);
     expect(snapshot.agent.linkedToOfficialCoinbaseBase).toBe(false);
     expect(snapshot.agent.directContactConfigured).toBe(false);
@@ -92,6 +109,53 @@ describe('GXEON BasedAgents snapshot', () => {
     expect(fetchMock).toHaveBeenCalledTimes(6);
     expect(fetchMock.mock.calls.every(call => call[1]?.method === 'GET')).toBe(true);
   });
+  it('downgrades a payout wallet drift instead of silently reporting the old expected wallet', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/agents/')) return okay({
+        agent_id: BASEDAGENTS_AGENT_ID, name: 'GXEON-AI',
+        wallet_address: '0x1111111111111111111111111111111111111111',
+        wallet_verified: true,
+      });
+      return okay({ tasks: [] });
+    }));
+    const snapshot = await readBasedAgentsSnapshot();
+    expect(snapshot.status).toBe('PARTIAL');
+    expect(snapshot.agent.expectedPayoutWalletMatches).toBe(false);
+    expect(snapshot.errors).toContain('BASEDAGENTS_PAYOUT_ADDRESS_CHANGED');
+  });
+
+  it('labels 20 returned claims as capped, never an authoritative total', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/agents/')) return okay({
+        agent_id: BASEDAGENTS_AGENT_ID, name: 'GXEON-AI',
+        wallet_address: '0x4898359899c8d5bd0BD93541F2783EcD85fAb581',
+        wallet_verified: true,
+      });
+      if (url.includes('claimer=')) return okay({ tasks: Array.from({ length: 20 }, (_, i) => ({ task_id: 'task_' + i })) });
+      return okay({ tasks: [] });
+    }));
+    const snapshot = await readBasedAgentsSnapshot();
+    expect(snapshot.market.ourClaimsVisible).toBe(20);
+    expect(snapshot.market.ourClaimsCountIsCapped).toBe(true);
+  });
+
+  it('rejects an oversized decoded response before buffering all bytes', async () => {
+    const manyBytes = new Uint8Array(2_000_001);
+    let cancelled = false;
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      headers: { get: () => null },
+      body: { getReader: () => ({
+        read: async () => ({ done: false, value: manyBytes }),
+        cancel: async () => { cancelled = true; },
+        releaseLock: () => undefined,
+      }) },
+    })));
+    const snapshot = await readBasedAgentsSnapshot();
+    expect(snapshot.status).toBe('UNAVAILABLE');
+    expect(cancelled).toBe(true);
+  });
+
   it('fails closed when every public page is unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     const snapshot = await readBasedAgentsSnapshot();
