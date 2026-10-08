@@ -39,7 +39,7 @@ export default async function handler(req: any, res: any) {
           seller: 'GXEON',
           serviceId: 'gxeon_json_validate_v1',
           name: 'GXEON JSON Validate',
-          description: 'High-performance JSON syntax validation and schema conformance verification.',
+          description: 'JSON syntax validation with basic top-level type, required-field and property-type checks; not full JSON Schema validation.',
           unitPriceUsdc: 0.01,
           currency: 'USDC',
           paymentRail: 'x402',
