@@ -25,9 +25,15 @@ describe('official GXEON Base wallet reader', () => {
       custody: 'SELF_CUSTODY_READ_ONLY',
       balances: { eth: '0.001', usdc: '1.234567' },
     });
+    expect(rpc.getBlockNumber).toHaveBeenCalledTimes(1);
+    expect(rpc.getBalance).toHaveBeenCalledWith({
+      address: '0x9465810ae36b0af3c682ba6fca0fd83e0a3ef428',
+      blockNumber: 12345678n,
+    });
     expect(rpc.readContract).toHaveBeenCalledWith(expect.objectContaining({
       address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
       functionName: 'balanceOf',
+      blockNumber: 12345678n,
     }));
   });
 
