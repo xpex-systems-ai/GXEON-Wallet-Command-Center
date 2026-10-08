@@ -57,6 +57,13 @@ const fundingLabel: Record<Funding, string> = {
   UNVERIFIED_BOUNTY: 'Pagamento sem prova independente',
   FREE_REPUTATION: 'Sem remuneração anunciada',
 };
+const riskDescriptions: Record<string, string> = {
+  CLAIM_BOND_1_USDC_REQUIRED: 'Caução estimada de 1 USDC antes do claim',
+  BOUNTY_FUNDING_NOT_VERIFIED: 'Financiamento ainda não verificado independentemente',
+  PROVIDER_REPORTS_FUNDED_NOT_ONCHAIN_VERIFIED: 'Plataforma informa escrow; blockchain não conferida',
+  PAID_USAGE_OR_REVENUE_CONDITION: 'Exige compra, uso pago ou gerar receita antes da recompensa',
+};
+const friendlyRisk = (key: string) => riskDescriptions[key] || key.replaceAll('_', ' ').toLowerCase();
 const statusTime = (iso: string) => {
   const d = Date.parse(iso);
   return Number.isNaN(d) ? 'Data não disponível' : new Date(d).toLocaleString('pt-BR');
@@ -194,7 +201,7 @@ export function AgentOperationsHub({ onAgentEconomy }: { onAgentEconomy?: () => 
                 </div>
                 <p className="text-xs text-slate-400 line-clamp-2">{task.descriptionSummary}</p>
                 <span className="text-xs text-amber-300">{fundingLabel[task.fundingStatus]}</span>
-                {task.riskFlags.length > 0 && <p className="text-[11px] text-amber-300">Risco: {task.riskFlags.join(' · ')}</p>}
+                {task.riskFlags.length > 0 && <p className="text-[11px] text-amber-300">Risco: {task.riskFlags.map(friendlyRisk).join(' · ')}</p>}
                 <div className="flex gap-2 text-xs items-center justify-between">
                   <span className="text-slate-500">Caução anunciada para claim: {task.bondUsdc || '—'} USDC*</span>
                   <a href={task.taskUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-300 flex items-center gap-1">Ver tarefa <ArrowUpRight size={13}/></a>
