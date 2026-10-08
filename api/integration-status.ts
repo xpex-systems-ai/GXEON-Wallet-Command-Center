@@ -1,7 +1,7 @@
 // GXEON_BOUNTY_LIVE_PROBE_DEPLOY_MARKER
 import { paymentStoreConfigured, paymentStoreHealth } from './_store.js';
 import { readOfficialBaseWallet } from '../src/agent-economy/baseWalletOnchain.js';
-import { readBasedAgentsSnapshot } from '../src/agent-economy/connectors/basedAgentsReadOnly.js';
+import { getCachedBasedAgentsSnapshot } from '../src/agent-economy/connectors/basedAgentsReadOnly.js';
 import { FirestoreRestClient } from './_firestoreRest.js';
 import type { CreditPurchase } from '../src/agent-economy/store.js';
 import { readTaskmarketStatus } from '../src/agent-economy/taskmarket/taskmarketRadar.js';
@@ -70,7 +70,7 @@ export default async function handler(req: any, res: any) {
   }
   // BasedAgents is public GET-only discovery. Reuse existing Vercel function.
   if (view === 'basedagents') {
-    const snapshot = await readBasedAgentsSnapshot();
+    const snapshot = await getCachedBasedAgentsSnapshot();
     res.statusCode = snapshot.status === 'UNAVAILABLE' ? 503 : 200;
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
