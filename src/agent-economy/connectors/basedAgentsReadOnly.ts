@@ -28,7 +28,7 @@ export interface BasedAgentsTask {
   status: string;
   bountyUsdc: string | null;
   bountyNetwork: string | null;
-  bondUsdc: string | null;
+  bondUsdc: string | null; // unknown until the provider enforces the claim challenge
   fundingStatus: FundingStatus;
   requiresHumanBondApproval: boolean;
   claimerAgentId: string | null;
@@ -52,6 +52,7 @@ export interface BasedAgentsSnapshot {
     walletVerified: boolean | null;
     walletNetwork: string | null;
     linkedToOfficialCoinbaseBase: boolean | null;
+    expectedPayoutWalletMatches: boolean | null;
     directContactConfigured: boolean | null;
     privateEventsStatus: 'AUTH_REQUIRED';
   };
@@ -64,12 +65,14 @@ export interface BasedAgentsSnapshot {
     verifiedEscrowVisible: number | null;
     paidClaimsByOurAgent: number | null;
     ourClaimsVisible: number | null;
+    ourClaimsCountIsCapped: boolean;
     ourPostedTasksVisible: number | null;
+    ourPostedTasksCountIsCapped: boolean;
     tasks: BasedAgentsTask[];
   };
   safety: {
     mode: 'READ_ONLY_DISCOVERY';
-    claimBondUsdcPerPaidSlot: '1';
+    claimBondUsdcPerPaidSlot: 'VERIFY_PROVIDER_CURRENT_POLICY';
     claimSignedOperationsEnabled: false;
     revenuesVerifiedFromListings: false;
     note: string;
@@ -92,7 +95,7 @@ export function normalizeBasedAgentsTask(raw: unknown): BasedAgentsTask | null {
   const fundingStatus: FundingStatus = !isPaid ? 'FREE_REPUTATION' : 'UNVERIFIED_BOUNTY';
   const riskFlags: string[] = [];
   if (isPaid) {
-    riskFlags.push('CLAIM_BOND_1_USDC_REQUIRED');
+    riskFlags.push('CLAIM_BOND_POLICY_VERIFY_LIVE');
     riskFlags.push('BOUNTY_FUNDING_NOT_VERIFIED');
     if (providerClaimsFunded) riskFlags.push('PROVIDER_REPORTS_FUNDED_NOT_ONCHAIN_VERIFIED');
     if (/cashback|revenue guard|paid cycle|revenue across|minimum revenue|settled .{0,55} revenue/i.test(desc)) {
@@ -108,7 +111,7 @@ export function normalizeBasedAgentsTask(raw: unknown): BasedAgentsTask | null {
     status: 'open',
     bountyUsdc: isPaid ? value : null,
     bountyNetwork: isPaid ? string(bounty.network) : null,
-    bondUsdc: isPaid ? '1' : null,
+    bondUsdc: null, // never assert a mandatory bonded amount from task listing alone
     fundingStatus,
     requiresHumanBondApproval: isPaid,
     claimerAgentId: string(obj.claimed_by_agent_id),
@@ -136,10 +139,28 @@ async function readJson(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<U
     if (!response.ok) throw new Error('BASEDAGENTS_HTTP_' + response.status);
     const size = Number(response.headers.get('content-length') || 0);
     if (size > 2_000_000) throw new Error('BASEDAGENTS_RESPONSE_TOO_LARGE');
-    // At most 20 tasks per page to bound response size and UI work.
-    const text = await response.text();
-    if (text.length > 2_000_000) throw new Error('BASEDAGENTS_RESPONSE_TOO_LARGE');
-    return record(JSON.parse(text));
+    // Bound decoded streaming bytes before buffering them, including chunked or compressed responses.
+    if (!response.body) throw new Error('BASEDAGENTS_RESPONSE_STREAM_REQUIRED');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let receivedBytes = 0;
+    let content = '';
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        receivedBytes += chunk.value.byteLength;
+        if (receivedBytes > 2_000_000) {
+          await reader.cancel();
+          throw new Error('BASEDAGENTS_RESPONSE_TOO_LARGE');
+        }
+        content += decoder.decode(chunk.value, { stream: true });
+      }
+      content += decoder.decode();
+    } finally {
+      reader.releaseLock();
+    }
+    return record(JSON.parse(content));
   } finally {
     clearTimeout(timer);
   }
@@ -187,6 +208,9 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
   const tasks = [...unverifiedList.values()];
   const paid = tasks.filter(x => x.isPaid);
   const actualWallet = profileData ? string(profileData.wallet_address) : null;
+  const expectedPayoutWalletMatches = actualWallet
+    ? actualWallet.toLowerCase() === BASEDAGENTS_PAYOUT_ADDRESS.toLowerCase() : null;
+  if (expectedPayoutWalletMatches === false) errors.push('BASEDAGENTS_PAYOUT_ADDRESS_CHANGED');
   const walletVerified = profileData && typeof profileData.wallet_verified === 'boolean'
     ? profileData.wallet_verified : null;
   const fullyScanned = fetchedPages === MAX_PAGES
@@ -211,6 +235,7 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
       walletNetwork: profileData ? string(profileData.wallet_network) : null,
       linkedToOfficialCoinbaseBase: actualWallet
         ? actualWallet.toLowerCase() === GXEON_OFFICIAL_BASE_ADDRESS.toLowerCase() : null,
+      expectedPayoutWalletMatches,
       directContactConfigured: profileData
         ? Boolean(string(profileData.contact_endpoint) || string(profileData.webhook_url)) : null,
       privateEventsStatus: 'AUTH_REQUIRED',
@@ -224,17 +249,19 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
       verifiedEscrowVisible: fetchedPages > 0
         ? paid.filter(x => x.fundingStatus === 'VERIFIED_ESCROW').length : null,
       ourClaimsVisible: claimedList ? claimedList.length : null,
+      ourClaimsCountIsCapped: Boolean(claimedList && claimedList.length === PAGE_SIZE),
       paidClaimsByOurAgent: claimedList
         ? claimedList.filter(x => Boolean(record(x.bounty).amount_display)).length : null,
       ourPostedTasksVisible: authoredList ? authoredList.length : null,
+      ourPostedTasksCountIsCapped: Boolean(authoredList && authoredList.length === PAGE_SIZE),
       tasks,
     },
     safety: {
       mode: 'READ_ONLY_DISCOVERY',
-      claimBondUsdcPerPaidSlot: '1',
+      claimBondUsdcPerPaidSlot: 'VERIFY_PROVIDER_CURRENT_POLICY',
       claimSignedOperationsEnabled: false,
       revenuesVerifiedFromListings: false,
-      note: 'Task listings are not invitations. Paid claims need signed AgentSig and a bonded 1 USDC slot. No signing, payments, transfers or claim actions are implemented.',
+      note: 'Task listings are not invitations. Paid claims may require an AgentSig signature and a refundable USDC bond depending on live provider policy; verify before acting. No signing, payments, transfers or claims are implemented.',
     },
     errors,
   };
