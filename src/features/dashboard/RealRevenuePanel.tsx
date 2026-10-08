@@ -35,7 +35,7 @@ export interface IntegrationStatus {
   liveMode: boolean;
   realRevenue: string;
   stripeEnvironment: string;
-  stripeProviderMoneyTruth?: { status: 'PROVIDER_VERIFIED' | 'PARTIAL' | 'UNAVAILABLE'; observedAt: string; exhaustive: boolean; note: string };
+  stripeProviderMoneyTruth?: { status: 'PROVIDER_VERIFIED' | 'PARTIAL' | 'UNAVAILABLE'; observedAt: string; exhaustive: boolean; note: string; disputedCharges: number | null };
   metrics?: IntegrationMetrics;
   moneyTruthSnapshot?: MoneyTruthStatus;
 }
@@ -171,8 +171,17 @@ export function RealRevenuePanel() {
             {metrics.stripeNetRevenue}
           </div>
           <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3 text-emerald-500" /> {status?.stripeProviderMoneyTruth?.status === 'PROVIDER_VERIFIED' ? 'Provedor consultado · antes de taxas e repasses' : 'Provedor indisponível: não inferir R$0'}
+            <ShieldCheck className="w-3 h-3 text-emerald-500" /> {status?.stripeProviderMoneyTruth?.status === 'PROVIDER_VERIFIED'
+              ? `Stripe confirmado em ${new Date(status.stripeProviderMoneyTruth.observedAt).toLocaleString('pt-BR')} · antes de taxas e repasses`
+              : 'Sem snapshot recente do Stripe · não inferir R$0'}
           </div>
+          {(status?.stripeProviderMoneyTruth?.disputedCharges ?? 0) > 0
+            && status?.stripeProviderMoneyTruth?.status === 'PROVIDER_VERIFIED' && (
+              <p role="status" className="text-[11px] font-medium text-amber-300 mt-2">
+                Atenção: {status.stripeProviderMoneyTruth.disputedCharges} cobrança(s) em disputa.
+                Valores contestados podem ser retirados pelo Stripe; o total exibido não equivale a saldo disponível.
+              </p>
+            )}
         </div>
 
         <div className="bg-[#0B1220] p-4 rounded-xl border border-slate-800">
