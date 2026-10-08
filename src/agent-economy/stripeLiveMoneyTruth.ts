@@ -93,11 +93,12 @@ export async function reconcileLiveCharges(
           || (charge.amount_refunded ?? Infinity) > (charge.amount_captured ?? 0)) {
           return blank(observedAt, 'PARTIAL', pagesFetched);
         }
-        if (charge.disputed === true) disputed++;
         if (charge.currency.toLowerCase() !== 'brl') {
           otherCurrencies++;
           continue;
         }
+        // This count belongs to the same BRL paid-charge cohort as the totals.
+        if (charge.disputed === true) disputed++;
         paid++;
         gross += charge.amount_captured!;
         refunded += charge.amount_refunded!;
