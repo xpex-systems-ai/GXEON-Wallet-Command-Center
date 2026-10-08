@@ -1,0 +1,31 @@
+# GXEON Agent Marketplace
+
+> Remote MCP marketplace for human-operated agent and developer workflows. Public discovery is read-only, free to query, and does not provide trading, payment initiation, token transfers, or paid job execution.
+
+## Official links
+
+- [Marketplace](https://gxeon-wallet-command-center.vercel.app/market)
+- [MCP discovery endpoint](https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market)
+- [Capabilities](https://gxeon-wallet-command-center.vercel.app/v1/services)
+- [Credit packs](https://gxeon-wallet-command-center.vercel.app/v1/billing/topup)
+- [Well-known agent manifest](https://gxeon-wallet-command-center.vercel.app/.well-known/gxeon-agent.json)
+- [Source and documentation](https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center)
+- [MCP installation guide](https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center/blob/main/llms-install.md)
+- [Official MCP registry entry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest)
+
+## Public MCP tools (as checked 2026-10-08)
+
+- gxeon_list_services: discover active JSON, CSV, URL and API health utility services.
+- gxeon_list_credit_packs: inspect credit packages; no charge.
+- gxeon_plan_purchase: choose packs in a read-only planning calculation; no checkout.
+- gxeon_list_external_demand: discover external demand leads; not verified GXEON revenue.
+- gxeon_get_agent_buying_guide: inspect safe onboarding steps.
+
+## Important payment and execution separation
+
+Published service capabilities: JSON validation, CSV audit, public URL verification, and API health. Credit purchases use Stripe through the merchant's authorized checkout and only settle after provider verification. Actual execution requires a distinct authenticated MCP/REST endpoint, a legitimate buyer API key and sufficient settled credits. Public discovery is not a payment gateway. Wallet balances are not seller revenue. x402 treasury settlement is **not** currently enabled. Do not request or send wallet private keys.
+
+## Security
+
+- [Security model](https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center/blob/main/SECURITY.md)
+- [Technical MCP and buyer flow](https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center/blob/main/docs/AGENT_MARKETPLACE.md)
