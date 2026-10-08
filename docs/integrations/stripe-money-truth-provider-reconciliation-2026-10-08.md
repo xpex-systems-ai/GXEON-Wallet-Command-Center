@@ -21,30 +21,52 @@ Using authorized read-only Stripe LIVE connector operations for the connected
 - More than 100 expired Checkout sessions are historical attempts, not customer
   purchases or uncollected "pending balance".
 
-## Implementation
+## Implementation and protected refresh
 
-`src/agent-economy/stripeLiveMoneyTruth.ts` reads live Stripe Charges
-from the server only with a production LIVE key, caching up to two minutes
-per instance. It caps pagination and returns a provider-verified aggregate
-only when **all charge pages have been scanned**. A failure, malformed page,
-duplicate charge ID, or cap returns `PARTIAL`/`UNAVAILABLE` and **null
-money amounts**, never a misleading zero.
+The public `GET /api/integration-status` **NEVER calls Stripe**.
+It reads `financial_provider_snapshots/stripe_live_30day_charges` from
+the shared Firestore database, which is already used by GXEON payment logs.
 
-Only `succeeded + paid + captured + livemode=true` charges count.
-Refunded portions are deducted by provider `amount_refunded`. Other
-currencies are tracked but not silently converted to BRL.
-Gross captured and captured-minus-refunded figures are
-**account-wide**, not GXEON-only and do NOT represent withdrawable funds:
-Stripe fees, reversals/disputes and payout status are not reconciled here.
+A production-only Vercel Cron calls
+`GET /api/integration-status?view=stripe-money-refresh` **once per day**
+at 10:00 UTC (around 07:00 Brasília, within an hour for Hobby plans).
+The endpoint rejects requests unless:
 
-No customer emails, charge IDs, secret keys or payment account details
-are exposed to the frontend. No transactions, checkouts or writes are
-performed. Endpoints continue serving the existing legacy audit
-`metrics.internalOrderSignals` explicitly tagged `UNVERIFIED_INTERNAL_STORE`;
-they are NOT used to populate provider-money figures.
+1. `CRON_SECRET` is configured in the Vercel production environment;
+2. `Authorization: Bearer <CRON_SECRET>` matches in constant time;
+3. `VERCEL_ENV === production`.
 
-The dashboard labels these values as captured, not liquidated or available
-cash. A provider outage renders `INDISPONÍVEL`, not `R$0`.
+The authorized refresh invokes a **read-only Stripe LIVE Charges API** scan,
+using `created.gte` for a **rolling 30-day window**. It reads
+`amount_captured` (not `amount`, which could be higher after partial capture)
+and subtracts `amount_refunded`. It excludes failed, uncaptured and test charges.
+The scope covers **all products in the connected Stripe account**; it is
+not GXEON-specific, and does not include fees, account balance, payout status,
+or charge disputes.
+
+Each refresh has bounded pagination (up to five 100-item pages); a charge
+backlog exceeding this limit **within the most recent 30 days** is reported as
+`PARTIAL` and cannot produce money claims. Unlike an unbounded lifetime scan,
+old historic charges age out of the window. A larger-volume account should
+replace this limited scan with durable cursor/checkpoint aggregation after
+independent review.
+
+Only an **exhaustive, recent, provider-verified** snapshot is written to
+Firestore. Failed refreshes preserve the previous provider snapshot, but
+public readers show `INDISPONÍVEL` if it becomes **older than 36 hours**.
+This cannot be confused with a verified R$0.
+
+**Deployment prerequisite:** `CRON_SECRET` is currently **not configured**.
+An authorised operator must create a strong random secret (>= 16 characters)
+in Vercel **production**, without ever committing or echoing it to GitHub.
+Until this prerequisite and an authenticated Cron refresh complete, the UI
+must show money-truth `INDISPONÍVEL`. The Stripe connector from ChatGPT can
+still be used for independent read-only audits, but does not populate this
+Firestore snapshot.
+
+No new Vercel functions, payment transactions, authorisations, payment links
+or wallet signatures are created by this change.
+
 
 ## Gates
 
