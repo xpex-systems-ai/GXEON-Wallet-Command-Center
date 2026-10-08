@@ -31,6 +31,7 @@ export interface IntegrationStatus {
   webhookConfigured: boolean;
   durableStoreConfigured: boolean;
   firestoreConnected: boolean;
+  revenueAggregationVerified?: boolean;
   storeMode: string;
   liveMode: boolean;
   realRevenue: string;
@@ -167,7 +168,8 @@ export function RealRevenuePanel() {
             Receita após reembolsos
           </div>
           <div className="text-2xl font-black font-mono text-emerald-400">
-            {status ? metrics.stripeNetRevenue : 'UNAVAILABLE'}
+            {status?.durableStoreConfigured && status.firestoreConnected && status.revenueAggregationVerified
+              ? metrics.stripeNetRevenue : 'UNAVAILABLE'}
           </div>
           <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
             <ShieldCheck className="w-3 h-3 text-emerald-500" /> Tarifas Stripe ainda não descontadas
