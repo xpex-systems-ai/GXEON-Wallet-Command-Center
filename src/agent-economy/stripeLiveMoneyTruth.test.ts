@@ -6,7 +6,7 @@ import {
 
 const successful = (id: string, amount = 9900, refund = 0) => ({
   id, livemode: true, status: 'succeeded', paid: true,
-  captured: true, amount, amount_refunded: refund, currency: 'brl',
+  captured: true, amount, amount_captured: amount, amount_refunded: refund, currency: 'brl',
   disputed: false,
 });
 
@@ -42,6 +42,25 @@ describe('Stripe account-wide money truth from real provider snapshots', () => {
       refundedBRLCents: 500, capturedMinusRefundedBRLCents: 11400,
       otherCurrencyPaidCharges: 1, pagesFetched: 2,
     });
+  });
+  it('uses captured amount, never a larger authorized amount', async () => {
+    const r = await reconcileLiveCharges(async () => ({
+      data: [{ ...successful('ch_partial', 2000, 400), amount_captured: 1000 }],
+      has_more: false,
+    }));
+    expect(r.status).toBe('PROVIDER_VERIFIED');
+    expect(r.scope).toBe('CONNECTED_STRIPE_ACCOUNT_LAST_30_DAYS');
+    expect(r.grossBRLCents).toBe(1000);
+    expect(r.refundedBRLCents).toBe(400);
+    expect(r.capturedMinusRefundedBRLCents).toBe(600);
+  });
+  it('refuses refund amounts larger than the amount actually captured', async () => {
+    const r = await reconcileLiveCharges(async () => ({
+      data: [{ ...successful('ch_bad_partial', 2000, 1400), amount_captured: 900 }],
+      has_more: false,
+    }));
+    expect(r.status).toBe('PARTIAL');
+    expect(r.capturedMinusRefundedBRLCents).toBeNull();
   });
   it('never credits a test charge or a paid-but-uncaptured charge', async () => {
     const r = await reconcileLiveCharges(async () => ({
