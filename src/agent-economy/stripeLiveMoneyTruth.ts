@@ -10,7 +10,9 @@ export interface PublicStripeMoneyTruth {
   status: StripeMoneyTruthStatus;
   observedAt: string;
   source: 'STRIPE_LIVE_CHARGES' | 'UNAVAILABLE';
-  scope: 'CONNECTED_STRIPE_ACCOUNT_ALL_PRODUCTS';
+  scope: 'CONNECTED_STRIPE_ACCOUNT_LAST_30_DAYS';
+  windowStartUnix: number | null;
+  windowEndUnix: number | null;
   maxPages: number;
   pagesFetched: number;
   exhaustive: boolean;
@@ -31,6 +33,7 @@ export interface ChargeRecord {
   captured?: boolean;
   currency?: string;
   amount?: number;
+  amount_captured?: number;
   amount_refunded?: number;
   disputed?: boolean;
 }
@@ -44,7 +47,7 @@ export const MAX_STRIPE_CHARGE_PAGES = 5;
 function blank(observedAt: string, status: StripeMoneyTruthStatus, pagesFetched = 0): PublicStripeMoneyTruth {
   return {
     status, observedAt, source: 'UNAVAILABLE',
-    scope: 'CONNECTED_STRIPE_ACCOUNT_ALL_PRODUCTS',
+    scope: 'CONNECTED_STRIPE_ACCOUNT_LAST_30_DAYS', windowStartUnix: null, windowEndUnix: null,
     maxPages: MAX_STRIPE_CHARGE_PAGES, pagesFetched, exhaustive: false,
     paidCharges: null, grossBRLCents: null, refundedBRLCents: null,
     capturedMinusRefundedBRLCents: null, otherCurrencyPaidCharges: null,
@@ -57,6 +60,7 @@ function blank(observedAt: string, status: StripeMoneyTruthStatus, pagesFetched 
 export async function reconcileLiveCharges(
   readPage: ChargePageReader,
   observedAt = new Date().toISOString(),
+  windowStartUnix = Math.max(0, Math.floor(Date.parse(observedAt) / 1000) - 30 * 86400),
 ): Promise<PublicStripeMoneyTruth> {
   let pagesFetched = 0;
   let cursor: string | undefined;
@@ -83,8 +87,10 @@ export async function reconcileLiveCharges(
         }
         if (charge.livemode !== true || typeof charge.currency !== 'string'
           || !Number.isSafeInteger(charge.amount) || (charge.amount ?? -1) < 0
+          || !Number.isSafeInteger(charge.amount_captured) || (charge.amount_captured ?? -1) < 0
+          || (charge.amount_captured ?? Infinity) > (charge.amount ?? 0)
           || !Number.isSafeInteger(charge.amount_refunded) || (charge.amount_refunded ?? -1) < 0
-          || (charge.amount_refunded ?? Infinity) > (charge.amount ?? 0)) {
+          || (charge.amount_refunded ?? Infinity) > (charge.amount_captured ?? 0)) {
           return blank(observedAt, 'PARTIAL', pagesFetched);
         }
         if (charge.disputed === true) disputed++;
@@ -93,7 +99,7 @@ export async function reconcileLiveCharges(
           continue;
         }
         paid++;
-        gross += charge.amount!;
+        gross += charge.amount_captured!;
         refunded += charge.amount_refunded!;
         if (!Number.isSafeInteger(gross) || !Number.isSafeInteger(refunded)) {
           return blank(observedAt, 'PARTIAL', pagesFetched);
@@ -102,14 +108,15 @@ export async function reconcileLiveCharges(
       if (!page.has_more) {
         return {
           status: 'PROVIDER_VERIFIED', observedAt, source: 'STRIPE_LIVE_CHARGES',
-          scope: 'CONNECTED_STRIPE_ACCOUNT_ALL_PRODUCTS',
+          scope: 'CONNECTED_STRIPE_ACCOUNT_LAST_30_DAYS',
+          windowStartUnix, windowEndUnix: Math.floor(Date.parse(observedAt) / 1000),
           maxPages: MAX_STRIPE_CHARGE_PAGES, pagesFetched, exhaustive: true,
           paidCharges: paid, grossBRLCents: gross, refundedBRLCents: refunded,
           // This is captured less refunds, not Stripe available balance, fees or payout.
           capturedMinusRefundedBRLCents: gross - refunded,
           otherCurrencyPaidCharges: otherCurrencies,
           disputedCharges: disputed,
-          note: 'Live captured charges in BRL across the connected Stripe account, less charge refunds. Excludes Stripe fees, disputes, payout status and other currencies; NOT a withdrawable balance.',
+          note: 'LAST 30 DAYS ONLY: Live captured BRL charges across connected Stripe account, minus charge refunds. Not lifetime revenue, GXEON-only income, bank balance or payout. Excludes Stripe fees, disputes and other currencies.',
         };
       }
       const next = page.data[page.data.length - 1]?.id;
@@ -142,6 +149,7 @@ export async function readStripeLiveMoneyTruth(): Promise<PublicStripeMoneyTruth
       return await reconcileLiveCharges(async cursor => {
         const response = await client.charges.list({
           limit: 100,
+          created: { gte: Math.max(0, Math.floor(Date.now() / 1000) - 30 * 86400) },
           ...(cursor ? { starting_after: cursor } : {}),
         });
         return { data: response.data, has_more: response.has_more };
