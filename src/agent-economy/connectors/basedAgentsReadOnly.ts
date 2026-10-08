@@ -149,8 +149,8 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
   const requests = [
     ...Array.from({ length: MAX_PAGES }, (_, offsetPage) =>
       `/v1/tasks?status=open&limit=${PAGE_SIZE}&offset=${offsetPage * PAGE_SIZE}`),
-    `/v1/tasks?claimer=${BASEDAGENTS_AGENT_ID}&limit=${PAGE_SIZE}`,
-    `/v1/tasks?creator=${BASEDAGENTS_AGENT_ID}&limit=${PAGE_SIZE}`,
+    `/v1/tasks?status=all&claimer=${BASEDAGENTS_AGENT_ID}&limit=${PAGE_SIZE}`,
+    `/v1/tasks?status=all&creator=${BASEDAGENTS_AGENT_ID}&limit=${PAGE_SIZE}`,
     `/v1/agents/${BASEDAGENTS_AGENT_ID}`,
   ];
   const settled = await Promise.allSettled(requests.map(path => readJson(path)));
