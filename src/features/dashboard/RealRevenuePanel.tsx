@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
+import { fetchSharedBaseWallet, type BaseWalletSnapshot } from './sharedBaseWallet';
 
 export interface IntegrationMetrics {
   stripeGrossRevenue: string;
@@ -73,15 +74,6 @@ interface MoneyTruthStatus {
   radar: Record<string, unknown> | null;
 }
 
-interface BaseWalletSnapshot {
-  status: 'CONFIRMED_ONCHAIN' | 'UNAVAILABLE';
-  observedAt: string;
-  address: string;
-  chainId: number;
-  balances: { eth: string; usdc: string } | null;
-  explorer?: string;
-}
-
 export function RealRevenuePanel() {
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [moneyTruth, setMoneyTruth] = useState<MoneyTruthStatus | null>(null);
@@ -105,18 +97,7 @@ export function RealRevenuePanel() {
       }
     })();
 
-    const basePromise = (async () => {
-      try {
-        const response = await fetch('/api/integration-status?view=base-wallet', { cache: 'no-store' });
-        const data = await response.json() as BaseWalletSnapshot;
-        setBaseWallet(response.ok && data.status === 'CONFIRMED_ONCHAIN'
-          ? data
-          : { status: 'UNAVAILABLE', observedAt: new Date().toISOString(),
-              address: '', chainId: 8453, balances: null });
-      } catch {
-        setBaseWallet(null);
-      }
-    })();
+    const basePromise = fetchSharedBaseWallet().then(setBaseWallet);
 
     // Commit independent responses immediately; the UI refresh gate stays closed
     // until both have settled, preventing older wallet responses racing a new refresh.
