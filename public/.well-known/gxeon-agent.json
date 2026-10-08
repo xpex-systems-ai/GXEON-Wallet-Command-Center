@@ -157,6 +157,7 @@
       "gxeon_list_services",
       "gxeon_list_credit_packs",
       "gxeon_plan_purchase",
+      "gxeon_list_external_demand",
       "gxeon_get_agent_buying_guide"
     ],
     "executionMcp": "/api/v1/mcp",
@@ -164,6 +165,7 @@
     "purchasePlanner": {
       "enabled": true,
       "tool": "gxeon_plan_purchase",
+      "gxeon_list_external_demand",
       "description": "Read-only pack optimization for a requested service and unit count. It does not create checkout or spend money."
     }
   },
