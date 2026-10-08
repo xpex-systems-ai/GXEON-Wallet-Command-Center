@@ -63,7 +63,7 @@ const riskDescriptions: Record<string, string> = {
   PROVIDER_REPORTS_FUNDED_NOT_ONCHAIN_VERIFIED: 'Plataforma informa escrow; blockchain não conferida',
   PAID_USAGE_OR_REVENUE_CONDITION: 'Exige compra, uso pago ou gerar receita antes da recompensa',
 };
-const friendlyRisk = (key: string) => riskDescriptions[key] || key.replaceAll('_', ' ').toLowerCase();
+const friendlyRisk = (key: string) => riskDescriptions[key] || key.replace(/_/g, ' ').toLowerCase();
 const statusTime = (iso: string) => {
   const d = Date.parse(iso);
   return Number.isNaN(d) ? 'Data não disponível' : new Date(d).toLocaleString('pt-BR');
