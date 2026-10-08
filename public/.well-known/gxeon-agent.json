@@ -165,7 +165,6 @@
     "purchasePlanner": {
       "enabled": true,
       "tool": "gxeon_plan_purchase",
-      "gxeon_list_external_demand",
       "description": "Read-only pack optimization for a requested service and unit count. It does not create checkout or spend money."
     }
   },
