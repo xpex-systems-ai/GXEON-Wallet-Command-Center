@@ -114,12 +114,12 @@ export const integrationStatus = onRequest(
           || String(snapshot.address).toLowerCase() !== unavailable.address
           || typeof snapshot.balances?.eth !== 'string'
           || typeof snapshot.balances?.usdc !== 'string') {
-          res.status(200).json(unavailable);
+          res.status(503).json(unavailable);
           return;
         }
         res.status(200).json(snapshot);
       } catch {
-        res.status(200).json(unavailable);
+        res.status(503).json(unavailable);
       }
       return;
     }
