@@ -26,13 +26,14 @@ export async function readOfficialBaseWallet() {
       transport: http(process.env.BASE_READONLY_RPC_URL || 'https://mainnet.base.org',
         { timeout: 8000, retryCount: 1 }),
     });
-    const [eth, usdc, blockNumber] = await Promise.all([
-      client.getBalance({ address: GXEON_BASE_WALLET }),
+    // Pin both balances to the same confirmed block for auditable reconciliation.
+    const blockNumber = await client.getBlockNumber();
+    const [eth, usdc] = await Promise.all([
+      client.getBalance({ address: GXEON_BASE_WALLET, blockNumber }),
       client.readContract({
         address: BASE_NATIVE_USDC, abi: erc20,
-        functionName: 'balanceOf', args: [GXEON_BASE_WALLET],
+        functionName: 'balanceOf', args: [GXEON_BASE_WALLET], blockNumber,
       }),
-      client.getBlockNumber(),
     ]);
     return {
       status: 'CONFIRMED_ONCHAIN' as const, observedAt,
