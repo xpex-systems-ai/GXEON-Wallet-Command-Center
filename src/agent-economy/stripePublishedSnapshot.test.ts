@@ -35,6 +35,32 @@ describe('durable published money truth', () => {
     expect(isFreshVerifiedSnapshot({...verified(), observedAt: '2024-01-01T00:00:00.000Z'})).toBe(false);
     expect(isFreshVerifiedSnapshot({...verified(), observedAt: '2099-01-01T00:00:00.000Z'})).toBe(false);
   });
+  it('rejects impossible gross, refunds and net arithmetic despite fresh provider labels', () => {
+    expect(isFreshVerifiedSnapshot({
+      ...verified(), grossBRLCents: 1000, refundedBRLCents: 900,
+      capturedMinusRefundedBRLCents: 1000,
+    })).toBe(false);
+    expect(isFreshVerifiedSnapshot({
+      ...verified(), grossBRLCents: 1000, refundedBRLCents: 1200,
+      capturedMinusRefundedBRLCents: 0,
+    })).toBe(false);
+    expect(isFreshVerifiedSnapshot({
+      ...verified(), disputedCharges: 3, paidCharges: 2,
+    })).toBe(false);
+  });
+  it('never exposes corrupted stored accounting proof as verified provider income', async () => {
+    const corrupted = {
+      ...verified(), grossBRLCents: 1000, refundedBRLCents: 900,
+      capturedMinusRefundedBRLCents: 1000,
+    };
+    const result = await readPublishedStripeMoneyTruth({
+      get: vi.fn().mockResolvedValue({ data: {
+        snapshot: corrupted, credentialBinding: binding,
+      } }),
+    }, binding);
+    expect(result.status).toBe('UNAVAILABLE');
+    expect(result.capturedMinusRefundedBRLCents).toBeNull();
+  });
   it('uses stored provider proof, never triggers Stripe from a public GET', async () => {
     const get = vi.fn().mockResolvedValue({data: {snapshot: verified(), credentialBinding: binding}});
     const result = await readPublishedStripeMoneyTruth({get}, binding);
