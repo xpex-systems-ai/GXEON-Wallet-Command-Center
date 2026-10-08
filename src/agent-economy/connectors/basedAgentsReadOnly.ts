@@ -207,9 +207,13 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
   for (const task of pageTasks.flat()) unverifiedList.set(task.taskId, task);
   const tasks = [...unverifiedList.values()];
   const paid = tasks.filter(x => x.isPaid);
-  const actualWallet = profileData ? string(profileData.wallet_address) : null;
-  const expectedPayoutWalletMatches = actualWallet
-    ? actualWallet.toLowerCase() === BASEDAGENTS_PAYOUT_ADDRESS.toLowerCase() : null;
+  const profileMatchesIdentity = profileData?.agent_id === BASEDAGENTS_AGENT_ID;
+  const actualWallet = profileMatchesIdentity ? string(profileData.wallet_address) : null;
+  // Missing or replaced wallets are identity drift, not a neutral "unavailable" match.
+  // Return null only when the profile request itself failed.
+  const expectedPayoutWalletMatches = !profileData ? null
+    : profileMatchesIdentity && Boolean(actualWallet)
+      && actualWallet!.toLowerCase() === BASEDAGENTS_PAYOUT_ADDRESS.toLowerCase();
   if (expectedPayoutWalletMatches === false) errors.push('BASEDAGENTS_PAYOUT_ADDRESS_CHANGED');
   const walletVerified = profileData && typeof profileData.wallet_verified === 'boolean'
     ? profileData.wallet_verified : null;
@@ -221,7 +225,8 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
     });
   return {
     provider: 'basedagents',
-    status: fetchedPages === 0 ? 'UNAVAILABLE'
+    // Preserve verified identity/security alerts if task listing pages are offline.
+    status: fetchedPages === 0 && !profileData ? 'UNAVAILABLE'
       : errors.length ? 'PARTIAL' : 'CONFIRMED_PUBLIC',
     observedAt,
     agent: {
