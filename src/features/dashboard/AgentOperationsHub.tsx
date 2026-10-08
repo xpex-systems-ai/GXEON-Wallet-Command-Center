@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, ArrowUpRight, Bot, CheckCircle2, CircleAlert, Clock3, CreditCard, ExternalLink, RefreshCw, Shield, Wallet } from 'lucide-react';
 import { Card } from '../../components/common/Card';
+import { fetchSharedBaseWallet, type BaseWalletSnapshot } from './sharedBaseWallet';
 
 type Funding = 'VERIFIED_ESCROW' | 'UNVERIFIED_BOUNTY' | 'FREE_REPUTATION';
 interface Task {
@@ -17,22 +18,18 @@ interface BasedAgentsSnapshot {
     capabilities: string[]; walletAddress: string | null;
     walletVerified: boolean | null; linkedToOfficialCoinbaseBase: boolean | null;
     directContactConfigured: boolean | null; privateEventsStatus: 'AUTH_REQUIRED';
+    expectedPayoutWalletMatches: boolean | null;
   };
   market: {
     openTasksVisible: number | null; fullyScanned: boolean; fetchedPages: number;
     totalTaskCountAuthoritative: false;
     paidListingsVisible: number | null; verifiedEscrowVisible: number | null;
     ourClaimsVisible: number | null; ourPostedTasksVisible: number | null;
+    ourClaimsCountIsCapped: boolean; ourPostedTasksCountIsCapped: boolean;
     tasks: Task[];
   };
   safety: { mode: 'READ_ONLY_DISCOVERY'; claimBondUsdcPerPaidSlot: string;
     claimSignedOperationsEnabled: false; revenuesVerifiedFromListings: false; note: string };
-}
-interface WalletSnapshot {
-  status: 'CONFIRMED_ONCHAIN' | 'UNAVAILABLE'; observedAt: string;
-  chainId: number; address: string;
-  balances: { usdc: string; eth: string } | null; explorer?: string;
-  blockNumber?: string;
 }
 type CardLink = { title: string; description: string; url: string; category: string; external?: boolean };
 const LINKS: CardLink[] = [
@@ -58,7 +55,7 @@ const fundingLabel: Record<Funding, string> = {
   FREE_REPUTATION: 'Sem remuneração anunciada',
 };
 const riskDescriptions: Record<string, string> = {
-  CLAIM_BOND_1_USDC_REQUIRED: 'Caução estimada de 1 USDC antes do claim',
+  CLAIM_BOND_POLICY_VERIFY_LIVE: 'Pode exigir caução; confira valor e ativação no momento do claim',
   BOUNTY_FUNDING_NOT_VERIFIED: 'Financiamento ainda não verificado independentemente',
   PROVIDER_REPORTS_FUNDED_NOT_ONCHAIN_VERIFIED: 'Plataforma informa escrow; blockchain não conferida',
   PAID_USAGE_OR_REVENUE_CONDITION: 'Exige compra, uso pago ou gerar receita antes da recompensa',
@@ -72,7 +69,7 @@ const statusTime = (iso: string) => {
 /** BasedAgents and Coinbase Wallet are independent read-only providers. No signing, purchases or claims. */
 export function AgentOperationsHub({ onAgentEconomy }: { onAgentEconomy?: () => void }) {
   const [based, setBased] = useState<BasedAgentsSnapshot | null>(null);
-  const [wallet, setWallet] = useState<WalletSnapshot | null>(null);
+  const [wallet, setWallet] = useState<BaseWalletSnapshot | null>(null);
   const [basedError, setBasedError] = useState<string | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,7 +77,7 @@ export function AgentOperationsHub({ onAgentEconomy }: { onAgentEconomy?: () => 
     setBusy(true);
     const [market, funds] = await Promise.allSettled([
       fetch('/api/integration-status?view=basedagents', { cache: 'no-store' }),
-      fetch('/api/integration-status?view=base-wallet', { cache: 'no-store' }),
+      fetchSharedBaseWallet(),
     ]);
     if (market.status === 'fulfilled') {
       try {
@@ -94,21 +91,18 @@ export function AgentOperationsHub({ onAgentEconomy }: { onAgentEconomy?: () => 
         setBased(null); setBasedError('Não foi possível validar a resposta do BasedAgents.');
       }
     } else { setBased(null); setBasedError('BasedAgents indisponível.'); }
-    if (funds.status === 'fulfilled') {
-      try {
-        const data = await funds.value.json() as WalletSnapshot;
-        if (funds.value.ok && data.status === 'CONFIRMED_ONCHAIN' && data.balances
-            && data.chainId === 8453 && data.address.toLowerCase() === officialWallet.toLowerCase()) {
-          setWallet(data); setWalletError(null);
-        } else { setWallet(null); setWalletError('Sem leitura confiável da Base neste momento.'); }
-      } catch { setWallet(null); setWalletError('Falha de leitura da carteira Base.'); }
-    } else { setWallet(null); setWalletError('Carteira Base indisponível.'); }
+    if (funds.status === 'fulfilled' && funds.value.status === 'CONFIRMED_ONCHAIN') {
+      setWallet(funds.value); setWalletError(null);
+    } else {
+      setWallet(null); setWalletError('Sem leitura confiável da Base neste momento.');
+    }
     setBusy(false);
   }, []);
   useEffect(() => { void load(); }, [load]);
 
   const entries = based?.market.tasks.filter(item => item.isPaid).slice(0, 8) || [];
-  const walletDifference = based?.agent.walletAddress &&
+  const basedPayoutVerified = based?.agent.walletVerified === true;
+  const walletDifference = basedPayoutVerified && based?.agent.walletAddress &&
     based.agent.walletAddress.toLowerCase() !== officialWallet.toLowerCase();
 
   return (
@@ -134,14 +128,16 @@ export function AgentOperationsHub({ onAgentEconomy }: { onAgentEconomy?: () => 
           <div className="grid grid-cols-3 gap-3 text-center">
             <div><div className="text-xl font-bold text-white">{textValue(based?.market.openTasksVisible)}</div><div className="text-[10px] text-slate-400">Visíveis na consulta</div></div>
             <div><div className="text-xl font-bold text-white">{textValue(based?.market.paidListingsVisible)}</div><div className="text-[10px] text-slate-400">Com prêmio anunciado</div></div>
-            <div><div className="text-xl font-bold text-white">{textValue(based?.market.ourClaimsVisible)}</div><div className="text-[10px] text-slate-400">Atribuídas ao agente*</div></div>
+            <div><div className="text-xl font-bold text-white">{textValue(based?.market.ourClaimsVisible)}</div><div className="text-[10px] text-slate-400">Atribuídas*</div></div>
           </div>
           <p className="text-[11px] text-slate-400">{based?.market.fullyScanned ? 'Paginação pública concluída nesta consulta.' : 'Amostra parcial do quadro aberto. Total do site pode ser maior.'}</p>
-          <p className="text-xs text-slate-400">Identidade: <span className="text-slate-200">{based?.agent.name || 'GXEON-AI'}</span> · Carteira BasedAgents <span className="font-mono">{short(based?.agent.walletAddress || null)}</span></p>
+          <p className="text-xs text-slate-400">Identidade: <span className="text-slate-200">{based?.agent.name || 'GXEON-AI'}</span> · Carteira BasedAgents <span className="font-mono">{basedPayoutVerified ? short(based?.agent.walletAddress || null) : 'Não verificada'}</span></p>
+          {based?.agent.expectedPayoutWalletMatches === false && <p role="alert" className="text-xs text-red-300">ALERTA DE SEGURANÇA: a carteira do perfil BasedAgents mudou em relação ao endereço de recebimento anteriormente verificado. Confira a identidade antes de qualquer pagamento.</p>}
+          {based && !basedPayoutVerified && <p role="status" className="text-xs text-amber-300">O provedor não confirmou a verificação da carteira de recebimento.</p>}
           <p className="text-xs text-slate-400">Contato direto: <span className="text-amber-300">{based?.agent.directContactConfigured === true ? 'Informado no perfil (requer verificação de recebimento)' : 'Não confirmado'}</span> · Caixa privada: <span className="text-amber-300">Autenticação AgentSig necessária</span></p>
           {basedError && <p role="status" className="text-xs text-amber-300">{basedError}</p>}
           {based?.errors.length ? <p className="text-xs text-amber-300">Leitura parcial: {based.errors.join(', ')}</p> : null}
-          <p className="text-[10px] text-slate-500">*Contagem da API pública, não necessariamente todas as mensagens privadas. {based ? 'Última consulta: ' + statusTime(based.observedAt) : ''}</p>
+          <p className="text-[10px] text-slate-500">*Atribuições públicas: até 20 registros na primeira página; não é o total histórico. Eventos privados exigem AgentSig. {based ? 'Última consulta: ' + statusTime(based.observedAt) : ''}</p>
           <a href="https://basedagents.ai/tasks" target="_blank" rel="noopener noreferrer" className="text-cyan-300 flex gap-1 items-center text-xs font-semibold">Abrir tarefas BasedAgents <ArrowUpRight size={13}/></a>
         </Card>
 
@@ -203,14 +199,14 @@ export function AgentOperationsHub({ onAgentEconomy }: { onAgentEconomy?: () => 
                 <span className="text-xs text-amber-300">{fundingLabel[task.fundingStatus]}</span>
                 {task.riskFlags.length > 0 && <p className="text-[11px] text-amber-300">Risco: {task.riskFlags.map(friendlyRisk).join(' · ')}</p>}
                 <div className="flex gap-2 text-xs items-center justify-between">
-                  <span className="text-slate-500">Caução anunciada para claim: {task.bondUsdc || '—'} USDC*</span>
+                  <span className="text-slate-500">Caução no claim: {task.bondUsdc ? task.bondUsdc + ' USDC' : 'conferir política vigente'}*</span>
                   <a href={task.taskUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-300 flex items-center gap-1">Ver tarefa <ArrowUpRight size={13}/></a>
                 </div>
               </div>
             ))}
           </div>
         ) : <p className="text-sm text-slate-400">{based?.market.openTasksVisible !== null && based ? 'Nenhuma bounty remunerada retornou nesta amostra.' : 'Ainda sem leitura confiável das oportunidades.'}</p>}
-        <p className="text-[11px] text-slate-500 flex gap-2 items-start"><Shield size={14} className="shrink-0"/>*Caução prevista nas regras da plataforma; custos efetivos, elegibilidade, financiamento e assinaturas devem ser verificados antes de qualquer claim. Nenhuma movimentação é habilitada aqui.</p>
+        <p className="text-[11px] text-slate-500 flex gap-2 items-start"><Shield size={14} className="shrink-0"/>*A plataforma pode exigir caução de 1 USDC, mas essa regra é configurável. Confira o valor vigente, custos, elegibilidade e financiamento antes de qualquer claim. Nenhuma movimentação é habilitada aqui.</p>
         <p className="text-[11px] text-slate-500 flex gap-2 items-start"><CheckCircle2 size={14} className="shrink-0"/>Oportunidades públicas não são convites direcionados ao GXEON, e recompensas anunciadas não são receitas confirmadas. <Clock3 size={14} className="shrink-0"/>A caixa privada do agente depende de autenticação AgentSig.</p>
       </Card>
     </section>
