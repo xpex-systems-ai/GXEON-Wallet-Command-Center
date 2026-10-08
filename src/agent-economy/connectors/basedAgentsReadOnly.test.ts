@@ -53,7 +53,7 @@ describe('BasedAgents read-only task normalization', () => {
 
 describe('GXEON BasedAgents snapshot', () => {
   it('reads public task pages and registered identity without claiming anything', async () => {
-    const fetchMock = vi.fn(async (url: string) => {
+    const fetchMock = vi.fn(async (url: string, _options?: RequestInit) => {
       if (url.includes('claimer=')) return okay({ tasks: [] });
       if (url.includes('creator=')) return okay({ tasks: [] });
       if (url.includes('/agents/')) return okay({
