@@ -74,7 +74,6 @@
       "source": "/v1/(.*)",
       "destination": "/api/v1/$1"
     },
-
     {
       "source": "/api/(.*)",
       "destination": "/api/$1"
@@ -82,6 +81,12 @@
     {
       "source": "/((?!api/|v1/|x402/|\\.well-known/|openapi\\.json).*)",
       "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/integration-status?view=stripe-money-refresh",
+      "schedule": "0 10 * * *"
     }
   ]
 }
