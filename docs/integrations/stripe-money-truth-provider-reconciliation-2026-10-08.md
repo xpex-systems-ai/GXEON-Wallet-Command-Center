@@ -56,11 +56,11 @@ Firestore. Failed refreshes preserve the previous provider snapshot, but
 public readers show `INDISPONÍVEL` if it becomes **older than 36 hours**.
 This cannot be confused with a verified R$0.
 
-**Deployment prerequisite:** `CRON_SECRET` is currently **not configured**.
-An authorised operator must create a strong random secret (>= 16 characters)
-in Vercel **production**, without ever committing or echoing it to GitHub.
-Until this prerequisite and an authenticated Cron refresh complete, the UI
-must show money-truth `INDISPONÍVEL`. The Stripe connector from ChatGPT can
+**Deployment prerequisite:** `CRON_SECRET` was configured as a **sensitive, production-only Vercel environment variable** on 08 October 2026; the value is not in GitHub, source, logs or user documentation.
+The scheduled route must be independently reviewed and deployed before it runs.
+Until the first authenticated cron invocation persists a verified snapshot,
+the UI must show money-truth `INDISPONÍVEL`. Redeploy after environment
+changes and verify the cron log without logging the bearer secret. The Stripe connector from ChatGPT can
 still be used for independent read-only audits, but does not populate this
 Firestore snapshot.
 
