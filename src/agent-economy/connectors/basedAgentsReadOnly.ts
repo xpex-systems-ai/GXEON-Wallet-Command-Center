@@ -188,7 +188,7 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
   const walletVerified = profileData && typeof profileData.wallet_verified === 'boolean'
     ? profileData.wallet_verified : null;
   const fullyScanned = fetchedPages === MAX_PAGES
-    && pageTasks.some((page, i) => {
+    && pageTasks.some((_, i) => {
       const response = settled[i];
       return response.status === 'fulfilled' && Array.isArray(response.value.tasks)
         && response.value.tasks.length < PAGE_SIZE;
