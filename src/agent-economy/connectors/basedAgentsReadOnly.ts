@@ -208,12 +208,12 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
   const tasks = [...unverifiedList.values()];
   const paid = tasks.filter(x => x.isPaid);
   const profileMatchesIdentity = profileData?.agent_id === BASEDAGENTS_AGENT_ID;
-  const actualWallet = profileMatchesIdentity ? string(profileData.wallet_address) : null;
+  const actualWallet = profileMatchesIdentity ? string(profileData?.wallet_address) : null;
   // Missing or replaced wallets are identity drift, not a neutral "unavailable" match.
   // Return null only when the profile request itself failed.
   const expectedPayoutWalletMatches = !profileData ? null
     : profileMatchesIdentity && Boolean(actualWallet)
-      && actualWallet!.toLowerCase() === BASEDAGENTS_PAYOUT_ADDRESS.toLowerCase();
+      && (actualWallet?.toLowerCase() === BASEDAGENTS_PAYOUT_ADDRESS.toLowerCase());
   if (expectedPayoutWalletMatches === false) errors.push('BASEDAGENTS_PAYOUT_ADDRESS_CHANGED');
   const walletVerified = profileData && typeof profileData.wallet_verified === 'boolean'
     ? profileData.wallet_verified : null;
