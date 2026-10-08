@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import handler from '../../../api/base-wallet';
+import handler from '../../api/base-wallet';
 
 const rpc = vi.hoisted(() => ({
   getBalance: vi.fn(),
