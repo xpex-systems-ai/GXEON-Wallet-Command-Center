@@ -94,7 +94,7 @@ export function RealRevenuePanel() {
       // Independent reads: Base can fail without hiding Stripe, RTC and the other rails.
       const [integrationResult, baseResult] = await Promise.allSettled([
         fetch('/api/integration-status', { cache: 'no-store' }),
-        fetch('/api/base-wallet', { cache: 'no-store' }),
+        fetch('/api/integration-status?view=base-wallet', { cache: 'no-store' }),
       ]);
 
       if (integrationResult.status === 'fulfilled' && integrationResult.value.ok) {
