@@ -64,7 +64,11 @@ export function isFreshVerifiedSnapshot(value: unknown, now = Date.now()): value
     && Number.isFinite(sampledAt)
     && sampledAt <= now && now - sampledAt < STALE_AFTER_MS
     && [v.paidCharges, v.grossBRLCents, v.refundedBRLCents, v.capturedMinusRefundedBRLCents,
-      v.otherCurrencyPaidCharges, v.disputedCharges].every(n => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0);
+      v.otherCurrencyPaidCharges, v.disputedCharges].every(n => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0)
+    // These fields form a single accounting proof, not six independent counters.
+    && v.refundedBRLCents! <= v.grossBRLCents!
+    && v.capturedMinusRefundedBRLCents === v.grossBRLCents! - v.refundedBRLCents!
+    && v.disputedCharges! <= v.paidCharges!;
 }
 
 export async function readPublishedStripeMoneyTruth(
