@@ -28,7 +28,7 @@ It reads `financial_provider_snapshots/stripe_live_30day_charges` from
 the shared Firestore database, which is already used by GXEON payment logs.
 
 A production-only Vercel Cron calls
-`GET /api/integration-status?view=stripe-money-refresh` **once per day**
+`GET /api/cron/stripe-money-truth` (rewritten internally to the existing integration-status handler) **once per day**
 at 10:00 UTC (around 07:00 Brasília, within an hour for Hobby plans).
 The endpoint rejects requests unless:
 
