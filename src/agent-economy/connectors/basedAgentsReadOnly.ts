@@ -29,7 +29,9 @@ export interface BasedAgentsTask {
   descriptionSummary: string;
   category: string | null;
   status: string;
-  bountyUsdc: string | null;
+  bountyAmount: string | null;
+  bountyToken: string | null;
+  bountyUsdc: string | null; // Only explicitly identified USDC on Base mainnet.
   bountyNetwork: string | null;
   bondUsdc: string | null; // unknown until the provider enforces the claim challenge
   fundingStatus: FundingStatus;
@@ -83,13 +85,22 @@ export interface BasedAgentsSnapshot {
   errors: string[];
 }
 
+function advertisedBountyAmount(bounty: UnknownRecord): string | null {
+  const value = string(bounty.amount_display);
+  return value && value.length <= 32 && /^\d+(?:\.\d{1,6})?$/.test(value)
+    && Number.isFinite(Number(value)) && Number(value) > 0 ? value : null;
+}
+
 export function normalizeBasedAgentsTask(raw: unknown): BasedAgentsTask | null {
   const obj = record(raw);
   const id = string(obj.task_id);
   if (!id || !TASK_ID.test(id) || obj.status !== 'open') return null;
   const bounty = record(obj.bounty);
-  const value = string(bounty.amount_display);
-  const isPaid = Boolean(value && /^\d+(?:\.\d{1,6})?$/.test(value) && Number(value) > 0);
+  const value = advertisedBountyAmount(bounty);
+  const isPaid = value !== null;
+  const token = string(bounty.token)?.slice(0, 24) || null;
+  const network = string(bounty.network)?.slice(0, 64) || null;
+  const isBaseUsdc = isPaid && token === 'USDC' && network === 'eip155:8453';
   const escrow = record(obj.escrow);
   // Provider flags alone are not independent USDC escrow verification.
   // Never elevate a publicly advertised reward to VERIFIED_ESCROW without a chain proof.
@@ -100,6 +111,7 @@ export function normalizeBasedAgentsTask(raw: unknown): BasedAgentsTask | null {
   if (isPaid) {
     riskFlags.push('CLAIM_BOND_POLICY_VERIFY_LIVE');
     riskFlags.push('BOUNTY_FUNDING_NOT_VERIFIED');
+    if (!isBaseUsdc) riskFlags.push('REWARD_CURRENCY_OR_NETWORK_UNVERIFIED');
     if (providerClaimsFunded) riskFlags.push('PROVIDER_REPORTS_FUNDED_NOT_ONCHAIN_VERIFIED');
     if (/cashback|revenue guard|paid cycle|revenue across|minimum revenue|settled .{0,55} revenue/i.test(desc)) {
       riskFlags.push('PAID_USAGE_OR_REVENUE_CONDITION');
@@ -112,8 +124,10 @@ export function normalizeBasedAgentsTask(raw: unknown): BasedAgentsTask | null {
     descriptionSummary: desc.slice(0, 240),
     category: string(obj.category),
     status: 'open',
-    bountyUsdc: isPaid ? value : null,
-    bountyNetwork: isPaid ? string(bounty.network) : null,
+    bountyAmount: isPaid ? value : null,
+    bountyToken: isPaid ? token : null,
+    bountyUsdc: isBaseUsdc ? value : null,
+    bountyNetwork: isPaid ? network : null,
     bondUsdc: null, // never assert a mandatory bonded amount from task listing alone
     fundingStatus,
     requiresHumanBondApproval: isPaid,
@@ -139,9 +153,15 @@ async function readJson(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<U
       cache: 'no-store',
       signal: abort.signal,
     });
-    if (!response.ok) throw new Error('BASEDAGENTS_HTTP_' + response.status);
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error('BASEDAGENTS_HTTP_' + response.status);
+    }
     const size = Number(response.headers.get('content-length') || 0);
-    if (size > MAX_RESPONSE_BYTES) throw new Error('BASEDAGENTS_RESPONSE_TOO_LARGE');
+    if (size > MAX_RESPONSE_BYTES) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error('BASEDAGENTS_RESPONSE_TOO_LARGE');
+    }
     // Bound decoded streaming bytes before buffering them, including chunked or compressed responses.
     if (!response.body) throw new Error('BASEDAGENTS_RESPONSE_STREAM_REQUIRED');
     const reader = response.body.getReader();
@@ -248,7 +268,7 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
       walletVerified,
       walletNetwork: profileData ? string(profileData.wallet_network) : null,
       linkedToOfficialCoinbaseBase: actualWallet
-        ? actualWallet.toLowerCase() === GXEON_OFFICIAL_BASE_ADDRESS.toLowerCase() : null,
+        ? isBaseMainnet && actualWallet.toLowerCase() === GXEON_OFFICIAL_BASE_ADDRESS.toLowerCase() : null,
       expectedPayoutWalletMatches,
       directContactConfigured: profileData
         ? Boolean(string(profileData.contact_endpoint) || string(profileData.webhook_url)) : null,
@@ -265,7 +285,7 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
       ourClaimsVisible: claimedList ? claimedList.length : null,
       ourClaimsCountIsCapped: Boolean(claimedList && claimedList.length === PAGE_SIZE),
       paidClaimsByOurAgent: claimedList
-        ? claimedList.filter(x => Boolean(record(x.bounty).amount_display)).length : null,
+        ? claimedList.filter(x => advertisedBountyAmount(record(x.bounty)) !== null).length : null,
       ourPostedTasksVisible: authoredList ? authoredList.length : null,
       ourPostedTasksCountIsCapped: Boolean(authoredList && authoredList.length === PAGE_SIZE),
       tasks,

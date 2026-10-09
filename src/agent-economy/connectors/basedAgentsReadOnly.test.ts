@@ -10,7 +10,7 @@ const openTask = (taskId = 'task_Test123') => ({
   task_id: taskId, status: 'open', title: 'Safe JSON validator',
   description: 'Validate public JSON, no spending required',
   category: 'automation', required_capabilities: ['json', 'code-review'],
-  bounty: { amount_display: '0.25', network: 'base' },
+  bounty: { amount_display: '0.25', token: 'USDC', network: 'eip155:8453' },
   payment_status: 'pending',
 });
 const okay = (body: object) => {
@@ -50,10 +50,36 @@ describe('BasedAgents read-only task normalization', () => {
   });
   it('preserves Base Sepolia payout network instead of treating test USDC as mainnet', () => {
     const task = normalizeBasedAgentsTask({
-      ...openTask(), bounty: { amount_display: '3.00', network: 'eip155:84532' },
+      ...openTask(), bounty: { amount_display: '3.00', token: 'USDC', network: 'eip155:84532' },
     })!;
     expect(task.bountyNetwork).toBe('eip155:84532');
+    expect(task.bountyAmount).toBe('3.00');
+    expect(task.bountyUsdc).toBeNull();
     expect(task.fundingStatus).toBe('UNVERIFIED_BOUNTY');
+  });
+
+  it.each([
+    { amount_display: '2.50', token: 'ETH', network: 'eip155:8453' },
+    { amount_display: '2.50', network: 'eip155:8453' },
+    { amount_display: '2.50', token: 'USDC' },
+    { amount_display: '2.50', token: 'USDC', network: 'base' },
+  ])('preserves the advertised reward without inventing Base USDC: %j', bounty => {
+    const task = normalizeBasedAgentsTask({ ...openTask(), bounty })!;
+    expect(task.isPaid).toBe(true);
+    expect(task.bountyAmount).toBe('2.50');
+    expect(task.bountyToken).toBe(bounty.token || null);
+    expect(task.bountyUsdc).toBeNull();
+    expect(task.fundingStatus).toBe('UNVERIFIED_BOUNTY');
+    expect(task.riskFlags).toContain('REWARD_CURRENCY_OR_NETWORK_UNVERIFIED');
+  });
+  it('does not accept unbounded or zero advertised amounts as a paid reward', () => {
+    for (const amount_display of ['0', '0.00', '9'.repeat(400), '-1', 'NaN']) {
+      const task = normalizeBasedAgentsTask({
+        ...openTask(), bounty: { amount_display, token: 'USDC', network: 'eip155:8453' },
+      })!;
+      expect(task.isPaid).toBe(false);
+      expect(task.bountyUsdc).toBeNull();
+    }
   });
 
   it('flags paid-usage conditions and keeps free tasks distinct', () => {
@@ -202,6 +228,23 @@ describe('GXEON BasedAgents snapshot', () => {
     expect(snapshot.market.ourClaimsVisible).toBe(20);
     expect(snapshot.market.ourClaimsCountIsCapped).toBe(true);
   });
+
+  it.each(['http-error', 'oversized-header'] as const)(
+    'cancels rejected response streams before reading the body: %s',
+    async kind => {
+      const cancel = vi.fn().mockResolvedValue(undefined);
+      const getReader = vi.fn();
+      vi.stubGlobal('fetch', vi.fn(async () => ({
+        ok: kind !== 'http-error', status: 503,
+        headers: { get: () => kind === 'oversized-header' ? '256001' : null },
+        body: { cancel, getReader },
+      })));
+      const snapshot = await readBasedAgentsSnapshot();
+      expect(snapshot.status).toBe('UNAVAILABLE');
+      expect(cancel).toHaveBeenCalledTimes(6);
+      expect(getReader).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects an oversized decoded response before buffering all bytes', async () => {
     const manyBytes = new Uint8Array(2_000_001);

@@ -6,6 +6,7 @@ import { fetchSharedBaseWallet, type BaseWalletSnapshot } from './sharedBaseWall
 type Funding = 'VERIFIED_ESCROW' | 'UNVERIFIED_BOUNTY' | 'FREE_REPUTATION';
 interface Task {
   taskId: string; title: string; descriptionSummary: string; status: string;
+  bountyAmount: string | null; bountyToken: string | null;
   bountyUsdc: string | null; bountyNetwork: string | null; fundingStatus: Funding; isPaid: boolean;
   bondUsdc: string | null; taskUrl: string; riskFlags: string[];
   requiresCapabilities: string[]; payoutState: string | null;
@@ -33,7 +34,7 @@ interface BasedAgentsSnapshot {
 }
 type CardLink = { title: string; description: string; url: string; category: string; external?: boolean };
 const LINKS: CardLink[] = [
-  { title: 'BasedAgents', description: 'Tarefas e bounties em USDC · Base', url: 'https://basedagents.ai/tasks', category: 'TRABALHO' },
+  { title: 'BasedAgents', description: 'Tarefas públicas; moeda e rede por anúncio', url: 'https://basedagents.ai/tasks', category: 'TRABALHO' },
   { title: 'GXEON Taskmarket', description: 'Radar, análise de risco e provas de trabalho', url: '/api/taskmarket', category: 'TRABALHO' },
   { title: 'AgentBounties', description: 'Microbounties; conferir caução e financiamento', url: 'https://agentbounties.app', category: 'TRABALHO' },
   { title: 'GXEON Marketplace', description: 'Serviços, créditos e compradores', url: '/market', category: 'VENDA' },
@@ -57,20 +58,20 @@ const fundingLabel: Record<Funding, string> = {
 const riskDescriptions: Record<string, string> = {
   CLAIM_BOND_POLICY_VERIFY_LIVE: 'Pode exigir caução; confira valor e ativação no momento do claim',
   BOUNTY_FUNDING_NOT_VERIFIED: 'Financiamento ainda não verificado independentemente',
+  REWARD_CURRENCY_OR_NETWORK_UNVERIFIED: 'Este anúncio não confirma USDC na Base mainnet',
   PROVIDER_REPORTS_FUNDED_NOT_ONCHAIN_VERIFIED: 'Plataforma informa escrow; blockchain não conferida',
   PAID_USAGE_OR_REVENUE_CONDITION: 'Exige compra, uso pago ou gerar receita antes da recompensa',
 };
 const friendlyRisk = (key: string) => riskDescriptions[key] || key.replace(/_/g, ' ').toLowerCase();
-const taskNetworkLabel = (network: string | null) => {
+const taskNetworkLabel = (token: string | null, network: string | null) => {
+  const currency = token || 'moeda não informada';
   const id = (network || '').trim().toLowerCase();
-  if (['eip155:8453', 'base', 'base-mainnet', '8453'].includes(id)) return 'USDC · Base mainnet';
+  if (id === 'eip155:8453') return currency + ' · Base mainnet';
   if (id.includes('sepolia') || id.includes('testnet') || id === 'eip155:84532' || id === '84532') {
-    return 'USDC TESTNET · sem valor de saque';
+    return currency + ' TESTNET · sem valor de saque';
   }
-  return 'USDC · rede não verificada';
+  return currency + ' · rede não verificada';
 };
-const isTestnetNetwork = (network: string | null) =>
-  /sepolia|testnet|84532/i.test(network || '');
 const statusTime = (iso: string) => {
   const d = Date.parse(iso);
   return Number.isNaN(d) ? 'Data não disponível' : new Date(d).toLocaleString('pt-BR');
@@ -203,7 +204,7 @@ export function AgentOperationsHub({ onAgentEconomy }: { onAgentEconomy?: () => 
               <div key={task.taskId} className="rounded-lg border border-slate-800 p-3 bg-slate-950/40 space-y-2">
                 <div className="flex justify-between gap-2">
                   <h4 className="text-sm text-slate-100 font-medium">{task.title}</h4>
-                  <span className={`text-sm font-bold font-mono ${isTestnetNetwork(task.bountyNetwork) ? 'text-amber-300' : 'text-emerald-300'}`}>{task.bountyUsdc} {taskNetworkLabel(task.bountyNetwork)}</span>
+                  <span className={`text-sm font-bold font-mono ${task.bountyUsdc === null ? 'text-amber-300' : 'text-emerald-300'}`}>{task.bountyAmount} {taskNetworkLabel(task.bountyToken, task.bountyNetwork)}</span>
                 </div>
                 <p className="text-xs text-slate-400 line-clamp-2">{task.descriptionSummary}</p>
                 <span className="text-xs text-amber-300">{fundingLabel[task.fundingStatus]}</span>
