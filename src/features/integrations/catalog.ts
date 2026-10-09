@@ -13,13 +13,32 @@ export const communities = [
 export interface EcosystemStatus {
   observedAt: string;
   communityCommand: { status: 'AVAILABLE' | 'UNAVAILABLE'; environment: 'staging'; url: string; dataSync: 'AUTHENTICATED_SESSION_REQUIRED' };
-  coinbase: { connectorVerifiedAt: string | null; runtimeConfigured: boolean; operatorAuthConfigured: boolean; mode: 'READ_ONLY' };
+  coinbase: { connectorVerifiedAt: string | null; runtimeConfigured: boolean; operatorAuthConfigured: boolean; historyConfigured?: boolean; mode: 'READ_ONLY' };
 }
 
 export interface CoinbaseRead {
   status: 'VERIFIED'; observedAt: string; scope: 'API_KEY_PORTFOLIO';
-  accounts: Array<{ currency: string; available: string; hold: string }>;
+  accounts: Array<{ accountId: string; portfolioId: string | null; currency: string; available: string; hold: string; network: null }>;
   openOrders: number;
+}
+
+export interface CoinbaseTransaction {
+  id: string; accountId: string; currency: string; amount: string;
+  type: string; status: string; createdAt: string;
+  network: string | null; networkStatus: string | null; txHash: string | null;
+  receiptStatus: 'PROVIDER_COMPLETED' | 'NOT_CONFIRMED';
+  revenueStatus: 'NOT_RECONCILED';
+}
+export interface CoinbaseHistory {
+  status: 'VERIFIED'; observedAt: string; source: 'COINBASE_TRACK_API';
+  scope: 'CONFIGURED_ACCOUNTS'; accountIds: string[];
+  transactions: CoinbaseTransaction[];
+  reconciliation: 'AUTHENTICATED_LEDGER_LINK_REQUIRED';
+}
+export function isCoinbaseReceipt(transaction: Pick<CoinbaseTransaction, 'type' | 'status' | 'amount'>): boolean {
+  // A buy, trade, internal transfer or pending credit is not a received payment.
+  return transaction.type === 'receive' && transaction.status === 'completed' &&
+    /^\d+(\.\d+)?$/.test(transaction.amount) && /[1-9]/.test(transaction.amount);
 }
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -42,6 +61,7 @@ export function parseEcosystemStatus(value: unknown): EcosystemStatus {
       community.environment !== 'staging' || community.url !== COMMUNITY_COMMAND_URL ||
       community.dataSync !== 'AUTHENTICATED_SESSION_REQUIRED' || coinbase.mode !== 'READ_ONLY' ||
       typeof coinbase.runtimeConfigured !== 'boolean' || typeof coinbase.operatorAuthConfigured !== 'boolean' ||
+      !(coinbase.historyConfigured === undefined || typeof coinbase.historyConfigured === 'boolean') ||
       !(coinbase.connectorVerifiedAt === null || timestamp(coinbase.connectorVerifiedAt))) {
     throw new Error('Status das integrações indisponível neste ambiente.');
   }
@@ -55,11 +75,42 @@ export function parseCoinbaseRead(value: unknown): CoinbaseRead {
       !Array.isArray(data.accounts) || data.accounts.length > 2000 ||
       !data.accounts.every(value => {
         const account = object(value);
-        return account && typeof account.currency === 'string' && /^[A-Z0-9]{2,12}$/.test(account.currency) &&
+        return account && identifier(account.accountId) && (account.portfolioId === null || identifier(account.portfolioId)) && account.network === null && typeof account.currency === 'string' && /^[A-Z0-9]{2,12}$/.test(account.currency) &&
           typeof account.available === 'string' && /^\d+(\.\d+)?$/.test(account.available) &&
           typeof account.hold === 'string' && /^\d+(\.\d+)?$/.test(account.hold);
       })) {
     throw new Error('Resposta Coinbase inválida. Nenhum saldo foi confirmado.');
   }
   return value as CoinbaseRead;
+}
+
+function identifier(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+}
+function optionalText(value: unknown): boolean {
+  return value === null || (typeof value === 'string' && /^[A-Za-z0-9_: -]{1,128}$/.test(value));
+}
+export function parseCoinbaseHistory(value: unknown): CoinbaseHistory {
+  const data = object(value);
+  const seen = new Set<string>();
+  if (!data || data.status !== 'VERIFIED' || data.source !== 'COINBASE_TRACK_API' ||
+      data.scope !== 'CONFIGURED_ACCOUNTS' || !timestamp(data.observedAt) ||
+      data.reconciliation !== 'AUTHENTICATED_LEDGER_LINK_REQUIRED' ||
+      !Array.isArray(data.accountIds) || !data.accountIds.length || data.accountIds.length > 10 ||
+      !data.accountIds.every(identifier) || new Set(data.accountIds).size !== data.accountIds.length ||
+      !Array.isArray(data.transactions) || data.transactions.length > 2000 ||
+      !data.transactions.every(value => {
+        const row = object(value);
+        if (!row || !identifier(row.id) || !identifier(row.accountId) || !(data.accountIds as string[]).includes(row.accountId) ||
+            typeof row.currency !== 'string' || !/^[A-Z0-9]{2,12}$/.test(row.currency) ||
+            typeof row.amount !== 'string' || !/^-?\d+(\.\d+)?$/.test(row.amount) ||
+            !identifier(row.type) || !identifier(row.status) || !timestamp(row.createdAt) ||
+            !optionalText(row.network) || !optionalText(row.networkStatus) || !optionalText(row.txHash) ||
+            row.revenueStatus !== 'NOT_RECONCILED' ||
+            row.receiptStatus !== (isCoinbaseReceipt(row as unknown as CoinbaseTransaction) ? 'PROVIDER_COMPLETED' : 'NOT_CONFIRMED')) return false;
+        const key = `${row.accountId}:${row.id}`;
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+      })) throw new Error('Histórico Coinbase inválido. Nenhum recebimento foi confirmado.');
+  return value as CoinbaseHistory;
 }

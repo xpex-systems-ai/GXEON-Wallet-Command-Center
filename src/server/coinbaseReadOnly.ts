@@ -16,6 +16,7 @@ export function coinbaseConfiguration() {
     connectorVerifiedAt: Number.isFinite(timestamp) && timestamp <= Date.now() ? new Date(timestamp).toISOString() : null,
     runtimeConfigured: Boolean(process.env.COINBASE_READ_API_KEY_NAME?.trim() && process.env.COINBASE_READ_API_KEY_SECRET?.trim()),
     operatorAuthConfigured: Boolean(process.env.GXEON_OPERATOR_UID?.trim() && process.env.FIREBASE_PROJECT_ID?.trim()),
+    historyConfigured: configuredHistoryAccounts(false).length > 0,
     mode: 'READ_ONLY' as const,
   };
 }
@@ -54,8 +55,20 @@ export async function requireIntegrationOperator(authorization: unknown): Promis
   }
 }
 
+export function configuredHistoryAccounts(strict = true): string[] {
+  const raw = process.env.COINBASE_READ_TRANSACTION_ACCOUNT_IDS?.trim();
+  const accounts = raw ? raw.split(',').map(value => value.trim().toLowerCase()) : [];
+  if (!accounts.length || accounts.length > 10 || new Set(accounts).size !== accounts.length ||
+      accounts.some(id => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id))) {
+    if (strict) throw new IntegrationReadError(503, 'COINBASE_HISTORY_ACCOUNT_CONFIGURATION_REQUIRED');
+    return [];
+  }
+  return accounts;
+}
+
 export function buildCoinbaseReadJwt(path: string): string {
-  if (!paths.includes(path as typeof paths[number])) throw new IntegrationReadError(400, 'READ_ENDPOINT_NOT_ALLOWED');
+  const historyAllowed = configuredHistoryAccounts(false).some(id => path === `/v2/accounts/${id}/transactions`);
+  if (!paths.includes(path as typeof paths[number]) && !historyAllowed) throw new IntegrationReadError(400, 'READ_ENDPOINT_NOT_ALLOWED');
   const name = process.env.COINBASE_READ_API_KEY_NAME?.trim();
   const secret = process.env.COINBASE_READ_API_KEY_SECRET?.replace(/\\n/g, '\n').trim();
   if (!name || !secret) throw new IntegrationReadError(503, 'COINBASE_RUNTIME_CREDENTIAL_REQUIRED');
@@ -101,7 +114,9 @@ export async function readCoinbase(): Promise<CoinbaseRead> {
   const safeAccounts = accounts.filter(account => account.active !== false).map(account => {
     if (typeof account.uuid !== 'string' || ids.has(account.uuid) || typeof account.currency !== 'string' || !/^[A-Z0-9]{2,12}$/.test(account.currency) || account.available_balance?.currency !== account.currency || account.hold?.currency !== account.currency) throw new IntegrationReadError(502, 'COINBASE_RESPONSE_INVALID');
     ids.add(account.uuid);
-    return { currency: account.currency, available: amount(account.available_balance.value), hold: amount(account.hold.value) };
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(account.uuid) || (account.retail_portfolio_id != null && (typeof account.retail_portfolio_id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(account.retail_portfolio_id)))) throw new IntegrationReadError(502, 'COINBASE_RESPONSE_INVALID');
+    // Custodial exchange balances do not establish an on-chain network/address.
+    return { accountId: account.uuid, portfolioId: account.retail_portfolio_id ?? null, currency: account.currency, available: amount(account.available_balance.value), hold: amount(account.hold.value), network: null };
   });
   if (orders.some(order => order.status !== 'OPEN' || typeof order.order_id !== 'string') || new Set(orders.map(order => order.order_id)).size !== orders.length) throw new IntegrationReadError(502, 'COINBASE_RESPONSE_INVALID');
   return { status: 'VERIFIED', observedAt: new Date().toISOString(), scope: 'API_KEY_PORTFOLIO', accounts: safeAccounts, openOrders: orders.length };

@@ -21,7 +21,7 @@ describe('Central integrations security and money truth', () => {
     expect(parseEcosystemStatus({ observedAt: '2026-10-09T05:00:00Z', communityCommand: { status: 'UNAVAILABLE', environment: 'staging', url: COMMUNITY_COMMAND_URL, dataSync: 'AUTHENTICATED_SESSION_REQUIRED' }, coinbase: { connectorVerifiedAt: null, runtimeConfigured: false, operatorAuthConfigured: false, mode: 'READ_ONLY' } }).coinbase.runtimeConfigured).toBe(false);
   });
   it('does not accept legacy or malformed responses as verified private balances', () => {
-    const valid = { status: 'VERIFIED', observedAt: '2026-10-09T05:00:00Z', scope: 'API_KEY_PORTFOLIO', openOrders: 0, accounts: [{ currency: 'BRL', available: '0', hold: '0' }] };
+    const valid = { status: 'VERIFIED', observedAt: '2026-10-09T05:00:00Z', scope: 'API_KEY_PORTFOLIO', openOrders: 0, accounts: [{ accountId: 'brl', portfolioId: null, network: null, currency: 'BRL', available: '0', hold: '0' }] };
     expect(parseCoinbaseRead(valid)).toEqual(valid);
     for (const value of [{ stripeConfigured: true }, { ...valid, accounts: null }, { ...valid, openOrders: -1 }, { ...valid, accounts: [{ currency: 'USDC', available: null, hold: '0' }] }]) expect(() => parseCoinbaseRead(value)).toThrow('Nenhum saldo foi confirmado');
   });
@@ -94,9 +94,9 @@ describe('Central integrations security and money truth', () => {
     });
     vi.stubGlobal('fetch', fetcher);
     const result = await readCoinbase();
-    expect(result.accounts).toEqual([{ currency: 'BTC', available: '0.123456789123456789', hold: '0.1' }, { currency: 'BRL', available: '0', hold: '0' }]);
+    expect(result.accounts).toEqual([{ accountId: 'btc', portfolioId: null, network: null, currency: 'BTC', available: '0.123456789123456789', hold: '0.1' }, { accountId: 'brl', portfolioId: null, network: null, currency: 'BRL', available: '0', hold: '0' }]);
     expect(result.scope).toBe('API_KEY_PORTFOLIO'); expect(result.openOrders).toBe(0);
-    expect(JSON.stringify(result)).not.toMatch(/uuid|USDC/); expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(JSON.stringify(result)).not.toMatch(/uuid|USDC|Base/); expect(fetcher).toHaveBeenCalledTimes(3);
   });
   it('rejects incomplete pagination instead of showing a false verified total', async () => {
     credentials();

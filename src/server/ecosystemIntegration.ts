@@ -1,9 +1,10 @@
 import { COMMUNITY_COMMAND_URL } from '../features/integrations/catalog.js';
 import { coinbaseConfiguration, IntegrationReadError, readCoinbase, requireIntegrationOperator } from './coinbaseReadOnly.js';
+import { readCoinbaseHistory } from './coinbaseHistory.js';
 
 export async function ecosystemIntegrationHandler(req: any, res: any): Promise<boolean> {
   const view = req.query?.view;
-  if (view !== 'ecosystem' && view !== 'coinbase') return false;
+  if (view !== 'ecosystem' && view !== 'coinbase' && view !== 'coinbase-history') return false;
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Vary', 'Authorization');
@@ -12,10 +13,10 @@ export async function ecosystemIntegrationHandler(req: any, res: any): Promise<b
     res.end(JSON.stringify({ error: 'READ_ONLY_ENDPOINT' })); return true;
   }
   try {
-    if (view === 'coinbase') {
+    if (view === 'coinbase' || view === 'coinbase-history') {
       await requireIntegrationOperator(req.headers?.authorization);
       res.statusCode = 200;
-      res.end(JSON.stringify(await readCoinbase()));
+      res.end(JSON.stringify(view === 'coinbase' ? await readCoinbase() : await readCoinbaseHistory()));
     } else {
       let available = false;
       try {

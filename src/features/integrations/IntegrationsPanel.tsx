@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
-import { ArrowRight, CircleDollarSign, RefreshCw, ShieldCheck, Users } from 'lucide-react';
+import { ArrowRight, RefreshCw, Users } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { COMMUNITY_COMMAND_URL, CoinbaseRead, EcosystemStatus, parseCoinbaseRead, parseEcosystemStatus } from './catalog';
 import { CommunityDirectory } from './CommunityDirectory';
+import { CoinbaseCard } from './CoinbaseCard';
 
 export function IntegrationsPanel({ user, expanded = false, onOpen }: { user: User | null; expanded?: boolean; onOpen?: () => void }) {
   const [status, setStatus] = useState<EcosystemStatus | null>(null);
@@ -39,28 +40,13 @@ export function IntegrationsPanel({ user, expanded = false, onOpen }: { user: Us
     return () => controller.abort();
   }, [user, refresh]);
 
-  const verifiedAt = status?.coinbase.connectorVerifiedAt;
-  const privateReady = status?.coinbase.runtimeConfigured && status?.coinbase.operatorAuthConfigured;
   return <section className="space-y-5" aria-label="Comunidades e integrações">
     <div className="flex items-center justify-between flex-wrap gap-3">
       <div><h2 className="text-xl font-semibold text-white">Comunidades e integrações</h2><p className="text-sm text-slate-400 mt-1">Conexões, evidências e acesso à operação GXEON.</p></div>
       <button disabled={loading} onClick={() => setRefresh(value => value + 1)} className="text-sm text-cyan-400 inline-flex items-center gap-2 disabled:opacity-50"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} />Atualizar status</button>
     </div>
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card glow="cyan" className="border-blue-500/30">
-        <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-3"><div className="bg-blue-600 rounded-xl p-3"><CircleDollarSign size={24} className="text-white" /></div><div><h3 className="text-lg font-semibold text-white">Coinbase</h3><p className="text-xs text-slate-400">Conta Coinbase · monitoramento</p></div></div><Badge variant={balance ? 'green' : 'amber'}>{balance ? 'Leitura verificada' : loading ? 'Verificando' : 'Vinculação pendente'}</Badge></div>
-        <div className="mt-5 space-y-2 text-sm">
-          <p className="text-slate-300">Conector GXEON: <span className={verifiedAt ? 'text-emerald-400' : 'text-slate-400'}>{verifiedAt ? 'conexão verificada' : status ? 'sem verificação registrada' : 'estado indisponível'}</span></p>
-          {verifiedAt && <p className="text-xs text-slate-500">Última verificação do conector: {new Date(verifiedAt).toLocaleString('pt-BR', { timeZone: 'UTC' })} UTC</p>}
-          <p className="text-slate-300">Leitura no painel: <span className="text-slate-400">{balance ? 'ativa nesta sessão' : !status ? 'aguardando verificação' : !status.coinbase.runtimeConfigured ? 'credencial de leitura pendente' : !status.coinbase.operatorAuthConfigured ? 'autorização do operador pendente' : !user ? 'entre como operador para consultar' : 'aguardando leitura'}</span></p>
-        </div>
-        {balance ? <div className="mt-4 space-y-3">
-          <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="text-slate-500"><tr><th className="py-2">Ativo</th><th className="py-2">Disponível</th><th className="py-2">Em reserva</th></tr></thead><tbody>{balance.accounts.map((account, index) => <tr key={`${account.currency}-${index}`} className="border-t border-slate-800 text-slate-200"><td className="py-2">{account.currency}</td><td className="py-2 font-mono">{account.available}</td><td className="py-2 font-mono">{account.hold}</td></tr>)}</tbody></table></div>
-          {!balance.accounts.length && <p className="text-sm text-slate-400">Nenhuma conta retornada neste escopo.</p>}
-          <p className="text-xs text-slate-400">{balance.openOrders} ordens abertas · escopo do portfólio autorizado pela chave · {new Date(balance.observedAt).toLocaleString('pt-BR')}.</p>
-        </div> : <p className="mt-4 text-sm text-slate-400 leading-6">{privateReady ? 'Os saldos aparecem somente para o operador autorizado.' : 'A conexão do GXEON foi registrada separadamente da leitura no painel. A consulta automática será liberada após vincular a credencial de leitura e a sessão do operador.'}</p>}
-        <div className="mt-5 pt-4 border-t border-slate-800 flex items-center gap-2 text-xs text-slate-500"><ShieldCheck size={15} />Somente leitura · saldos separados por ativo</div>
-      </Card>
+      <CoinbaseCard user={user} status={status} balance={balance ?? null} loading={loading} refreshKey={refresh} onRefresh={() => setRefresh(value => value + 1)} />
       <Card glow="orange">
         <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-3"><div className="rounded-xl p-3 bg-orange-500/15"><Users size={24} className="text-orange-400" /></div><div><h3 className="text-lg font-semibold text-white">Rede de comunidades</h3><p className="text-xs text-slate-400">5 plataformas acompanhadas</p></div></div><Badge variant={status?.communityCommand.status === 'AVAILABLE' ? 'green' : 'amber'}>{loading ? 'Verificando' : status?.communityCommand.status === 'AVAILABLE' ? 'Staging disponível' : 'Estado indisponível'}</Badge></div>
         <p className="mt-5 text-sm text-slate-400 leading-6">Diretório e evidências reunidos neste painel. Parcerias, oportunidades, entregas e ledger estão no módulo autenticado de Comunidades.</p>
