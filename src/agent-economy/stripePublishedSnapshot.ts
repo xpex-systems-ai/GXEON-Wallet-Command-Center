@@ -14,6 +14,7 @@ import {
 const COLLECTION = 'financial_provider_snapshots';
 const DOCUMENT = 'stripe_live_30day_charges';
 const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
+const CHARGE_WINDOW_SECONDS = 30 * 86400;
 
 // The Stripe account's currently configured LIVE credential is bound to the
 // snapshot, without ever storing or publishing the raw API key. A key change
@@ -60,15 +61,20 @@ export function isFreshVerifiedSnapshot(value: unknown, now = Date.now()): value
     && v.exhaustive === true
     && typeof windowStart === 'number' && Number.isSafeInteger(windowStart)
     && typeof windowEnd === 'number' && Number.isSafeInteger(windowEnd)
-    && windowEnd >= windowStart
     && Number.isFinite(sampledAt)
+    // A fresh observation cannot certify a stale, future or differently sized cohort.
+    && windowEnd === Math.floor(sampledAt / 1000)
+    && windowStart === Math.max(0, windowEnd - CHARGE_WINDOW_SECONDS)
     && sampledAt <= now && now - sampledAt < STALE_AFTER_MS
     && [v.paidCharges, v.grossBRLCents, v.refundedBRLCents, v.capturedMinusRefundedBRLCents,
       v.otherCurrencyPaidCharges, v.disputedCharges].every(n => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0)
     // These fields form a single accounting proof, not six independent counters.
     && v.refundedBRLCents! <= v.grossBRLCents!
     && v.capturedMinusRefundedBRLCents === v.grossBRLCents! - v.refundedBRLCents!
-    && v.disputedCharges! <= v.paidCharges!;
+    && v.disputedCharges! <= v.paidCharges!
+    // No BRL captures means no BRL gross, refunds or net in this cohort.
+    && (v.paidCharges !== 0 || (v.grossBRLCents === 0
+      && v.refundedBRLCents === 0 && v.capturedMinusRefundedBRLCents === 0));
 }
 
 export async function readPublishedStripeMoneyTruth(
@@ -100,7 +106,9 @@ export async function refreshPublishedStripeMoneyTruth(
   // Only call behind CRON_SECRET-authenticated backend entrypoint.
   if (!currentBinding) return unavailableStripeMoneyTruth();
   const result = await fetchProvider();
-  if (!isFreshVerifiedSnapshot(result)) return result;
+  if (!isFreshVerifiedSnapshot(result)) {
+    return result.status === 'PROVIDER_VERIFIED' ? unavailableStripeMoneyTruth() : result;
+  }
   const client = store || new FirestoreRestClient();
   const stored: StoredStripeProof = {
     snapshot: result, credentialBinding: currentBinding,
