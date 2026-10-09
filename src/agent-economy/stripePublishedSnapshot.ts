@@ -8,7 +8,7 @@
 import { FirestoreRestClient, isFirestoreRestConfigured } from '../../api/_firestoreRest.js';
 import { createHmac } from 'node:crypto';
 import {
-  readStripeLiveMoneyTruth, type PublicStripeMoneyTruth,
+  MAX_STRIPE_CHARGE_PAGES, readStripeLiveMoneyTruth, type PublicStripeMoneyTruth,
 } from './stripeLiveMoneyTruth.js';
 
 const COLLECTION = 'financial_provider_snapshots';
@@ -59,6 +59,9 @@ export function isFreshVerifiedSnapshot(value: unknown, now = Date.now()): value
     && v.source === 'STRIPE_LIVE_CHARGES'
     && v.scope === 'CONNECTED_STRIPE_ACCOUNT_LAST_30_DAYS'
     && v.exhaustive === true
+    && v.maxPages === MAX_STRIPE_CHARGE_PAGES
+    && typeof v.pagesFetched === 'number' && Number.isSafeInteger(v.pagesFetched)
+    && v.pagesFetched >= 1 && v.pagesFetched <= v.maxPages
     && typeof windowStart === 'number' && Number.isSafeInteger(windowStart)
     && typeof windowEnd === 'number' && Number.isSafeInteger(windowEnd)
     && Number.isFinite(sampledAt)
@@ -99,7 +102,7 @@ export async function readPublishedStripeMoneyTruth(
 }
 
 export async function refreshPublishedStripeMoneyTruth(
-  store?: Pick<FirestoreRestClient, 'set'>,
+  store?: Pick<FirestoreRestClient, 'get' | 'makeUpdateWrite' | 'conditionalCommit'>,
   fetchProvider = readStripeLiveMoneyTruth,
   currentBinding = stripeCredentialBinding(),
 ): Promise<PublicStripeMoneyTruth> {
@@ -114,7 +117,26 @@ export async function refreshPublishedStripeMoneyTruth(
   const stored: StoredStripeProof = {
     snapshot: result, credentialBinding: currentBinding,
   };
-  await client.set(COLLECTION, DOCUMENT, stored as unknown as Record<string, unknown>);
-  // The credential binding remains server-only; return only public aggregate data.
-  return result;
+  // A duplicate/overlapping cron may finish out of order. Compare the observed
+  // timestamps and atomically write only if the document version we read is
+  // still current. A missing document uses exists:false, never an upsert race.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const current = await client.get<StoredStripeProof>(COLLECTION, DOCUMENT);
+    if (current?.data.credentialBinding === currentBinding
+      && isFreshVerifiedSnapshot(current.data.snapshot)
+      && Date.parse(current.data.snapshot.observedAt) >= Date.parse(result.observedAt)) {
+      return current.data.snapshot;
+    }
+    // An existing document without a version cannot be replaced safely.
+    if (current && !current.updateTime) return unavailableStripeMoneyTruth();
+    const write = client.makeUpdateWrite(COLLECTION, DOCUMENT,
+      stored as unknown as Record<string, unknown>,
+      current ? { updateTime: current.updateTime! } : { exists: false });
+    if (await client.conditionalCommit([write]) === 'COMMITTED') {
+      // The credential binding remains server-only.
+      return result;
+    }
+  }
+  // Repeated concurrent changes are unavailable, never an unconditional overwrite.
+  return unavailableStripeMoneyTruth();
 }

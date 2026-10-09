@@ -6,28 +6,36 @@ import {
 import type { PublicStripeMoneyTruth } from './stripeLiveMoneyTruth';
 
 const binding = 'test-credential-binding';
-const verified = (): PublicStripeMoneyTruth => {
-  const observedAt = new Date().toISOString();
+const verified = (observedAt = new Date().toISOString()): PublicStripeMoneyTruth => {
   const windowEndUnix = Math.floor(Date.parse(observedAt) / 1000);
-  return ({
-  status: 'PROVIDER_VERIFIED',
-  observedAt,
-  source: 'STRIPE_LIVE_CHARGES',
-  scope: 'CONNECTED_STRIPE_ACCOUNT_LAST_30_DAYS',
-  windowStartUnix: Math.max(0, windowEndUnix - 30 * 86400),
-  windowEndUnix,
-  maxPages: 5,
-  pagesFetched: 1,
-  exhaustive: true,
-  paidCharges: 2,
-  grossBRLCents: 1000,
-  refundedBRLCents: 100,
-  capturedMinusRefundedBRLCents: 900,
-  otherCurrencyPaidCharges: 0,
-  disputedCharges: 0,
-  note: 'Provider charge snapshot only.',
-  });
+  return {
+    status: 'PROVIDER_VERIFIED',
+    observedAt,
+    source: 'STRIPE_LIVE_CHARGES',
+    scope: 'CONNECTED_STRIPE_ACCOUNT_LAST_30_DAYS',
+    windowStartUnix: Math.max(0, windowEndUnix - 30 * 86400),
+    windowEndUnix,
+    maxPages: 5,
+    pagesFetched: 1,
+    exhaustive: true,
+    paidCharges: 2,
+    grossBRLCents: 1000,
+    refundedBRLCents: 100,
+    capturedMinusRefundedBRLCents: 900,
+    otherCurrencyPaidCharges: 0,
+    disputedCharges: 0,
+    note: 'Provider charge snapshot only.',
+  };
 };
+
+const writer = () => ({
+  get: vi.fn().mockResolvedValue(null),
+  makeUpdateWrite: vi.fn((collection: string, id: string, data: Record<string, unknown>,
+    options?: { exists?: boolean; updateTime?: string }) => ({
+    update: { collection, id, data }, currentDocument: options,
+  })),
+  conditionalCommit: vi.fn().mockResolvedValue('COMMITTED'),
+});
 
 describe('durable published money truth', () => {
   it('only shows a fully verified fresh provider aggregate', () => {
@@ -37,6 +45,14 @@ describe('durable published money truth', () => {
     expect(isFreshVerifiedSnapshot({...verified(), paidCharges: -1})).toBe(false);
     expect(isFreshVerifiedSnapshot({...verified(), observedAt: '2024-01-01T00:00:00.000Z'})).toBe(false);
     expect(isFreshVerifiedSnapshot({...verified(), observedAt: '2099-01-01T00:00:00.000Z'})).toBe(false);
+  });
+
+
+  it.each([
+    {pagesFetched: 0}, {pagesFetched: -1}, {pagesFetched: 6}, {pagesFetched: 1.5},
+    {maxPages: 0}, {maxPages: -1}, {maxPages: 6}, {maxPages: 5.5},
+  ])('rejects impossible or incompatible pagination metadata %j', fields => {
+    expect(isFreshVerifiedSnapshot({...verified(), ...fields})).toBe(false);
   });
 
   it.each(['old', 'future', 'one-second', 'longer', 'negative-start'] as const)(
@@ -94,9 +110,10 @@ describe('durable published money truth', () => {
       const snapshot = verified();
       if (kind === 'wrong-window') snapshot.windowStartUnix = snapshot.windowEndUnix! - 1;
       else snapshot.paidCharges = 0;
-      const set = vi.fn();
-      const result = await refreshPublishedStripeMoneyTruth({set}, async () => snapshot, binding);
-      expect(set).not.toHaveBeenCalled();
+      const store = writer();
+      const result = await refreshPublishedStripeMoneyTruth(store, async () => snapshot, binding);
+      expect(store.get).not.toHaveBeenCalled();
+      expect(store.conditionalCommit).not.toHaveBeenCalled();
       expect(result.status).toBe('UNAVAILABLE');
       expect(result.capturedMinusRefundedBRLCents).toBeNull();
     },
@@ -160,19 +177,78 @@ describe('durable published money truth', () => {
     expect(result.status).toBe('UNAVAILABLE');
   });
 
-  it('writes a new snapshot only after full provider verification', async () => {
-    const set = vi.fn().mockResolvedValue(undefined);
-    const saved = await refreshPublishedStripeMoneyTruth({set}, async () => verified(), binding);
+
+  it('writes a new snapshot only after full provider verification with a creation precondition', async () => {
+    const store = writer();
+    const saved = await refreshPublishedStripeMoneyTruth(store, async () => verified(), binding);
     expect(saved.status).toBe('PROVIDER_VERIFIED');
-    expect(set).toHaveBeenCalledTimes(1);
-    expect(set.mock.calls[0][0]).toBe('financial_provider_snapshots');
-    expect(set.mock.calls[0][2]).toMatchObject({credentialBinding: binding, snapshot: {status: 'PROVIDER_VERIFIED'}});
+    expect(store.makeUpdateWrite).toHaveBeenCalledWith(
+      'financial_provider_snapshots', 'stripe_live_30day_charges',
+      expect.objectContaining({credentialBinding: binding, snapshot: expect.objectContaining({status: 'PROVIDER_VERIFIED'})}),
+      {exists: false},
+    );
+    expect(store.conditionalCommit).toHaveBeenCalledTimes(1);
   });
   it('never overwrites last good snapshot on a partial/incomplete Stripe read', async () => {
-    const set = vi.fn();
-    const unavailable = unavailableStripeMoneyTruth();
-    const result = await refreshPublishedStripeMoneyTruth({set}, async () => unavailable, binding);
+    const store = writer();
+    const result = await refreshPublishedStripeMoneyTruth(store, async () => unavailableStripeMoneyTruth(), binding);
     expect(result.status).toBe('UNAVAILABLE');
-    expect(set).not.toHaveBeenCalled();
+    expect(store.get).not.toHaveBeenCalled();
+    expect(store.conditionalCommit).not.toHaveBeenCalled();
+  });
+  it('preserves the newer proof when a slower provider scan finishes last', async () => {
+    const store = writer();
+    const newer = verified(new Date(Date.now() - 1000).toISOString());
+    const older = verified(new Date(Date.now() - 2000).toISOString());
+    store.get.mockResolvedValue({data: {snapshot: newer, credentialBinding: binding}, updateTime: 'version-new'});
+    const result = await refreshPublishedStripeMoneyTruth(store, async () => older, binding);
+    expect(result).toEqual(newer);
+    expect(store.conditionalCommit).not.toHaveBeenCalled();
+  });
+  it('guards an existing proof with its Firestore version', async () => {
+    const store = writer();
+    const older = verified(new Date(Date.now() - 2000).toISOString());
+    store.get.mockResolvedValue({data: {snapshot: older, credentialBinding: binding}, updateTime: 'version-old'});
+    const result = await refreshPublishedStripeMoneyTruth(store, async () => verified(), binding);
+    expect(result.status).toBe('PROVIDER_VERIFIED');
+    expect(store.makeUpdateWrite.mock.calls[0][3]).toEqual({updateTime: 'version-old'});
+  });
+  it('rereads after a CAS conflict and preserves a winning newer observation', async () => {
+    const store = writer();
+    const older = verified(new Date(Date.now() - 3000).toISOString());
+    const candidate = verified(new Date(Date.now() - 2000).toISOString());
+    const winner = verified(new Date(Date.now() - 1000).toISOString());
+    store.get.mockResolvedValueOnce({data: {snapshot: older, credentialBinding: binding}, updateTime: 'version-old'})
+      .mockResolvedValueOnce({data: {snapshot: winner, credentialBinding: binding}, updateTime: 'version-winner'});
+    store.conditionalCommit.mockResolvedValueOnce('CONFLICT');
+    const result = await refreshPublishedStripeMoneyTruth(store, async () => candidate, binding);
+    expect(result).toEqual(winner);
+    expect(store.get).toHaveBeenCalledTimes(2);
+    expect(store.conditionalCommit).toHaveBeenCalledTimes(1);
+  });
+  it('retries a creation race safely and replaces only the older winning document', async () => {
+    const store = writer();
+    const candidate = verified();
+    const older = verified(new Date(Date.now() - 1000).toISOString());
+    store.get.mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({data: {snapshot: older, credentialBinding: binding}, updateTime: 'race-version'});
+    store.conditionalCommit.mockResolvedValueOnce('CONFLICT').mockResolvedValueOnce('COMMITTED');
+    expect((await refreshPublishedStripeMoneyTruth(store, async () => candidate, binding)).status).toBe('PROVIDER_VERIFIED');
+    expect(store.makeUpdateWrite.mock.calls[0][3]).toEqual({exists: false});
+    expect(store.makeUpdateWrite.mock.calls[1][3]).toEqual({updateTime: 'race-version'});
+  });
+  it('fails closed instead of using an unconditional write after repeated conflicts', async () => {
+    const store = writer();
+    store.conditionalCommit.mockResolvedValue('CONFLICT');
+    const result = await refreshPublishedStripeMoneyTruth(store, async () => verified(), binding);
+    expect(result.status).toBe('UNAVAILABLE');
+    expect(store.get).toHaveBeenCalledTimes(3);
+    expect(store.conditionalCommit).toHaveBeenCalledTimes(3);
+  });
+  it('does not replace an existing document whose version is unavailable', async () => {
+    const store = writer();
+    store.get.mockResolvedValue({data: {snapshot: verified(new Date(Date.now() - 1000).toISOString()), credentialBinding: binding}});
+    expect((await refreshPublishedStripeMoneyTruth(store, async () => verified(), binding)).status).toBe('UNAVAILABLE');
+    expect(store.conditionalCommit).not.toHaveBeenCalled();
   });
 });
