@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPairSync, sign, verify } from 'node:crypto';
 import { buildCoinbaseReadJwt, coinbaseConfiguration, readCoinbase, requireIntegrationOperator } from '../src/server/coinbaseReadOnly';
 import { ecosystemIntegrationHandler } from '../src/server/ecosystemIntegration';
+import { COMMUNITY_COMMAND_URL, parseCoinbaseRead, parseEcosystemStatus } from '../src/features/integrations/catalog';
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 function credentials() {
@@ -14,6 +15,16 @@ function response() {
   return { statusCode: 0, headers: {} as Record<string, string>, body: '', setHeader(name: string, value: string) { this.headers[name] = value; }, end(body: string) { this.body = body; } };
 }
 describe('Central integrations security and money truth', () => {
+  it('rejects the Firebase Hosting legacy status before the UI stores it', () => {
+    expect(() => parseEcosystemStatus({ stripeConfigured: true, realRevenue: 'R$0.00' })).toThrow('Status das integrações indisponível');
+    for (const value of [null, [], { coinbase: null, communityCommand: null }]) expect(() => parseEcosystemStatus(value)).toThrow();
+    expect(parseEcosystemStatus({ observedAt: '2026-10-09T05:00:00Z', communityCommand: { status: 'UNAVAILABLE', environment: 'staging', url: COMMUNITY_COMMAND_URL, dataSync: 'AUTHENTICATED_SESSION_REQUIRED' }, coinbase: { connectorVerifiedAt: null, runtimeConfigured: false, operatorAuthConfigured: false, mode: 'READ_ONLY' } }).coinbase.runtimeConfigured).toBe(false);
+  });
+  it('does not accept legacy or malformed responses as verified private balances', () => {
+    const valid = { status: 'VERIFIED', observedAt: '2026-10-09T05:00:00Z', scope: 'API_KEY_PORTFOLIO', openOrders: 0, accounts: [{ currency: 'BRL', available: '0', hold: '0' }] };
+    expect(parseCoinbaseRead(valid)).toEqual(valid);
+    for (const value of [{ stripeConfigured: true }, { ...valid, accounts: null }, { ...valid, openOrders: -1 }, { ...valid, accounts: [{ currency: 'USDC', available: null, hold: '0' }] }]) expect(() => parseCoinbaseRead(value)).toThrow('Nenhum saldo foi confirmado');
+  });
   it('does not mistake connector verification for runtime authorization', () => {
     vi.stubEnv('GXEON_COINBASE_CONNECTOR_VERIFIED_AT', '2026-10-01T00:00:00Z');
     vi.stubEnv('COINBASE_READ_API_KEY_NAME', ''); vi.stubEnv('COINBASE_READ_API_KEY_SECRET', ''); vi.stubEnv('GXEON_OPERATOR_UID', '');

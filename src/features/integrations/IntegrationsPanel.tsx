@@ -3,7 +3,7 @@ import { User } from 'firebase/auth';
 import { ArrowRight, CircleDollarSign, RefreshCw, ShieldCheck, Users } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
-import { COMMUNITY_COMMAND_URL, CoinbaseRead, EcosystemStatus } from './catalog';
+import { COMMUNITY_COMMAND_URL, CoinbaseRead, EcosystemStatus, parseCoinbaseRead, parseEcosystemStatus } from './catalog';
 import { CommunityDirectory } from './CommunityDirectory';
 
 export function IntegrationsPanel({ user, expanded = false, onOpen }: { user: User | null; expanded?: boolean; onOpen?: () => void }) {
@@ -21,14 +21,14 @@ export function IntegrationsPanel({ user, expanded = false, onOpen }: { user: Us
       try {
         const response = await fetch('/api/integration-status?view=ecosystem', { signal: controller.signal, cache: 'no-store' });
         if (!response.ok) throw new Error('Não foi possível verificar as integrações.');
-        const data: EcosystemStatus = await response.json();
+        const data = parseEcosystemStatus(await response.json());
         if (controller.signal.aborted) return;
         setStatus(data);
         if (user && data.coinbase.runtimeConfigured && data.coinbase.operatorAuthConfigured) {
           const token = await user.getIdToken();
           const privateResponse = await fetch('/api/integration-status?view=coinbase', { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal, cache: 'no-store' });
           if (!privateResponse.ok) throw new Error(privateResponse.status === 401 || privateResponse.status === 403 ? 'A leitura Coinbase exige a sessão do operador autorizado.' : 'Leitura Coinbase indisponível. Tente atualizar.');
-          const privateData: CoinbaseRead = await privateResponse.json();
+          const privateData = parseCoinbaseRead(await privateResponse.json());
           if (!controller.signal.aborted) setPrivateBalance({ uid: user.uid, data: privateData });
         }
       } catch (failure) {

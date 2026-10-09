@@ -46,6 +46,11 @@ No new owner identity is created by this change.
 connector check. It is historical evidence and never activates runtime reads.
 Without credentials and operator auth the card remains explicitly pending.
 
+The new API views are served by Vercel. Firebase Hosting currently serves a
+legacy Stripe-only response; the client validates both response contracts before
+storing them and reports unavailable integrations there without crashing the
+dashboard or accepting legacy fields as a Coinbase balance.
+
 Official specifications:
 - [Coinbase API key JWT authentication](https://docs.cdp.coinbase.com/coinbase-app/authentication-authorization/api-key-authentication)
 - [Accounts and portfolio scope](https://docs.cdp.coinbase.com/api-reference/advanced-trade-api/rest-api/accounts/list-accounts)
