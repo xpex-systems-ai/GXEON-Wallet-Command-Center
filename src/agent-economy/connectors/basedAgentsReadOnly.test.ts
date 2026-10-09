@@ -281,6 +281,19 @@ describe('GXEON BasedAgents snapshot', () => {
     expect(mock).toHaveBeenCalledTimes(6);
   });
 
+  it('preserves legitimate claim reads when task feed and profile both fail', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('claimer=')) return okay({ tasks: [{ task_id: 'task_Assigned123' }] });
+      throw new Error('temporary outage');
+    }));
+    const snapshot = await readBasedAgentsSnapshot();
+    expect(snapshot.status).toBe('PARTIAL');
+    expect(snapshot.market.openTasksVisible).toBeNull();
+    expect(snapshot.market.ourClaimsVisible).toBe(1);
+    expect(snapshot.agent.walletVerified).toBeNull();
+    expect(snapshot.errors).toContain('AGENT_PROFILE_UNAVAILABLE');
+  });
+
   it('fails closed when every public page is unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     const snapshot = await readBasedAgentsSnapshot();
