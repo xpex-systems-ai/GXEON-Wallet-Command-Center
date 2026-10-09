@@ -255,7 +255,10 @@ export async function readBasedAgentsSnapshot(): Promise<BasedAgentsSnapshot> {
   return {
     provider: 'basedagents',
     // Preserve verified identity/security alerts if task listing pages are offline.
-    status: fetchedPages === 0 && !profileData ? 'UNAVAILABLE'
+    // A successful claims or authored-task read is useful evidence even when
+    // every public market page and the profile endpoint are offline.
+    status: fetchedPages === 0 && !profileData && !claimedList && !authoredList
+      ? 'UNAVAILABLE'
       : errors.length ? 'PARTIAL' : 'CONFIRMED_PUBLIC',
     observedAt,
     agent: {
