@@ -205,6 +205,23 @@ describe('durable published money truth', () => {
     expect(result).toEqual(newer);
     expect(store.conditionalCommit).not.toHaveBeenCalled();
   });
+  it('prevents a retiring Stripe credential cron from overwriting a later proof', async () => {
+    const store = writer();
+    const later = verified(new Date(Date.now() - 1000).toISOString());
+    const earlier = verified(new Date(Date.now() - 3000).toISOString());
+    store.get.mockResolvedValue({
+      data: {snapshot: later, credentialBinding: 'new-stripe-key-binding'},
+      updateTime: 'new-account-proof-version',
+    });
+    const result = await refreshPublishedStripeMoneyTruth(
+      store, async () => earlier, 'old-stripe-key-binding',
+    );
+    expect(result.status).toBe('UNAVAILABLE');
+    expect(result.paidCharges).toBeNull();
+    expect(store.makeUpdateWrite).not.toHaveBeenCalled();
+    expect(store.conditionalCommit).not.toHaveBeenCalled();
+  });
+
   it('guards an existing proof with its Firestore version', async () => {
     const store = writer();
     const older = verified(new Date(Date.now() - 2000).toISOString());
