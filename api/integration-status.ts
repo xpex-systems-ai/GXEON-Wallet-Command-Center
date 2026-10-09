@@ -1,5 +1,6 @@
 // GXEON_BOUNTY_LIVE_PROBE_DEPLOY_MARKER
 import { paymentStoreConfigured, paymentStoreHealth } from './_store.js';
+import { ecosystemIntegrationHandler } from '../src/server/ecosystemIntegration.js';
 import { FirestoreRestClient } from './_firestoreRest.js';
 import type { CreditPurchase } from '../src/agent-economy/store.js';
 import { readTaskmarketStatus } from '../src/agent-economy/taskmarket/taskmarketRadar.js';
@@ -41,14 +42,8 @@ async function fetchReadOnlyJson<T>(url: string, timeoutMs = 8000): Promise<T> {
   }
 }
 
-function numericSnapshot(name: string): number | null {
-  const raw = String(process.env[name] || '').trim();
-  if (!raw) return null;
-  const value = Number(raw);
-  return Number.isFinite(value) && value >= 0 ? value : null;
-}
-
 export default async function handler(req: any, res: any) {
+  if (await ecosystemIntegrationHandler(req, res)) return;
   if (req.method !== 'GET') {
     res.statusCode = 405;
     res.setHeader('Content-Type', 'application/json');
@@ -271,16 +266,6 @@ export default async function handler(req: any, res: any) {
     };
   }
 
-  const coinbaseAvailable = numericSnapshot('GXEON_COINBASE_USDC_AVAILABLE_SNAPSHOT');
-  const coinbaseHold = numericSnapshot('GXEON_COINBASE_USDC_HOLD_SNAPSHOT');
-  const coinbaseOpenOrders = numericSnapshot('GXEON_COINBASE_OPEN_ORDERS_SNAPSHOT');
-  const coinbaseVerifiedAt = String(process.env.GXEON_COINBASE_SNAPSHOT_AT || '').trim() || null;
-  const hasCoinbaseSnapshot =
-    coinbaseAvailable !== null &&
-    coinbaseHold !== null &&
-    coinbaseOpenOrders !== null &&
-    Boolean(coinbaseVerifiedAt);
-
   const moneyTruthSnapshot = {
     observedAt,
     agent: {
@@ -295,16 +280,9 @@ export default async function handler(req: any, res: any) {
     usdc: {
       settledRevenue: x402SettledUsdc.toFixed(6),
       settledPayments: x402SettledCount,
-      coinbase: hasCoinbaseSnapshot
-        ? {
-            status: 'READ_ONLY_SNAPSHOT',
-            available: coinbaseAvailable?.toFixed(6),
-            hold: coinbaseHold?.toFixed(6),
-            openOrders: coinbaseOpenOrders,
-            verifiedAt: coinbaseVerifiedAt,
-          }
-        : {
-            status: 'EXTERNAL_CONNECTOR_REQUIRED',
+      // Private account values are available only in the owner-authorized view.
+      coinbase: {
+            status: 'PRIVATE_OPERATOR_VIEW',
             available: null,
             hold: null,
             openOrders: null,

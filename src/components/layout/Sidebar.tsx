@@ -8,11 +8,13 @@ import {
   ShieldAlert,
   FileText,
   Bot,
+  Network,
 } from 'lucide-react';
 
 export type NavTab =
   | 'dashboard'
   | 'agent-economy'
+  | 'integrations'
   | 'sales'
   | 'wallets'
   | 'mining'
@@ -39,6 +41,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'dashboard' as NavTab,
       label: 'Command Center',
       icon: LayoutDashboard,
+      badge: null,
+    },
+    {
+      id: 'integrations' as NavTab,
+      label: 'Comunidades & Integrações',
+      icon: Network,
       badge: null,
     },
     {

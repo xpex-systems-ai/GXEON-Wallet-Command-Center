@@ -23,6 +23,7 @@ import { Ecosystem } from './pages/Ecosystem';
 import { AgentMarketplace } from './pages/AgentMarketplace';
 import { BoTTubeIntegrationGuide } from './pages/BoTTubeIntegrationGuide';
 import { AgentFiOS } from './pages/AgentFiOS';
+import { IntegrationsPanel } from './features/integrations/IntegrationsPanel';
 
 import {
   WalletItem,
@@ -54,7 +55,7 @@ export function App() {
     currentPathSafe() === '/agentfi' &&
     new URLSearchParams(window.location.search).get('native') === '1';
 
-  const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
+  const [currentTab, setCurrentTab] = useState<NavTab>(new URLSearchParams(window.location.search).get('tab') === 'integrations' ? 'integrations' : 'dashboard');
   const [wallets, setWallets] = useState<WalletItem[]>([]);
   const [bounties, setBounties] = useState<BountyItem[]>([]);
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
@@ -65,6 +66,8 @@ export function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [salesOrders, setSalesOrders] = useState<CustomerOrder[]>([]);
+  const [salesTickets, setSalesTickets] = useState<JobTicket[]>([]);
 
   const isConfigured = isFirebaseConfigured();
 
@@ -313,8 +316,6 @@ export function App() {
     return <AgentFiOS />;
   }
 
-  const [salesOrders, setSalesOrders] = useState<CustomerOrder[]>([]);
-  const [salesTickets, setSalesTickets] = useState<JobTicket[]>([]);
 
   const bountyStats = bountyService.getStats();
 
@@ -344,6 +345,7 @@ export function App() {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
           {currentTab === 'dashboard' && (
             <DashboardView
+              user={currentUser}
               wallets={wallets}
               bridgeHealth={bridgeHealth}
               bridgeStatus={bridgeStatus}
@@ -388,6 +390,8 @@ export function App() {
               />
             </div>
           )}
+
+          {currentTab === 'integrations' && <IntegrationsPanel user={currentUser} expanded />}
 
           {currentTab === 'wallets' && (
             <WalletGridView
