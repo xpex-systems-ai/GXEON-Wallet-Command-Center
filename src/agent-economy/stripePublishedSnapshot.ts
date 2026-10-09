@@ -106,8 +106,9 @@ export async function refreshPublishedStripeMoneyTruth(
   // Only call behind CRON_SECRET-authenticated backend entrypoint.
   if (!currentBinding) return unavailableStripeMoneyTruth();
   const result = await fetchProvider();
+  const providerStatus = result.status;
   if (!isFreshVerifiedSnapshot(result)) {
-    return result.status === 'PROVIDER_VERIFIED' ? unavailableStripeMoneyTruth() : result;
+    return providerStatus === 'PROVIDER_VERIFIED' ? unavailableStripeMoneyTruth() : result;
   }
   const client = store || new FirestoreRestClient();
   const stored: StoredStripeProof = {
