@@ -1,4 +1,5 @@
 import React from 'react';
+import { User } from 'firebase/auth';
 import {
   Wallet,
   Globe,
@@ -18,8 +19,10 @@ import { walletRegistry } from '../../wallets/registry';
 import { QuantumTreasuryView } from './QuantumTreasuryView';
 import { RealRevenuePanel } from './RealRevenuePanel';
 import { SwapRadarPanel } from './SwapRadarPanel';
+import { IntegrationsPanel } from '../integrations/IntegrationsPanel';
 
 interface DashboardViewProps {
+  user: User | null;
   wallets: WalletItem[];
   bridgeHealth: BridgeHealthResponse | null;
   bridgeStatus: BridgeStatusResponse | null;
@@ -28,6 +31,7 @@ interface DashboardViewProps {
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
+  user,
   wallets,
   bridgeHealth,
   bridgeStatus,
@@ -91,6 +95,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Real Revenue & Money Truth */}
+      <IntegrationsPanel user={user} onOpen={() => onNavigate('integrations')} />
       <RealRevenuePanel />
 
       {/* Multi-asset conversion intelligence: discovery only, no signing or asset movement */}

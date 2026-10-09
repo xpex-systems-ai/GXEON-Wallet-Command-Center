@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { CommunityDirectory } from '../features/integrations/CommunityDirectory';
 
 export function Ecosystem() {
   useEffect(() => {
@@ -37,6 +38,8 @@ export function Ecosystem() {
             As referências abaixo são informativas e apontam diretamente para os respectivos projetos.
           </p>
         </section>
+
+        <section className="space-y-5"><h2 className="text-xl font-semibold">Rede de comunidades GXEON</h2><CommunityDirectory /><a href="/?tab=integrations" className="inline-block text-cyan-400 text-sm">Abrir Comunidades e Integrações no painel →</a></section>
 
         <section className="grid gap-6 md:grid-cols-2">
           <article className="rounded-2xl border border-[#1E314F] bg-[#111B2D] p-6">

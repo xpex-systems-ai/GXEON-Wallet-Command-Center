@@ -194,12 +194,12 @@ export function RealRevenuePanel() {
           <div className={`text-xl font-bold font-mono ${coinbaseReady ? 'text-emerald-400' : 'text-slate-400'}`}>
             {coinbaseReady && moneyTruth?.usdc.coinbase.available !== null
               ? `${moneyTruth.usdc.coinbase.available} USDC`
-              : 'EXTERNAL'}
+              : 'PRIVADO'}
           </div>
           <div className="text-[10px] text-slate-500 mt-1">
             {coinbaseReady
               ? `Hold: ${moneyTruth?.usdc.coinbase.hold || '0'} • Ordens: ${moneyTruth?.usdc.coinbase.openOrders ?? 0}`
-              : 'Coinbase read-only não está vinculada ao runtime público'}
+              : 'Consulte o card Coinbase em Comunidades e Integrações'}
           </div>
         </div>
 
