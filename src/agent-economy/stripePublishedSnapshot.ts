@@ -122,10 +122,15 @@ export async function refreshPublishedStripeMoneyTruth(
   // still current. A missing document uses exists:false, never an upsert race.
   for (let attempt = 0; attempt < 3; attempt++) {
     const current = await client.get<StoredStripeProof>(COLLECTION, DOCUMENT);
-    if (current?.data.credentialBinding === currentBinding
+    // An older cron deployment must NEVER overwrite a newer proof, even after
+    // Stripe credential rotation. Binding mismatch is not permission to replace
+    // evidence that was observed later under the new account credential.
+    if (current?.data.snapshot
       && isFreshVerifiedSnapshot(current.data.snapshot)
       && Date.parse(current.data.snapshot.observedAt) >= Date.parse(result.observedAt)) {
-      return current.data.snapshot;
+      return current.data.credentialBinding === currentBinding
+        ? current.data.snapshot
+        : unavailableStripeMoneyTruth();
     }
     // An existing document without a version cannot be replaced safely.
     if (current && !current.updateTime) return unavailableStripeMoneyTruth();
