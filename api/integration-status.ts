@@ -1,6 +1,7 @@
 // GXEON_BOUNTY_LIVE_PROBE_DEPLOY_MARKER
 import { paymentStoreConfigured, paymentStoreHealth } from './_store.js';
 import { ecosystemIntegrationHandler } from '../src/server/ecosystemIntegration.js';
+import { revenueOperationsHandler } from '../src/server/revenueOperations.js';
 import { FirestoreRestClient } from './_firestoreRest.js';
 import type { CreditPurchase } from '../src/agent-economy/store.js';
 import { readTaskmarketStatus } from '../src/agent-economy/taskmarket/taskmarketRadar.js';
@@ -43,6 +44,7 @@ async function fetchReadOnlyJson<T>(url: string, timeoutMs = 8000): Promise<T> {
 }
 
 export default async function handler(req: any, res: any) {
+  if (await revenueOperationsHandler(req, res)) return;
   if (await ecosystemIntegrationHandler(req, res)) return;
   if (req.method !== 'GET') {
     res.statusCode = 405;

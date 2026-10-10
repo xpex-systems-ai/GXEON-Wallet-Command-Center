@@ -9,12 +9,14 @@ import {
   FileText,
   Bot,
   Network,
+  BriefcaseBusiness,
 } from 'lucide-react';
 
 export type NavTab =
   | 'dashboard'
   | 'agent-economy'
   | 'integrations'
+  | 'revenue-operations'
   | 'sales'
   | 'wallets'
   | 'mining'
@@ -48,6 +50,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Comunidades & Integrações',
       icon: Network,
       badge: null,
+    },
+    {
+      id: 'revenue-operations' as NavTab,
+      label: 'Revenue Operations',
+      icon: BriefcaseBusiness,
+      badge: 'GX',
+      badgeColor: 'bg-amber-500/15 text-amber-300',
     },
     {
       id: 'agent-economy' as NavTab,

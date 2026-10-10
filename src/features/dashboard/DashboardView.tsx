@@ -20,6 +20,7 @@ import { QuantumTreasuryView } from './QuantumTreasuryView';
 import { RealRevenuePanel } from './RealRevenuePanel';
 import { SwapRadarPanel } from './SwapRadarPanel';
 import { IntegrationsPanel } from '../integrations/IntegrationsPanel';
+import { RevenueOperations } from '../revenue-operations/RevenueOperations';
 
 interface DashboardViewProps {
   user: User | null;
@@ -95,6 +96,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Real Revenue & Money Truth */}
+      <RevenueOperations compact onNavigate={onNavigate} />
       <IntegrationsPanel user={user} onOpen={() => onNavigate('integrations')} />
       <RealRevenuePanel />
 
