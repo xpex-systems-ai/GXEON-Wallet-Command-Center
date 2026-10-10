@@ -24,6 +24,7 @@ import { AgentMarketplace } from './pages/AgentMarketplace';
 import { BoTTubeIntegrationGuide } from './pages/BoTTubeIntegrationGuide';
 import { AgentFiOS } from './pages/AgentFiOS';
 import { IntegrationsPanel } from './features/integrations/IntegrationsPanel';
+import { RevenueOperations } from './features/revenue-operations/RevenueOperations';
 
 import {
   WalletItem,
@@ -55,7 +56,10 @@ export function App() {
     currentPathSafe() === '/agentfi' &&
     new URLSearchParams(window.location.search).get('native') === '1';
 
-  const [currentTab, setCurrentTab] = useState<NavTab>(new URLSearchParams(window.location.search).get('tab') === 'integrations' ? 'integrations' : 'dashboard');
+  const [currentTab, setCurrentTab] = useState<NavTab>(() => {
+    const requested = new URLSearchParams(window.location.search).get('tab');
+    return requested === 'integrations' || requested === 'revenue-operations' ? requested : 'dashboard';
+  });
   const [wallets, setWallets] = useState<WalletItem[]>([]);
   const [bounties, setBounties] = useState<BountyItem[]>([]);
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
@@ -392,6 +396,7 @@ export function App() {
           )}
 
           {currentTab === 'integrations' && <IntegrationsPanel user={currentUser} expanded />}
+          {currentTab === 'revenue-operations' && <RevenueOperations onNavigate={setCurrentTab} />}
 
           {currentTab === 'wallets' && (
             <WalletGridView
