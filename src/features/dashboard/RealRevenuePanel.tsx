@@ -114,6 +114,8 @@ export function RealRevenuePanel() {
   };
 
   const rtcConfirmed = moneyTruth?.rtc.status === 'CONFIRMED' && moneyTruth.rtc.balance !== null;
+  const [agentBounties, setAgentBounties] = useState<{status:string; candidates?:unknown[]}|null>(null);
+  useEffect(() => { fetch('/api/agentbounties-feed', {cache:'no-store'}).then(async r => r.json()).then(setAgentBounties).catch(() => setAgentBounties({status:'UNAVAILABLE'})); }, []);
   const coinbaseReady = moneyTruth?.usdc.coinbase.status === 'READ_ONLY_SNAPSHOT';
   const radarActive = Boolean(moneyTruth?.radar);
 
@@ -267,6 +269,12 @@ export function RealRevenuePanel() {
         </div>
       </div>
 
+      <div className="mt-4 p-3 bg-[#0B1220] border border-slate-700 rounded-xl text-xs font-mono text-slate-300">
+        <div className="font-bold text-[#00D4FF] mb-1">AGENT BOUNTIES • READ ONLY</div>
+        <div>Status: {agentBounties?.status || 'CONNECTING'} • Candidatos para revisão: {agentBounties?.candidates?.length ?? '—'}</div>
+        <div className="text-slate-500 mt-1">Sem claim, sem gastos, sem receita presumida. Cada oportunidade requer validação antes de executar.</div>
+        <a className="text-[#FF7A00] underline mt-1 inline-block" href="/api/agentbounties-feed" target="_blank" rel="noopener noreferrer">Ver feed e evidências</a>
+      </div>
       <div className="mt-4 p-3 bg-slate-900/80 border border-slate-800/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400 font-mono">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
