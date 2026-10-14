@@ -388,6 +388,16 @@ export class VercelStripeService {
       const session = event.data.object as Stripe.Checkout.Session;
       const serviceId = session.metadata?.service_id;
 
+      // The merchant account hosts multiple XPeX applications. Stripe delivers all
+      // subscribed checkout events to every endpoint on that account. A checkout
+      // belonging to Plugin Factory or another seller flow is not an invalid GXEON
+      // payment: acknowledge it WITHOUT attempting a GXEON order or credit grant.
+      // This also prevents indefinite 422 retries for third-party product sessions.
+      if (serviceId !== 'agent_credit_topup' && serviceId !== 'gxeon_quick_fix_v1') {
+        await this.store.recordEventIfAbsent(event.id, event.type);
+        return { status: 'UNHANDLED_EVENT', processed: true };
+      }
+
       // Phase 9 Money Truth: In production, test sessions NEVER count
       if (process.env.NODE_ENV === 'production' && (!event.livemode || !session.livemode)) {
         return { status: 'INVALID_ORDER_STATE', processed: false, error: 'Test sessions never count toward production revenue (livemode required)' };
