@@ -239,7 +239,7 @@ export default async function handler(req: any, res: any) {
       ),
       fetchReadOnlyJson<RustChainHistoryResponse>(
         `${RUSTCHAIN_BASE_URL}/wallet/history?miner_id=${encodeURIComponent(rtcWallet)}&limit=50`
-      ).catch(() => ({ total: undefined, transactions: [] })),
+      ).catch(() => null),
     ]);
 
     if (
@@ -256,19 +256,21 @@ export default async function handler(req: any, res: any) {
         source: 'rustchain.org wallet API',
         verifiedAt: observedAt,
         historyCount:
-          typeof history.total === 'number'
+          history && typeof history.total === 'number'
             ? history.total
-            : Array.isArray(history.transactions)
+            : Array.isArray(history?.transactions)
               ? history.transactions.length
               : null,
         pendingRtc: Array.isArray(history.transactions)
           ? history.transactions
-              .filter((tx) => tx.status === 'pending' && typeof tx.amount === 'number')
+              .filter((tx) => tx.type === 'transfer_in' && tx.status === 'pending' && typeof tx.amount === 'number')
               .reduce((sum, tx) => sum + Number(tx.amount), 0)
-          : 0,
+          : null,
         pendingTransactions: Array.isArray(history.transactions)
           ? history.transactions.filter((tx) => tx.status === 'pending').length
-          : 0,
+          : null,
+        historyStatus: history ? 'AVAILABLE' : 'UNAVAILABLE',
+        noFiatOrUsdcOffRamp: true,
         experimentalToken: true,
       };
     }
