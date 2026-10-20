@@ -23,11 +23,19 @@ export async function fetchAllIssueComments(issue: number, headers: Record<strin
 export async function fetchIssueEvidence(issue: number, claimant: string, wallet: string): Promise<ContributionRecord> {
   if (!Number.isInteger(issue) || issue <= 0) throw new Error('INVALID_ISSUE');
   const headers: Record<string, string> = { Accept: 'application/vnd.github+json', 'User-Agent': 'GXEON-RustChain-Intelligence/1.0' };
-  const [issueResponse, comments] = await Promise.all([
+  let issueResponse: Response;
+  let comments: Comment[];
+  try {
+    [issueResponse, comments] = await Promise.all([
     fetch(`${API}/repos/${ALLOWED_REPO}/issues/${issue}`, { headers, redirect: 'error' }),
     fetchAllIssueComments(issue, headers),
-  ]);
-  if (!issueResponse.ok) throw new Error(`GITHUB_ISSUE_READ_FAILED:${issueResponse.status}`);
+    ]);
+  } catch {
+    return { issue, title: `Issue #${issue} — GITHUB UNAVAILABLE (wallet-only / partial)`, repository: ALLOWED_REPO, claimant, wallet, rewardRtc: null, state: 'OPPORTUNITY', evidence: [] };
+  }
+  if (!issueResponse.ok) {
+    return { issue, title: `Issue #${issue} — GITHUB UNAVAILABLE HTTP ${issueResponse.status} (partial)`, repository: ALLOWED_REPO, claimant, wallet, rewardRtc: null, state: 'OPPORTUNITY', evidence: [] };
+  }
   const issueBody = await issueResponse.json() as { title?: string; body?: string };
   const evidence = comments
     .filter((c) => c.user?.login === 'Scottcjn' || c.user?.login === 'sophiaeagent-beep')
