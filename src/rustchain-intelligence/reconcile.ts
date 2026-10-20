@@ -43,7 +43,7 @@ type WalletTransfer = {
 };
 
 function exactClaimantMatch(memo: string, claimant: string): boolean {
-  const escaped = claimant.replace(/[.*+?^${}()|[\]\\]/g, '\\function transferMatches(record:');
+  const escaped = claimant.replace(/[^a-zA-Z0-9_-]/g, (char) => '\\' + char);
   return new RegExp('(^|[^a-z0-9_-])@?' + escaped + '(?![a-z0-9_-])', 'i').test(memo);
 }
 
