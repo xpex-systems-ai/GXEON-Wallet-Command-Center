@@ -39,13 +39,18 @@ export function reconcileContribution(input: ContributionRecord): ContributionRe
 
 type WalletTransfer = {
   type?: string; status?: string; tx_hash?: string | null;
-  amount?: number; memo?: string;
+  amount?: number; memo?: string; from?: string;
 };
 
+function exactClaimantMatch(memo: string, claimant: string): boolean {
+  const escaped = claimant.replace(/[.*+?^${}()|[\]\\]/g, '\\function transferMatches(record:');
+  return new RegExp('(^|[^a-z0-9_-])@?' + escaped + '(?![a-z0-9_-])', 'i').test(memo);
+}
+
 function transferMatches(record: ContributionRecord, claim: RustChainEvidence, tx: WalletTransfer): boolean {
-  if (tx.type !== 'transfer_in' || tx.status !== 'confirmed' ||
+  if (tx.type !== 'transfer_in' || tx.status !== 'confirmed' || tx.from !== 'founder_community' ||
       typeof tx.tx_hash !== 'string' || tx.tx_hash !== claim.txHash ||
-      typeof tx.memo !== 'string' || !tx.memo.toLowerCase().includes(record.claimant.toLowerCase())) return false;
+      typeof tx.memo !== 'string' || !exactClaimantMatch(tx.memo, record.claimant)) return false;
   // A hash from a DIFFERENT award cannot be reused, even if the same wallet was paid.
   const awardTag = new RegExp('(^|[^0-9])#' + record.issue + '(?![0-9])');
   return awardTag.test(tx.memo) && Number.isFinite(tx.amount) &&
@@ -118,7 +123,7 @@ export function summarizeContributions(input: ContributionRecord[]): Contributio
       const verified = hasVerifiedReceipt(item);
       if (verified) {
         // A real payout cannot be counted twice when the same evidence appears in two records.
-        const id = verified.wallet + ':' + verified.txHash.toLowerCase();
+        const id = verified.txHash.toLowerCase();
         if (!countedTxHashes.has(id)) {
           countedTxHashes.add(id);
           totals.confirmedRtc += amount;
