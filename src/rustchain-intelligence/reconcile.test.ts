@@ -17,7 +17,7 @@ const claimed: ContributionRecord = {
 const official = {
   ok: true, miner_id: WALLET,
   transactions: [{
-    amount: 50, type: 'transfer_in', status: 'confirmed', tx_hash: TX,
+    amount: 50, type: 'transfer_in', from: 'founder_community', status: 'confirmed', tx_hash: TX,
     memo: 'Grant #402 Builder upfront 50% (xpex-systems-ai GXEON connector)',
   }],
 };
@@ -77,6 +77,8 @@ describe('RustChain payout reconciliation, official wallet evidence required', (
   it.each([
     [{ ...official, transactions: [{ ...official.transactions[0], status: 'pending' }] }, 'pending transfer'],
     [{ ...official, transactions: [{ ...official.transactions[0], type: 'transfer_out' }] }, 'outgoing transfer'],
+    [{ ...official, transactions: [{ ...official.transactions[0], from: 'xpex-systems-ai' }] }, 'self migration not payout'],
+    [{ ...official, transactions: [{ ...official.transactions[0], memo: 'Grant #402 for ai' }] }, 'claimant substring spoof'],
     [{ ...official, transactions: [{ ...official.transactions[0], tx_hash: 'a'.repeat(32) }] }, 'different hash'],
     [{ ...official, transactions: [{ ...official.transactions[0], amount: 15 }] }, 'different amount'],
     [{ ...official, transactions: [{ ...official.transactions[0], memo: 'Grant #403 xpex-systems-ai' }] }, 'different award'],
