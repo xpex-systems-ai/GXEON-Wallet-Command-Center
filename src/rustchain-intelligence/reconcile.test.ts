@@ -62,6 +62,16 @@ describe('RustChain payout reconciliation, official wallet evidence required', (
     expect(summarizeContributions([claimed]).confirmedRtc).toBe(0);
   });
 
+  it('matches claimant next to closing punctuation, but rejects lookalike suffixes', async () => {
+    walletResponse(official);
+    const matched = await reconcileContributionWithOfficialWallet(claimed);
+    expect(matched.state).toBe('CONFIRMED');
+    vi.restoreAllMocks();
+    walletResponse({ ...official, transactions: [{ ...official.transactions[0], memo: 'Grant #402 for xpex-systems-ai-evil' }] });
+    const rejected = await reconcileContributionWithOfficialWallet(claimed);
+    expect(rejected.state).not.toBe('CONFIRMED');
+  });
+
   it('promotes ONLY after official wallet GET verifies wallet, hash, award, amount, status', async () => {
     const spy = walletResponse(official);
     const checked = await reconcileContributionWithOfficialWallet(claimed);
