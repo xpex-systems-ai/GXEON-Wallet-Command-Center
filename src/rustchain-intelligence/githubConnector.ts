@@ -36,7 +36,14 @@ export async function fetchIssueEvidence(issue: number, claimant: string, wallet
   if (!issueResponse.ok) {
     return { issue, title: `Issue #${issue} — GITHUB UNAVAILABLE HTTP ${issueResponse.status} (partial)`, repository: ALLOWED_REPO, claimant, wallet, rewardRtc: null, state: 'OPPORTUNITY', evidence: [] };
   }
-  const issueBody = await issueResponse.json() as { title?: string; body?: string };
+  let issueBody: { title?: string; body?: string };
+  try {
+    issueBody = await issueResponse.json() as { title?: string; body?: string };
+  } catch {
+    return { issue, title: `Issue #${issue} — GITHUB INVALID RESPONSE (partial)`, repository: ALLOWED_REPO, claimant, wallet, rewardRtc: null, state: 'OPPORTUNITY', evidence: [] };
+  }
+  // Preserve provenance without manufacturing award amounts or pending IDs from free text.
+  // A maintainer comment without a structured award is not ACCEPTED or PENDING.
   const evidence = comments
     .filter((c) => c.user?.login === 'Scottcjn' || c.user?.login === 'sophiaeagent-beep')
     .map((c) => ({ source: 'github' as const, url: c.html_url, authority: c.user?.login }));
