@@ -7,6 +7,7 @@ on:
       - feat/gxeon-quantum-integration-v1-2
       - feat/gxeon-local-companion-v1
       - feat/gxeon-dual-revenue-engine-v1
+      - feat/rustchain-contribution-intelligence-grant-402
       - main
 
 permissions:
