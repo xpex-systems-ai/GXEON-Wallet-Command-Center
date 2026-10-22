@@ -4,6 +4,9 @@ import { ecosystemIntegrationHandler } from '../src/server/ecosystemIntegration.
 import { revenueOperationsHandler } from '../src/server/revenueOperations.js';
 import { FirestoreRestClient } from './_firestoreRest.js';
 import type { CreditPurchase } from '../src/agent-economy/store.js';
+import { formatBrlCents } from '../src/agent-economy/stripeLiveMoneyTruth.js';
+import { readPublishedStripeMoneyTruth, refreshPublishedStripeMoneyTruth } from '../src/agent-economy/stripePublishedSnapshot.js';
+import { timingSafeEqual } from 'node:crypto';
 import { readTaskmarketStatus } from '../src/agent-economy/taskmarket/taskmarketRadar.js';
 import {
   callBountyTool,
@@ -50,6 +53,44 @@ export default async function handler(req: any, res: any) {
     res.statusCode = 405;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+    return;
+  }
+
+  // Only Vercel Cron/authorised backend may refresh the shared Stripe snapshot.
+  // This route never grants public callers permission to initiate provider requests.
+  if (String(req.query?.view || '') === 'stripe-money-refresh') {
+    const configured = (process.env.CRON_SECRET || '').trim();
+    if (!configured) {
+      res.statusCode = 503;
+      res.end(JSON.stringify({ status: 'UNAVAILABLE', reason: 'CRON_SECRET_NOT_CONFIGURED' }));
+      return;
+    }
+    const supplied = typeof req.headers?.authorization === 'string'
+      ? req.headers.authorization.replace(/^Bearer /, '') : '';
+    const expected = Buffer.from(configured);
+    const actual = Buffer.from(supplied);
+    if (!supplied || expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+      res.statusCode = 401;
+      res.end(JSON.stringify({ error: 'UNAUTHORIZED' }));
+      return;
+    }
+    // Production-only: Preview requests must never refresh or overwrite LIVE financial data.
+    if (process.env.VERCEL_ENV !== 'production') {
+      res.statusCode = 403;
+      res.end(JSON.stringify({ error: 'PRODUCTION_ONLY' }));
+      return;
+    }
+    try {
+      const snapshot = await refreshPublishedStripeMoneyTruth();
+      res.statusCode = snapshot.status === 'PROVIDER_VERIFIED' ? 200 : 503;
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ status: snapshot.status, observedAt: snapshot.observedAt,
+        persisted: snapshot.status === 'PROVIDER_VERIFIED' }));
+    } catch {
+      res.statusCode = 503;
+      res.end(JSON.stringify({ status: 'UNAVAILABLE', persisted: false }));
+    }
     return;
   }
 
@@ -294,8 +335,13 @@ export default async function handler(req: any, res: any) {
     radar: unifiedRadar,
   };
 
-  const stripeNetRevenue = stripeGrossRevenue > stripeRefunds ? stripeGrossRevenue - stripeRefunds : 0;
-  const realStripeRevenueStr = `R$${stripeNetRevenue.toFixed(2)}`;
+  // Money truth is provider-authoritative, NOT inferred from local orders/events or
+  // a `cs_live_` ID prefix. A partial/offline provider scan does not mean R$0.
+  const stripeProvider = await readPublishedStripeMoneyTruth();
+  const stripeProviderVerified = stripeProvider.status === 'PROVIDER_VERIFIED';
+  const realStripeRevenueStr = stripeProviderVerified
+    ? formatBrlCents(stripeProvider.capturedMinusRefundedBRLCents)
+    : 'INDISPONÍVEL';
   const realMachineRevenueStr = `$${x402SettledUsdc.toFixed(4)} USDC`;
   const avgRevPerJobStr = x402SettledCount > 0 ? `$${(x402SettledUsdc / x402SettledCount).toFixed(4)} USDC` : '$0.0000 USDC';
 
@@ -370,6 +416,7 @@ export default async function handler(req: any, res: any) {
       storeMode: durableStoreConfigured ? 'FIRESTORE_REST_WIF' : 'UNAVAILABLE',
       liveMode: isLiveKey,
       realRevenue: realStripeRevenueStr,
+      stripeProviderMoneyTruth: stripeProvider,
       stripeEnvironment,
       livePaymentsConfigured: isLiveKey,
       liveWebhookConfigured: Boolean(process.env.STRIPE_LIVE_WEBHOOK_SECRET || (isLiveKey && process.env.STRIPE_WEBHOOK_SECRET)),
@@ -382,11 +429,19 @@ export default async function handler(req: any, res: any) {
         liveProbe: mergePayLiveProbe,
       },
       metrics: {
-        stripeGrossRevenue: `R$${stripeGrossRevenue.toFixed(2)}`,
-        stripeRefunds: `R$${stripeRefunds.toFixed(2)}`,
+        // Account-wide Stripe LIVE captured charges (including other company products).
+        // Amounts reflect captured minus refunded, EXCLUDING fees, payout status and disputes.
+        stripeGrossRevenue: stripeProviderVerified ? formatBrlCents(stripeProvider.grossBRLCents) : 'INDISPONÍVEL',
+        stripeRefunds: stripeProviderVerified ? formatBrlCents(stripeProvider.refundedBRLCents) : 'INDISPONÍVEL',
         stripeNetRevenue: realStripeRevenueStr,
-        successfulPayments,
+        successfulPayments: stripeProviderVerified ? stripeProvider.paidCharges : null,
+        // Local checkout-created orders are NOT Stripe funds pending settlement.
         pendingPayments,
+        internalOrderSignals: { localSuccessfulOrderEvents: successfulPayments,
+          localGrossBrl: Number(stripeGrossRevenue.toFixed(2)),
+          localRefundsBrl: Number(stripeRefunds.toFixed(2)),
+          checkoutOrdersAwaitingPayment: pendingPayments,
+          status: 'UNVERIFIED_INTERNAL_STORE' },
         failedPayments,
         creditsSold,
         creditsConsumed,

@@ -16,7 +16,7 @@ export interface IntegrationMetrics {
   stripeGrossRevenue: string;
   stripeRefunds: string;
   stripeNetRevenue: string;
-  successfulPayments: number;
+  successfulPayments: number | null;
   pendingPayments: number;
   failedPayments: number;
   creditsSold: number;
@@ -35,6 +35,7 @@ export interface IntegrationStatus {
   liveMode: boolean;
   realRevenue: string;
   stripeEnvironment: string;
+  stripeProviderMoneyTruth?: { status: 'PROVIDER_VERIFIED' | 'PARTIAL' | 'UNAVAILABLE'; observedAt: string; exhaustive: boolean; note: string; disputedCharges: number | null; otherCurrencyPaidCharges: number | null };
   metrics?: IntegrationMetrics;
   moneyTruthSnapshot?: MoneyTruthStatus;
 }
@@ -100,10 +101,10 @@ export function RealRevenuePanel() {
   }, []);
 
   const metrics = status?.metrics || {
-    stripeGrossRevenue: 'R$0.00',
-    stripeRefunds: 'R$0.00',
-    stripeNetRevenue: status?.realRevenue || 'R$0.00',
-    successfulPayments: 0,
+    stripeGrossRevenue: 'INDISPONÍVEL',
+    stripeRefunds: 'INDISPONÍVEL',
+    stripeNetRevenue: status?.realRevenue || 'INDISPONÍVEL',
+    successfulPayments: null,
     pendingPayments: 0,
     failedPayments: 0,
     creditsSold: 0,
@@ -164,14 +165,24 @@ export function RealRevenuePanel() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
         <div className="bg-[#0B1220] p-4 rounded-xl border border-slate-800">
           <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1">
-            Receita Líquida Real
+            Stripe LIVE: coorte de cobranças criadas nos últimos 30 dias
           </div>
           <div className="text-2xl font-black font-mono text-emerald-400">
             {metrics.stripeNetRevenue}
           </div>
+          <p className="text-[10px] text-amber-300/90 mt-1">Não representa caixa disponível nem reembolsos emitidos no período para cobranças antigas.</p>
           <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3 text-emerald-500" /> Liquidado no Stripe
+            <ShieldCheck className="w-3 h-3 text-emerald-500" /> {status?.stripeProviderMoneyTruth?.status === 'PROVIDER_VERIFIED'
+              ? `Stripe confirmado em ${new Date(status.stripeProviderMoneyTruth.observedAt).toLocaleString('pt-BR')} · antes de taxas e repasses`
+              : 'Sem snapshot recente do Stripe · não inferir R$0'}
           </div>
+          {(status?.stripeProviderMoneyTruth?.disputedCharges ?? 0) > 0
+            && status?.stripeProviderMoneyTruth?.status === 'PROVIDER_VERIFIED' && (
+              <p role="status" className="text-[11px] font-medium text-amber-300 mt-2">
+                Atenção: {status.stripeProviderMoneyTruth.disputedCharges} cobrança(s) em disputa.
+                Valores contestados podem ser retirados pelo Stripe; o total exibido não equivale a saldo disponível.
+              </p>
+            )}
         </div>
 
         <div className="bg-[#0B1220] p-4 rounded-xl border border-slate-800">
@@ -218,25 +229,25 @@ export function RealRevenuePanel() {
 
         <div className="bg-[#0B1220] p-4 rounded-xl border border-slate-800">
           <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1">
-            Bruto / Reembolsos
+            Cobranças da coorte / Reembolsos acumulados
           </div>
           <div className="text-xl font-bold font-mono text-slate-200">
             {metrics.stripeGrossRevenue}
           </div>
           <div className="text-[10px] text-slate-500 mt-1">
-            Estornos: {metrics.stripeRefunds}
+            Reembolsos destas cobranças: {metrics.stripeRefunds} · conta inteira
           </div>
         </div>
 
         <div className="bg-[#0B1220] p-4 rounded-xl border border-slate-800">
           <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-1">
-            Vendas Pagas
+            Cobranças BRL capturadas
           </div>
           <div className="text-2xl font-bold font-mono text-white">
-            {metrics.successfulPayments}
+            {metrics.successfulPayments ?? 'INDISPONÍVEL'}
           </div>
           <div className="text-[10px] text-slate-500 mt-1">
-            Jobs executados: {metrics.jobsDelivered}
+            BRL apenas · outras moedas: {status?.stripeProviderMoneyTruth?.status === 'PROVIDER_VERIFIED' ? (status.stripeProviderMoneyTruth.otherCurrencyPaidCharges ?? 0) : 'INDISPONÍVEL'}
           </div>
         </div>
 
