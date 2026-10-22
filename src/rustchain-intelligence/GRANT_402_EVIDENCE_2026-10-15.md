@@ -67,3 +67,31 @@ PR #47 includes a GitHub issue/comment connector, an authority-aware contributio
 ## Next authorized external action
 
 Ask the RustChain grant maintainers to review the PR #47 deliverable, identify specific acceptance requirements, and clarify the conditional 50 RTC milestone. Separately ask for status of the previously confirmed hosted 5 RTC migration to the native address. A request for status does not itself establish payment eligibility.
+
+
+## Review addendum — 2026-10-22 (operator follow-up)
+
+This addendum supersedes the **historical wallet location** and **review-pending** descriptions above; the original 2026-10-15 snapshot remains preserved as an audit trail.
+
+- **Maintainer correspondence:** On 2026-10-20, an email reply from `sophia.eagent@gmail.com`, signed Elya (Elyan Labs), confirmed the remaining **50 RTC are conditional on acceptance** of PR #47. Requested scope: read-only connector, contribution/payout intelligence, public endpoint execution, passing tests, and a short reproducible demonstration. This email is a review requirement, **not acceptance**.
+- **Hosted migration notification:** A second email on 2026-10-20 reported a 5 RTC hosted-to-native transfer, hash `d5526f4718eda656478ac655bf136f47`, with expected confirmation around 2026-10-21 18:06 UTC. This is an **internal migration**, not a new bounty or grant award. Recheck both official wallet endpoints before reporting current balances; the email alone does not independently establish final ledger settlement.
+- **Review status check (2026-10-22):** GitHub's review listing for PR #47 returned **zero formal reviews**. No merge or grant acceptance is inferred from this observation.
+- **Technical verification limitation:** Code inspection found exact-identity, ledger-status and tx-hash verification and duplicate-hash suppression in the PR patch. **Tests/build were not executed by this addendum**; a reviewer must run the commands below and attach actual output. A source-code inspection is not a passing CI run.
+- **Bounty #1575:** The 2026-10-20 email said the maintainer intends to file a contributor registration when their GitHub organization is accessible, at the stated 3 RTC rate. No public registry entry, acceptance or payout is established here; do not duplicate the registration.
+
+### Reproduction commands for independent reviewer
+
+```bash
+npm ci
+npm test -- --run src/rustchain-intelligence/reconcile.test.ts
+npm run build
+```
+
+### Remaining gates before requesting payout
+
+1. Run and capture test/build output on the current PR head, recording the full commit SHA.
+2. Demonstrate an official public wallet GET and the distinct outcomes for an actual confirmed transfer versus an unsupported/pending claim; redact credentials and do not sign or transfer funds.
+3. Ask an authorized RustChain maintainer to review the deliverable and explicitly accept or request changes. Only an official new confirmed ledger entry may be described as payment of the remaining 50 RTC.
+4. Keep historical hosted and native balances separate and avoid double-counting the 5 RTC migration.
+
+No claim, financial transaction, signature, or maintainer approval was made by adding this documentation.
