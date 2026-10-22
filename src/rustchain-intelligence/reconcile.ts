@@ -44,7 +44,7 @@ type WalletTransfer = {
 
 function exactClaimantMatch(memo: string, claimant: string): boolean {
   const escaped = claimant.replace(/[^a-zA-Z0-9_-]/g, (char) => '\\' + char);
-  return new RegExp('(^|[^a-z0-9_-])@?' + escaped + '(?![a-z0-9_-])', 'i').test(memo);
+  return new RegExp('(^|[^a-z0-9_-])@?' + escaped + '(?=$|[^a-z0-9_-])', 'i').test(memo);
 }
 
 function transferMatches(record: ContributionRecord, claim: RustChainEvidence, tx: WalletTransfer): boolean {
