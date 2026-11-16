@@ -22,7 +22,10 @@ export const AgentEconomyView: React.FC = () => {
   const [services] = useState(Object.values(SERVICE_REGISTRY));
   const [radarSignals, setRadarSignals] = useState<any[]>([]);
   const [radarQuery, setRadarQuery] = useState<string>('verification');
-  const [realRevenue, setRealRevenue] = useState<string>('Indisponível');
+  const [realRevenue, setRealRevenue] = useState<string>('INDISPONÍVEL');
+  const [stripeProof, setStripeProof] = useState<boolean>(false);
+  const [stripeProviderObservedAt, setStripeProviderObservedAt] = useState<string | null>(null);
+  const [stripeDisputedCharges, setStripeDisputedCharges] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchRadar = async (overrideQuery?: string) => {
@@ -46,7 +49,11 @@ export const AgentEconomyView: React.FC = () => {
     fetch('/api/integration-status')
       .then((res) => res.json())
       .then((data) => {
-        if (data.realRevenue) setRealRevenue(data.realRevenue);
+        const verified = data.stripeProviderMoneyTruth?.status === 'PROVIDER_VERIFIED';
+        setStripeProof(verified);
+        setStripeProviderObservedAt(verified ? data.stripeProviderMoneyTruth.observedAt : null);
+        setStripeDisputedCharges(verified ? data.stripeProviderMoneyTruth.disputedCharges : null);
+        setRealRevenue(verified ? (data.realRevenue || 'INDISPONÍVEL') : 'INDISPONÍVEL');
       })
       .catch(() => {});
   }, []);
@@ -164,11 +171,20 @@ export const AgentEconomyView: React.FC = () => {
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs uppercase tracking-wider font-semibold">Settled Real Revenue</span>
+              <span className="text-xs uppercase tracking-wider font-semibold">Coorte Stripe · cobranças criadas nos últimos 30 dias</span>
               <CreditCard className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="text-2xl font-bold text-emerald-400">{realRevenue}</div>
-            <div className="text-xs text-emerald-500/80 mt-1">Verified on Stripe Live</div>
+            <div className="text-xs text-slate-400 mt-1">
+              {stripeProof && stripeProviderObservedAt
+                ? `Coorte de cobranças verificada em ${new Date(stripeProviderObservedAt).toLocaleString('pt-BR')} · estornos atuais destas cobranças, antes de taxas e repasses`
+                : 'Aguardando snapshot verificado · não inferir receita'}
+            </div>
+            {stripeProof && (stripeDisputedCharges ?? 0) > 0 && (
+              <p role="status" className="mt-2 text-xs font-medium text-amber-300">
+                {stripeDisputedCharges} cobrança(s) contestadas no período; valor capturado não é saldo disponível.
+              </p>
+            )}
           </div>
         </div>
       )}
