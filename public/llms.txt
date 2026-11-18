@@ -1,31 +1,59 @@
 # GXEON Agent Marketplace
 
-> Remote MCP marketplace for human-operated agent and developer workflows. Public discovery is read-only, free to query, and does not provide trading, payment initiation, token transfers, or paid job execution.
+> Remote MCP discovery for human-operated agent and developer workflows. Public discovery is read-only and free to query. It cannot charge, sign transactions, spend funds or execute paid jobs.
 
 ## Official links
 
 - [Marketplace](https://gxeon-wallet-command-center.vercel.app/market)
-- [MCP discovery endpoint](https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market)
-- [Capabilities](https://gxeon-wallet-command-center.vercel.app/v1/services)
-- [Credit packs](https://gxeon-wallet-command-center.vercel.app/v1/billing/topup)
-- [Well-known agent manifest](https://gxeon-wallet-command-center.vercel.app/.well-known/gxeon-agent.json)
-- [Source and documentation](https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center)
+- [Public MCP discovery](https://gxeon-wallet-command-center.vercel.app/api/v1/mcp?view=public-market)
+- [Live service catalog](https://gxeon-wallet-command-center.vercel.app/v1/services)
+- [Live payment-method status](https://gxeon-wallet-command-center.vercel.app/v1/payment-methods)
+- [Live x402 offers](https://gxeon-wallet-command-center.vercel.app/v1/offers)
+- [Prepaid packs](https://gxeon-wallet-command-center.vercel.app/v1/billing/topup)
+- [Agent manifest](https://gxeon-wallet-command-center.vercel.app/.well-known/gxeon-agent.json)
+- [Source, protocol and buying guide](https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center/blob/main/docs/AGENT_MARKETPLACE.md)
 - [MCP installation guide](https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center/blob/main/llms-install.md)
 - [Official MCP registry entry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.xpex-systems-ai%2Fgxeon-agent-marketplace/versions/latest)
 
-## Public MCP tools (as checked 2026-10-08)
+## Public MCP tools
 
-- gxeon_list_services: discover active JSON, CSV, URL and API health utility services.
-- gxeon_list_credit_packs: inspect credit packages; no charge.
-- gxeon_plan_purchase: choose packs in a read-only planning calculation; no checkout.
-- gxeon_list_external_demand: discover external demand leads; not verified GXEON revenue.
-- gxeon_get_agent_buying_guide: inspect safe onboarding steps.
+- `gxeon_list_services`: discover supported JSON, CSV, URL and API-health utilities.
+- `gxeon_list_credit_packs`: inspect available prepaid credits without purchasing.
+- `gxeon_plan_purchase`: calculate a non-binding, read-only purchase plan.
+- `gxeon_list_external_demand`: inspect potential demand, not confirmed revenue.
+- `gxeon_get_agent_buying_guide`: inspect buyer onboarding and safe execution steps.
 
-## Important payment and execution separation
+Use `tools/list` at runtime; the available tool list may change.
 
-Published service capabilities: JSON validation, CSV audit, public URL verification, and API health. Credit purchases use Stripe through the merchant's authorized checkout and only settle after provider verification. Actual execution requires a distinct authenticated MCP/REST endpoint, a legitimate buyer API key and sufficient settled credits. Public discovery is not a payment gateway. Wallet balances are not seller revenue. x402 treasury settlement is **not** currently enabled. Do not request or send wallet private keys.
+## Services relevant to agent buyers
+
+| Service | Use case | Prepaid catalog | Conditional x402 route |
+| --- | --- | --- | --- |
+| JSON Validate | Validate JSON syntax and an optional supplied schema | 2 credits / payload | `POST /x402/json-validate` |
+| CSV Audit | **Validate CSV before import**; inspect duplicate headers, inconsistent rows and missing cells | 2 credits / file | `POST /x402/csv-audit` |
+
+Additional URL Verify and API Health capabilities may be available in the live catalog. Do not assume a route is enabled because it appears in static documentation. Retrieve current availability, prices, accepted networks and token details from `GET /v1/services`, `GET /v1/payment-methods` and `GET /v1/offers`.
+
+## Two distinct purchase paths
+
+**Prepaid BRL:** Access authenticated jobs only with a legitimate buyer API key and **provider-settled** credits. Public MCP discovery cannot initiate purchases or run paid jobs. Follow the live buying guide for checkout, webhook confirmation and credit consumption.
+
+**USDC on Base via x402 (when enabled):** JSON Validate and CSV Audit may quote **0.01 USDC per call**. Use the payment requirements supplied by the **live endpoint**, not a hard-coded price, destination or signed authorization.
+
+1. Send the normal task input to the applicable POST route. If payment is needed, read the HTTP 402 `PAYMENT-REQUIRED` challenge.
+2. A buyer-controlled wallet/payment client creates the authorized x402 v2 `PAYMENT-SIGNATURE` for the exact quote. No private key is ever disclosed to GXEON's public MCP.
+3. Retry the **same input** with the signed payment header. If the API responds `SETTLEMENT_PENDING`, respect `Retry-After` and retry the **same input and authorization**. Do not sign or pay a second time merely because settlement is delayed.
+4. On successful delivery, inspect the result and receipt (`jobId`, `txHash`, `resultHash`) and `PAYMENT-RESPONSE`. An API response, a completed transfer and a seller-ledger reconciliation are **different evidence states**.
+
+For input/output examples and protocol details, see [Agent Marketplace technical guide](https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center/blob/main/docs/AGENT_MARKETPLACE.md). A CSV report with `qualityPass: false` is a useful paid audit result, not necessarily a failed payment or delivery.
+
+## External discovery and financial truth
+
+PayAI Bazaar and Coinbase CDP discovery index independently. An exposed GXEON endpoint, an x402 quote, a verified Base transfer and actual PayAI/CDP listing are **not interchangeable evidence**. Query each provider's discovery index independently and check POST-route indexing requirements.
+
+The public guide does not claim that any individual sale is reconciled or that external indexation is approved. No synthetic transaction, fabricated revenue, self-funded test purchase or unsupported promise of agent autonomy is permitted.
 
 ## Security
 
 - [Security model](https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center/blob/main/SECURITY.md)
-- [Technical MCP and buyer flow](https://github.com/xpex-systems-ai/GXEON-Wallet-Command-Center/blob/main/docs/AGENT_MARKETPLACE.md)
+- Never include private keys, payment signatures, recovery materials, GXEON buyer API keys or payment secrets in prompts, logs, GitHub issues or a public MCP manifest.
