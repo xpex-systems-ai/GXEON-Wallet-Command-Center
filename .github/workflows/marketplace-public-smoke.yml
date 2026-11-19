@@ -1,6 +1,10 @@
 name: GXEON Marketplace public monetization smoke
 
 on:
+  pull_request:
+    paths:
+      - 'scripts/marketplace-smoke.mjs'
+      - '.github/workflows/marketplace-public-smoke.yml'
   workflow_dispatch:
   schedule:
     - cron: '19 12 * * *'
