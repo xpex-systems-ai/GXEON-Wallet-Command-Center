@@ -1,0 +1,25 @@
+name: GXEON Marketplace public monetization smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '19 12 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketplace-public-smoke
+  cancel-in-progress: false
+
+jobs:
+  public-read-only-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check public GXEON commerce surface without creating a payment
+        run: node scripts/marketplace-smoke.mjs
