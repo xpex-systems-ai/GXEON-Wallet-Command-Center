@@ -199,6 +199,8 @@
     "/x402/json-validate": {
       "post": {
         "summary": "Validate and lint JSON payloads with x402 payment rail",
+        "operationId": "validateJsonWithX402",
+        "x-guidance": "Use before handing JSON to another tool. Read result.valid and result.errors to decide whether to continue. A successful HTTP response includes the audit or validation result and a payment receipt.",
         "parameters": [
           {
             "name": "PAYMENT-SIGNATURE",
@@ -302,7 +304,16 @@
             }
           },
           "503": {
-            "description": "Rail paused, settlement pending, or delivery temporarily unavailable. Retry the original request and payment signature.",
+            "description": "For SETTLEMENT_PENDING or DELIVERY_UNAVAILABLE, honor Retry-After and retry the original POST with the same body and PAYMENT-SIGNATURE. A paused payment rail requires operator attention. Do not create a new payment for a pending delivery.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait when the response explicitly permits retrying the original signed request.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -328,6 +339,8 @@
     "/x402/csv-audit": {
       "post": {
         "summary": "Audit CSV structure and data quality with x402 payment",
+        "operationId": "auditCsvBeforeImportWithX402",
+        "x-guidance": "Use before importing CSV into a CRM or data pipeline. Read result.qualityPass and result.results to decide whether to continue. A successful HTTP response includes the audit or validation result and a payment receipt.",
         "parameters": [
           {
             "name": "PAYMENT-SIGNATURE",
@@ -427,7 +440,16 @@
             }
           },
           "503": {
-            "description": "Rail paused, settlement pending, or delivery temporarily unavailable. Retry the original request and payment signature.",
+            "description": "For SETTLEMENT_PENDING or DELIVERY_UNAVAILABLE, honor Retry-After and retry the original POST with the same body and PAYMENT-SIGNATURE. A paused payment rail requires operator attention. Do not create a new payment for a pending delivery.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait when the response explicitly permits retrying the original signed request.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
