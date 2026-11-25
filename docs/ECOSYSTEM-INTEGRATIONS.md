@@ -120,6 +120,8 @@ Before enabling any new public integration:
 - Distribution PR #59 is now **MERGED** into the canonical repository (merge commit `9d5a1fb874b60d4ebb3889d177c8ba40d512bb16`). The old ledger wording that described its assets as branch-only is stale and should be reconciled.
 - Cline marketplace issue #2878 remains **OPEN**. The maintainer-facing checklist still marks the native Cline installation test as not independently completed; do not describe the listing as approved.
 - The distribution ledger records the Official MCP Registry ID and TensorBlock PR #2949 acceptance, but current registry state and current external listing status should be rechecked before using the word "listed" in sales material.
+- Public third-party registry monitors observed GXEON active: ProtocolProbe reported version 1.0.2 (snapshot 2026-10-23), while Stork reported server version 1.1.0 and a successful read-only test on 2026-11-17. These are independent dated observations, not a direct official-registry verification; reconcile version metadata against the official registry before marketing a specific version.
+- Glama's public page reported ownership verified and status Healthy, but its last test shown was 2026-10-03; treat that health signal as stale until a fresh test.
 - Vercel team scope `junior-senas-projects-4226acc3` denied this connection with HTTP 403 pending team authorization. Production project/deployment verification is therefore incomplete until an authorized team member approves the single-use access request.
 
 ## Audit follow-up
