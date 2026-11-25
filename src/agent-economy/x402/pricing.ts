@@ -1,3 +1,5 @@
+import { CSV_IMPORT_CHECK, JSON_CONTRACT_BATCH } from './premiumServices.js';
+
 /**
  * GXEON Native x402 Pricing
  * Establishes fixed atomic micro-USDC pricing per capability item.
@@ -23,6 +25,18 @@ export const X402_PRICING: Record<string, X402CapabilityPricing> = {
     unitPriceUsdc: 0.01,
     unit: 'file',
   },
+  [CSV_IMPORT_CHECK]: {
+    serviceId: CSV_IMPORT_CHECK,
+    unitPriceAtomic: 1_000_000,
+    unitPriceUsdc: 1,
+    unit: 'batch',
+  },
+  [JSON_CONTRACT_BATCH]: {
+    serviceId: JSON_CONTRACT_BATCH,
+    unitPriceAtomic: 100_000,
+    unitPriceUsdc: 0.10,
+    unit: 'batch',
+  },
   gxeon_url_verify_v1: {
     serviceId: 'gxeon_url_verify_v1',
     unitPriceAtomic: 25000,
@@ -34,6 +48,8 @@ export const X402_PRICING: Record<string, X402CapabilityPricing> = {
 export const X402_SERVICE_PATHS: Readonly<Record<string, string>> = {
   gxeon_json_validate_v1: '/x402/json-validate',
   gxeon_csv_audit_v1: '/x402/csv-audit',
+  [CSV_IMPORT_CHECK]: '/x402/csv-import-check',
+  [JSON_CONTRACT_BATCH]: '/x402/json-contract-batch',
 };
 
 export function getX402Price(

@@ -54,9 +54,11 @@ afterEach(() => {
 
 describe('x402 recovery after delayed Base finality', () => {
   it.each([
-    { serviceId: 'gxeon_json_validate_v1', path: '/x402/json-validate' },
-    { serviceId: 'gxeon_csv_audit_v1', path: '/x402/csv-audit' },
-  ])('returns the original result and receipt once for $serviceId', async ({ serviceId, path }) => {
+    { serviceId: 'gxeon_json_validate_v1', path: '/x402/json-validate', amount: '10000' },
+    { serviceId: 'gxeon_csv_audit_v1', path: '/x402/csv-audit', amount: '10000' },
+    { serviceId: 'gxeon_csv_import_check_v1', path: '/x402/csv-import-check', amount: '1000000' },
+    { serviceId: 'gxeon_json_contract_batch_v1', path: '/x402/json-contract-batch', amount: '100000' },
+  ])('returns the original result and receipt once for $serviceId', async ({ serviceId, path, amount }) => {
     const store = getAgentEconomyStore();
     const resourceUrl = origin + path;
     const discovery = describeX402Service(serviceId, resourceUrl)!;
@@ -67,7 +69,7 @@ describe('x402 recovery after delayed Base finality', () => {
     const challenge = JSON.parse(Buffer.from(unpaid.headers['PAYMENT-REQUIRED'], 'base64').toString());
     expect(challenge).toEqual(unpaid.body);
     expect(challenge.extensions).toEqual(discovery.extensions);
-    expect(challenge.accepts[0]).toMatchObject({ amount: '10000', payTo, network: 'eip155:8453' });
+    expect(challenge.accepts[0]).toMatchObject({ amount, payTo, network: 'eip155:8453' });
 
     const now = Math.floor(Date.now() / 1000);
     const signature = Buffer.from(JSON.stringify({
@@ -78,12 +80,21 @@ describe('x402 recovery after delayed Base finality', () => {
       payload: {
         signature: '0x' + 'ab'.repeat(65),
         authorization: {
-          from: payer, to: payTo, value: '10000', nonce,
+          from: payer, to: payTo, value: amount, nonce,
           validAfter: String(now - 1), validBefore: String(now + 60),
         },
       },
     })).toString('base64');
     const headers = { 'PAYMENT-SIGNATURE': signature };
+    if (serviceId === 'gxeon_csv_import_check_v1') {
+      const malformed = await handleX402CapabilityExecution({
+        ...request,
+        input: { ...expected.input.body, files: ['lead_id,email\n1,ab"cd"'] },
+        headers,
+      });
+      expect(malformed.statusCode).toBe(400);
+      expect(mocks.facilitator).not.toHaveBeenCalled();
+    }
     const retry = () => handleX402CapabilityExecution({ ...request, headers });
     const pending = await retry();
     expect(pending.statusCode).toBe(503);
@@ -107,7 +118,7 @@ describe('x402 recovery after delayed Base finality', () => {
       }),
     };
     const transferLog = {
-      ...txLog, logIndex: 1, data: encodeAbiParameters([{ type: 'uint256' }], [10000n]),
+      ...txLog, logIndex: 1, data: encodeAbiParameters([{ type: 'uint256' }], [BigInt(amount)]),
       topics: encodeEventTopics({ abi: [transferEvent], eventName: 'Transfer', args: { from: payer, to: payTo } }),
     };
     mocks.getBlockNumber.mockResolvedValue(42n);
@@ -131,7 +142,7 @@ describe('x402 recovery after delayed Base finality', () => {
     expect(concurrentRetry).toEqual(delivered);
     expect(delivered.body).toMatchObject({
       ...expected.output.example,
-      receipt: { txHash, serviceId, amountAtomic: '10000' },
+      receipt: { txHash, serviceId, amountAtomic: amount },
     });
     const received = JSON.parse(Buffer.from(delivered.headers['PAYMENT-RESPONSE'], 'base64').toString());
     expect(received).toMatchObject({

@@ -4,6 +4,7 @@ import { executeCsvAuditWorker, type CsvAuditInput } from '../workers/csvAuditWo
 import { executeJsonValidateWorker, type JsonValidateInput } from '../workers/jsonValidateWorker.js';
 import { getNetwork } from './networks.js';
 import { getX402Price, X402_SERVICE_PATHS } from './pricing.js';
+import { X402_PREMIUM_SERVICES } from './premiumServices.js';
 import { createX402Receipt } from './receipt.js';
 import { describeX402Service } from './discovery.js';
 import { getX402Readiness, X402_BASE_NETWORK } from './readiness.js';
@@ -111,7 +112,7 @@ export async function handleX402CapabilityExecution(options: {
     return response(402, challenge, { 'PAYMENT-REQUIRED': encoded });
   }
 
-  let result: ReturnType<typeof executeCsvAuditWorker> | ReturnType<typeof executeJsonValidateWorker>;
+  let result: { qualityPass: boolean } | { valid: boolean };
   let inputHash: string;
   try {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Expected a JSON object.');
@@ -119,7 +120,9 @@ export async function handleX402CapabilityExecution(options: {
     const serialized = JSON.stringify(data);
     if (Buffer.byteLength(serialized, 'utf8') > 2_100_000) throw new Error('Request exceeds the maximum supported size.');
     inputHash = createHash('sha256').update(serialized).digest('hex');
-    if (serviceId === 'gxeon_csv_audit_v1') {
+    if (Object.prototype.hasOwnProperty.call(X402_PREMIUM_SERVICES, serviceId)) {
+      result = X402_PREMIUM_SERVICES[serviceId].execute(data);
+    } else if (serviceId === 'gxeon_csv_audit_v1') {
       result = executeCsvAuditWorker(data as unknown as CsvAuditInput);
     } else {
       if (!Object.prototype.hasOwnProperty.call(data, 'payload') && typeof data.rawJson !== 'string') {
