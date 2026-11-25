@@ -3,7 +3,8 @@
   "info": {
     "title": "GXEON Autonomous Agent Capability Market & x402 Gateway API",
     "description": "Production GXEON Agent-to-Agent capability marketplace with Stripe LIVE hosted checkout for BRL services and canonical x402 V2 micro-USDC machine payments. Payment execution remains proof-gated and Money Truth compliant.",
-    "version": "2.1.0"
+    "version": "2.1.0",
+    "x-guidance": "Choose POST /x402/csv-audit before importing CSV into a CRM or data pipeline, and read result.qualityPass and result.results. Choose POST /x402/json-validate to check JSON syntax or an optional schema, and read result.valid and result.errors. Use synthetic examples to evaluate the API. Follow the live HTTP 402 payment terms. After a retryable 503, honor Retry-After and reuse the original request and payment signature."
   },
   "servers": [
     {
@@ -199,6 +200,8 @@
     "/x402/json-validate": {
       "post": {
         "summary": "Validate and lint JSON payloads with x402 payment rail",
+        "operationId": "validateJsonWithX402",
+        "x-guidance": "Use before handing JSON to another tool. Read result.valid and result.errors to decide whether to continue. A successful HTTP response includes the audit or validation result and a payment receipt.",
         "parameters": [
           {
             "name": "PAYMENT-SIGNATURE",
@@ -239,6 +242,11 @@
                     ]
                   }
                 ]
+              },
+              "example": {
+                "payload": {
+                  "check": true
+                }
               }
             }
           }
@@ -297,7 +305,16 @@
             }
           },
           "503": {
-            "description": "Rail paused, settlement pending, or delivery temporarily unavailable. Retry the original request and payment signature.",
+            "description": "For SETTLEMENT_PENDING or DELIVERY_UNAVAILABLE, honor Retry-After and retry the original POST with the same body and PAYMENT-SIGNATURE. A paused payment rail requires operator attention. Do not create a new payment for a pending delivery.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait when the response explicitly permits retrying the original signed request.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -306,12 +323,25 @@
               }
             }
           }
+        },
+        "description": "Validate JSON syntax and optionally check a JSON Schema. The live HTTP 402 Payment-Required header supplies the authoritative Base USDC payment terms.",
+        "x-payment-info": {
+          "protocols": [
+            { "x402": {} }
+          ],
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.010000"
+          }
         }
       }
     },
     "/x402/csv-audit": {
       "post": {
         "summary": "Audit CSV structure and data quality with x402 payment",
+        "operationId": "auditCsvBeforeImportWithX402",
+        "x-guidance": "Use before importing CSV into a CRM or data pipeline. Read result.qualityPass and result.results to decide whether to continue. A successful HTTP response includes the audit or validation result and a payment receipt.",
         "parameters": [
           {
             "name": "PAYMENT-SIGNATURE",
@@ -349,6 +379,10 @@
                 "required": [
                   "csv"
                 ]
+              },
+              "example": {
+                "csv": "id,name\n1,Ana\n2,",
+                "hasHeader": true
               }
             }
           }
@@ -407,7 +441,16 @@
             }
           },
           "503": {
-            "description": "Rail paused, settlement pending, or delivery temporarily unavailable. Retry the original request and payment signature.",
+            "description": "For SETTLEMENT_PENDING or DELIVERY_UNAVAILABLE, honor Retry-After and retry the original POST with the same body and PAYMENT-SIGNATURE. A paused payment rail requires operator attention. Do not create a new payment for a pending delivery.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait when the response explicitly permits retrying the original signed request.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -415,6 +458,17 @@
                 }
               }
             }
+          }
+        },
+        "description": "Validate CSV before import and report data quality issues. The live HTTP 402 Payment-Required header supplies the authoritative Base USDC payment terms.",
+        "x-payment-info": {
+          "protocols": [
+            { "x402": {} }
+          ],
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.010000"
           }
         }
       }
