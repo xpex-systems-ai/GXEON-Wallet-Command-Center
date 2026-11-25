@@ -315,12 +315,12 @@
         "description": "Validate JSON syntax and optionally check a JSON Schema. The live HTTP 402 Payment-Required header supplies the authoritative Base USDC payment terms.",
         "x-payment-info": {
           "protocols": [
-            "x402"
+            { "x402": {} }
           ],
           "price": {
             "mode": "fixed",
             "currency": "USD",
-            "amount": "0.01"
+            "amount": "0.010000"
           }
         }
       }
@@ -440,12 +440,12 @@
         "description": "Validate CSV before import and report data quality issues. The live HTTP 402 Payment-Required header supplies the authoritative Base USDC payment terms.",
         "x-payment-info": {
           "protocols": [
-            "x402"
+            { "x402": {} }
           ],
           "price": {
             "mode": "fixed",
             "currency": "USD",
-            "amount": "0.01"
+            "amount": "0.010000"
           }
         }
       }
