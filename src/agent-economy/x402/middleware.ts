@@ -66,6 +66,38 @@ async function replayDelivery(store: ReturnType<typeof getAgentEconomyStore>, se
   return deliveryResponse(receipt, jobResult.results[0]);
 }
 
+function baseUsdcRequirements(amount: string, payTo: string): X402AcceptOption {
+  const base = getNetwork(X402_BASE_NETWORK)!;
+  return {
+    scheme: 'exact',
+    network: X402_BASE_NETWORK,
+    asset: base.usdcAsset,
+    amount,
+    payTo,
+    maxTimeoutSeconds: 60,
+    extra: { name: 'USD Coin', version: '2', assetTransferMethod: 'eip3009' },
+  };
+}
+
+export async function handleX402Discovery(origin: string): Promise<X402HandlerResult> {
+  const readiness = await getX402Readiness();
+  if (!readiness.enabled) return response(503, { error: readiness.error });
+
+  const resources = Object.entries(X402_SERVICE_PATHS).flatMap(([serviceId, path]) => {
+    const url = new URL(path, origin).href;
+    const discovery = describeX402Service(serviceId, url);
+    if (!discovery) return [];
+    return [{
+      resource: url,
+      method: 'POST',
+      description: discovery.resource.description,
+      accepts: [baseUsdcRequirements(getX402Price(serviceId).amountAtomic, readiness.payTo)],
+      extensions: discovery.extensions,
+    }];
+  });
+  return response(200, { x402Version: 2, resources });
+}
+
 export async function handleX402CapabilityExecution(options: {
   serviceId: string;
   input: unknown;
@@ -83,16 +115,7 @@ export async function handleX402CapabilityExecution(options: {
 
   const store = getAgentEconomyStore();
   const { amountAtomic, amountUsdc } = getX402Price(serviceId);
-  const base = getNetwork(X402_BASE_NETWORK)!;
-  const requirements: X402AcceptOption = {
-    scheme: 'exact',
-    network: X402_BASE_NETWORK,
-    asset: base.usdcAsset,
-    amount: amountAtomic,
-    payTo: readiness.payTo,
-    maxTimeoutSeconds: 60,
-    extra: { name: 'USD Coin', version: '2', assetTransferMethod: 'eip3009' },
-  };
+  const requirements = baseUsdcRequirements(amountAtomic, readiness.payTo);
   const signatureHeader = Object.entries(headers).find(([key]) => key.toLowerCase() === 'payment-signature')?.[1];
   const payment = typeof signatureHeader === 'string'
     ? getPaymentPayload(signatureHeader.trim(), requirements, resourceUrl)
