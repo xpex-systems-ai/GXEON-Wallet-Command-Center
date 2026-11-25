@@ -1,4 +1,4 @@
-import { executeCsvAuditWorker, parseCsv, type CsvAuditInput } from './csvAuditWorker.js';
+import { analyzeCsvRows, parseCsv } from './csvAuditWorker.js';
 
 const MAX_FILES = 10;
 const MAX_CHARS = 512_000;
@@ -25,9 +25,11 @@ export function executeImportCheckWorker(input: Record<string, unknown>) {
   const normalize = (value: string) => value.trim().toLowerCase();
   const required = [...new Set([...requiredColumns, identityColumn].map(normalize))];
   const firstByIdentity = new Map<string, { file: number; record: number }>();
-  const reports = files.map((csv: string, index) => {
+  const reports = files.map((source: string, index) => {
     const file = index + 1;
-    const audit = executeCsvAuditWorker({ csv, delimiter: delimiter as CsvAuditInput['delimiter'], hasHeader: true }).results[0];
+    const csv = source.replace(/^\uFEFF/, '');
+    const rows = parseCsv(csv, delimiter, true);
+    const audit = analyzeCsvRows(rows, delimiter, true).results[0];
     const headers = audit.headers.map(normalize);
     const columns = required.map(name => ({ name, index: headers.indexOf(name) }));
     const missingColumns = columns.filter(column => column.index < 0).map(column => column.name);
@@ -37,7 +39,7 @@ export function executeImportCheckWorker(input: Record<string, unknown>) {
 
     let missingValueRecords = 0;
     let duplicateIdentityRecords = 0;
-    parseCsv(csv, delimiter).slice(1).forEach((row, index) => {
+    rows.slice(1).forEach((row, index) => {
       if (row.every(value => value.trim() === '')) return;
       const record = index + 2;
       const missing = columns.filter(column => column.index >= 0 && !row[column.index]?.trim()).map(column => column.name);

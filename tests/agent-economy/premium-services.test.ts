@@ -27,9 +27,27 @@ describe('CSV import check', () => {
     }).decision).toBe('ALLOW');
   });
 
+  it.each(['1,ab"cd"', '1,"abc"suffix'])('rejects misplaced quotes in %s', (record) => {
+    expect(() => executeImportCheckWorker({
+      files: ['id,note\n' + record], requiredColumns: ['note'], identityColumn: 'id',
+    })).toThrow(/CSV contains/);
+  });
+
+  it('accepts a BOM and escaped quotes in a valid file', () => {
+    expect(executeImportCheckWorker({
+      files: ['\uFEFF"id","note"\r\n1,"a ""quote"""'],
+      requiredColumns: ['note'], identityColumn: 'id',
+    }).decision).toBe('ALLOW');
+  });
+
   it('blocks missing columns and header-only files', () => {
     const result = executeImportCheckWorker({ files: ['id\n'], requiredColumns: ['email'], identityColumn: 'id' });
     expect(result).toMatchObject({ decision: 'BLOCK', files: [{ dataRecords: 0, missingColumns: ['email'] }] });
+  });
+
+  it('counts a quoted empty final record even without a trailing newline', () => {
+    const result = executeImportCheckWorker({ files: ['id\n1\n""'], requiredColumns: ['id'], identityColumn: 'id' });
+    expect(result).toMatchObject({ decision: 'BLOCK', files: [{ blankRecords: [3] }] });
   });
 });
 

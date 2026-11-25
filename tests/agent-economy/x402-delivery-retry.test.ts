@@ -86,6 +86,15 @@ describe('x402 recovery after delayed Base finality', () => {
       },
     })).toString('base64');
     const headers = { 'PAYMENT-SIGNATURE': signature };
+    if (serviceId === 'gxeon_csv_import_check_v1') {
+      const malformed = await handleX402CapabilityExecution({
+        ...request,
+        input: { ...expected.input.body, files: ['lead_id,email\n1,ab"cd"'] },
+        headers,
+      });
+      expect(malformed.statusCode).toBe(400);
+      expect(mocks.facilitator).not.toHaveBeenCalled();
+    }
     const retry = () => handleX402CapabilityExecution({ ...request, headers });
     const pending = await retry();
     expect(pending.statusCode).toBe(503);

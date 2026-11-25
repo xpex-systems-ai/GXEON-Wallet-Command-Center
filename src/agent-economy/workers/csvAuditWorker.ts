@@ -26,21 +26,30 @@ const MAX_CSV_CHARS = 512_000;
 const MAX_ROWS = 10_000;
 const MAX_COLUMNS = 500;
 
-export function parseCsv(csv: string, delimiter: string): string[][] {
+export function parseCsv(csv: string, delimiter: string, strictQuotes = false): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = '';
   let inQuotes = false;
+  let closedQuote = false;
 
   for (let i = 0; i < csv.length; i++) {
     const ch = csv[i];
 
+    if (strictQuotes && closedQuote && ch !== delimiter && ch !== '\n' && ch !== '\r') {
+      throw new Error('CSV contains unexpected text after a quoted field');
+    }
+
     if (ch === '"') {
+      if (strictQuotes && !inQuotes && cell.length > 0) {
+        throw new Error('CSV contains a quote inside an unquoted field');
+      }
       if (inQuotes && csv[i + 1] === '"') {
         cell += '"';
         i++;
       } else {
         inQuotes = !inQuotes;
+        closedQuote = strictQuotes && !inQuotes;
       }
       continue;
     }
@@ -48,6 +57,7 @@ export function parseCsv(csv: string, delimiter: string): string[][] {
     if (!inQuotes && ch === delimiter) {
       row.push(cell);
       cell = '';
+      closedQuote = false;
       continue;
     }
 
@@ -56,6 +66,7 @@ export function parseCsv(csv: string, delimiter: string): string[][] {
       rows.push(row);
       row = [];
       cell = '';
+      closedQuote = false;
       if (ch === '\r' && csv[i + 1] === '\n') i++;
       if (rows.length > MAX_ROWS) {
         throw new Error(`CSV exceeds maximum of ${MAX_ROWS} rows`);
@@ -70,9 +81,12 @@ export function parseCsv(csv: string, delimiter: string): string[][] {
     throw new Error('CSV contains an unterminated quoted field');
   }
 
-  if (cell.length > 0 || row.length > 0) {
+  if (cell.length > 0 || row.length > 0 || closedQuote) {
     row.push(cell);
     rows.push(row);
+    if (strictQuotes && rows.length > MAX_ROWS) {
+      throw new Error(`CSV exceeds maximum of ${MAX_ROWS} rows`);
+    }
   }
 
   return rows;
@@ -109,7 +123,10 @@ export function executeCsvAuditWorker(input: CsvAuditInput): CsvAuditResult {
   }
 
   const hasHeader = input.hasHeader !== false;
-  const rows = parseCsv(input.csv, delimiter);
+  return analyzeCsvRows(parseCsv(input.csv, delimiter), delimiter, hasHeader);
+}
+
+export function analyzeCsvRows(rows: string[][], delimiter: string, hasHeader: boolean): CsvAuditResult {
   if (rows.length === 0) throw new Error('CSV contains no rows');
 
   const firstNonBlank = rows.find((candidate) => candidate.some((value) => value.trim() !== ''));
