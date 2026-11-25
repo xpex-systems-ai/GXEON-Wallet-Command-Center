@@ -1,12 +1,12 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { executeCsvAuditWorker } from '../src/agent-economy/workers/csvAuditWorker.js';
-import { parseBody, sendJson } from './v1/_helper.js';
+import { executeCsvAuditWorker } from '../../src/agent-economy/workers/csvAuditWorker.js';
+import { parseBody, sendJson } from './_helper.js';
 
 function digest(value: string) {
   return createHash('sha256').update(value).digest();
 }
 
-export default async function handler(req: any, res: any) {
+export async function handleZylaCsvAudit(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method !== 'POST') {

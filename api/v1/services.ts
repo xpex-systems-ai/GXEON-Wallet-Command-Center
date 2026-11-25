@@ -9,12 +9,17 @@ import { getAgentEconomyStore } from '../../src/agent-economy/store.js';
 import { checkBazaarVisibility } from '../../src/agent-economy/connectors/x402BazaarConnector.js';
 import { getX402Readiness, hasBaseWalletProof, X402_BASE_NETWORK } from '../../src/agent-economy/x402/readiness.js';
 import { X402_SERVICE_PATHS, X402_PRICING } from '../../src/agent-economy/x402/pricing.js';
+import { handleZylaCsvAudit } from './_zylaCsvAudit.js';
 import { sendJson, sendError, parseBody } from './_helper.js';
 
 export default async function handler(req: any, res: any) {
   const url = new URL(req.url, 'http://localhost');
   const path = url.pathname.toLowerCase();
   const view = url.searchParams.get('view') || '';
+
+  if (path === '/api/zyla-csv-audit' || view === 'zyla-csv-audit') {
+    return handleZylaCsvAudit(req, res);
+  }
 
   // POST /v1/treasury/verify or ?view=treasury-verify
   if (path.endsWith('/treasury/verify') || view === 'treasury-verify') {
