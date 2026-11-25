@@ -327,14 +327,19 @@
         "description": "Validate JSON syntax and optionally check a JSON Schema. The live HTTP 402 Payment-Required header supplies the authoritative Base USDC payment terms.",
         "x-payment-info": {
           "protocols": [
-            { "x402": {} }
+            "x402"
           ],
           "price": {
             "mode": "fixed",
             "currency": "USD",
-            "amount": "0.010000"
+            "amount": "0.01"
           }
-        }
+        },
+        "security": [
+          {
+            "X402PaymentSignature": []
+          }
+        ]
       }
     },
     "/x402/csv-audit": {
@@ -463,14 +468,19 @@
         "description": "Validate CSV before import and report data quality issues. The live HTTP 402 Payment-Required header supplies the authoritative Base USDC payment terms.",
         "x-payment-info": {
           "protocols": [
-            { "x402": {} }
+            "x402"
           ],
           "price": {
             "mode": "fixed",
             "currency": "USD",
-            "amount": "0.010000"
+            "amount": "0.01"
           }
-        }
+        },
+        "security": [
+          {
+            "X402PaymentSignature": []
+          }
+        ]
       }
     },
     "/api/v1/mcp": {
@@ -854,6 +864,19 @@
               },
               "mimeType": {
                 "type": "string"
+              },
+              "serviceName": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "iconUrl": {
+                "type": "string",
+                "format": "uri"
               }
             },
             "required": [
@@ -990,6 +1013,14 @@
             "type": "string"
           }
         }
+      }
+    },
+    "securitySchemes": {
+      "X402PaymentSignature": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "PAYMENT-SIGNATURE",
+        "description": "x402 v2 payment payload returned by the live HTTP 402 challenge; not a static API key."
       }
     }
   },

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "resources": [
+    "https://gxeon-wallet-command-center.vercel.app/x402/csv-audit",
+    "https://gxeon-wallet-command-center.vercel.app/x402/json-validate"
+  ],
+  "instructions": "POST JSON to a resource. An unauthenticated request must receive an HTTP 402 x402 v2 Payment-Required challenge. Runtime challenge is authoritative for payment terms."
+}

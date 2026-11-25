@@ -3,6 +3,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/.well-known/x402",
+      "destination": "/.well-known/x402.json"
+    },
+    {
       "source": "/.well-known/agent.json",
       "destination": "/api/v1/mcp?view=a2a-card"
     },
@@ -78,7 +82,6 @@
       "source": "/v1/(.*)",
       "destination": "/api/v1/$1"
     },
-
     {
       "source": "/api/(.*)",
       "destination": "/api/$1"
