@@ -19,6 +19,10 @@
       "destination": "/api/v1/radar?gxeonView=taskmarket-poll"
     },
     {
+      "source": "/.well-known/x402",
+      "destination": "/api/x402?view=discovery"
+    },
+    {
       "source": "/x402/(.*)",
       "destination": "/api/x402?path=$1"
     },
