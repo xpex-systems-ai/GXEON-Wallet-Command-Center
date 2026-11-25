@@ -239,6 +239,11 @@
                     ]
                   }
                 ]
+              },
+              "example": {
+                "payload": {
+                  "check": true
+                }
               }
             }
           }
@@ -305,6 +310,17 @@
                 }
               }
             }
+          }
+        },
+        "description": "Validate JSON syntax and optionally check a JSON Schema. The live HTTP 402 Payment-Required header supplies the authoritative Base USDC payment terms.",
+        "x-payment-info": {
+          "protocols": [
+            "x402"
+          ],
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.01"
           }
         }
       }
@@ -349,6 +365,10 @@
                 "required": [
                   "csv"
                 ]
+              },
+              "example": {
+                "csv": "id,name\n1,Ana\n2,",
+                "hasHeader": true
               }
             }
           }
@@ -415,6 +435,17 @@
                 }
               }
             }
+          }
+        },
+        "description": "Validate CSV before import and report data quality issues. The live HTTP 402 Payment-Required header supplies the authoritative Base USDC payment terms.",
+        "x-payment-info": {
+          "protocols": [
+            "x402"
+          ],
+          "price": {
+            "mode": "fixed",
+            "currency": "USD",
+            "amount": "0.01"
           }
         }
       }
