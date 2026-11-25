@@ -1,4 +1,5 @@
 import { getService } from '../services/registry.js';
+import { X402_PREMIUM_SERVICES } from './premiumServices.js';
 
 const examples: Record<string, { tags: string[]; input: Record<string, unknown>; result: Record<string, unknown> }> = {
   gxeon_json_validate_v1: {
@@ -24,8 +25,11 @@ const examples: Record<string, { tags: string[]; input: Record<string, unknown>;
 };
 
 export function describeX402Service(serviceId: string, url: string) {
-  const service = getService(serviceId);
-  const example = examples[serviceId];
+  const premium = Object.prototype.hasOwnProperty.call(X402_PREMIUM_SERVICES, serviceId) ? X402_PREMIUM_SERVICES[serviceId] : undefined;
+  const service = premium ?? getService(serviceId);
+  const example = premium
+    ? { tags: premium.tags, input: premium.example, result: premium.execute(premium.example) }
+    : examples[serviceId];
   if (!service || !example) return null;
 
   return {

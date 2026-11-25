@@ -26,7 +26,7 @@ const MAX_CSV_CHARS = 512_000;
 const MAX_ROWS = 10_000;
 const MAX_COLUMNS = 500;
 
-function parseCsv(csv: string, delimiter: string): string[][] {
+export function parseCsv(csv: string, delimiter: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = '';

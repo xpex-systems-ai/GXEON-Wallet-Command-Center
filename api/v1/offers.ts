@@ -3,6 +3,7 @@ import { getFeatureFlags } from '../../src/agent-economy/featureFlags.js';
 import { listAvailableServices } from '../../src/agent-economy/services/registry.js';
 import { getX402Readiness, X402_BASE_NETWORK } from '../../src/agent-economy/x402/readiness.js';
 import { X402_PRICING, X402_SERVICE_PATHS } from '../../src/agent-economy/x402/pricing.js';
+import { X402_PREMIUM_SERVICES } from '../../src/agent-economy/x402/premiumServices.js';
 import { sendJson, sendError, parseBody } from './_helper.js';
 
 const offerAgent = new GxeonOfferAgent();
@@ -21,7 +22,8 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'GET') {
     const list = Array.from(activeOffers.values());
     const x402 = await getX402Readiness();
-    const sellable = listAvailableServices().filter(service => Object.prototype.hasOwnProperty.call(X402_SERVICE_PATHS, service.serviceId));
+    const sellable = [...listAvailableServices(), ...Object.values(X402_PREMIUM_SERVICES)]
+      .filter(service => Object.prototype.hasOwnProperty.call(X402_SERVICE_PATHS, service.serviceId));
     sendJson(res, 200, {
       total: list.length + 1 + sellable.length,
       offers: list,

@@ -76,7 +76,12 @@ describe('x402 money-truth gate', () => {
     const x402Offers = res.body.canonicalOffers.filter(
       (offer: any) => offer.paymentRail === 'x402'
     );
-    expect(x402Offers).toHaveLength(2);
+    expect(x402Offers.map((offer: any) => [offer.serviceId, offer.unitPriceUsdc])).toEqual([
+      ['gxeon_json_validate_v1', 0.01],
+      ['gxeon_csv_audit_v1', 0.01],
+      ['gxeon_csv_import_check_v1', 1],
+      ['gxeon_json_contract_batch_v1', 0.10],
+    ]);
     expect(x402Offers.every((offer: any) => offer.status === 'PAUSED')).toBe(true);
     expect(x402Offers.every((offer: any) => offer.blocker)).toBe(true);
   });
