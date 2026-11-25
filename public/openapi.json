@@ -3,7 +3,8 @@
   "info": {
     "title": "GXEON Autonomous Agent Capability Market & x402 Gateway API",
     "description": "Production GXEON Agent-to-Agent capability marketplace with Stripe LIVE hosted checkout for BRL services and canonical x402 V2 micro-USDC machine payments. Payment execution remains proof-gated and Money Truth compliant.",
-    "version": "2.1.0"
+    "version": "2.1.0",
+    "x-guidance": "Choose POST /x402/csv-audit before importing CSV into a CRM or data pipeline, and read result.qualityPass and result.results. Choose POST /x402/json-validate to check JSON syntax or an optional schema, and read result.valid and result.errors. Use synthetic examples to evaluate the API. Follow the live HTTP 402 payment terms. After a retryable 503, honor Retry-After and reuse the original request and payment signature."
   },
   "servers": [
     {
