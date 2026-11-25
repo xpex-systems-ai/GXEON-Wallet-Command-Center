@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BountyItem, PayoutVerification } from '../../../types';
-import { canTransitionBountyStatus } from '../../../services/bountyService';
+import { canTransitionBountyStatus, BountyService } from '../../../services/bountyService';
 import { payoutVerifier } from '../../../services/payoutVerifier';
 
 describe('Bounty State Machine & Multi-Asset Accounting — Financial Integrity', () => {
@@ -130,6 +130,67 @@ describe('Bounty State Machine & Multi-Asset Accounting — Financial Integrity'
     expect(authenticProof.verificationId).toBeDefined();
 
     const res = canTransitionBountyStatus('PAYOUT_PENDING', 'PAID', authenticProof);
+    expect(res.allowed).toBe(true);
+  });
+
+  it('supports USDC payout on Base EVM network via authentic PayoutVerifier proof', async () => {
+    global.fetch = vi.fn().mockImplementation(async (_url, init: any) => {
+      const body = JSON.parse(init.body);
+      if (body.method === 'eth_getTransactionReceipt') {
+        return {
+          ok: true,
+          json: async () => ({
+            result: {
+              status: '0x1',
+              blockNumber: '0x120000',
+              logs: [
+                {
+                  address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // USDC on Base
+                  topics: [
+                    '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef', // Transfer topic
+                    '0x0000000000000000000000001111111111111111111111111111111111111111',
+                    '0x00000000000000000000000071c8407c27dab54e627b0a726715f33346e0176b',
+                  ],
+                  data: '0x0000000000000000000000000000000000000000000000000000000005f5e100', // 100 USDC (6 decimals)
+                },
+              ],
+            },
+          }),
+        };
+      }
+      if (body.method === 'eth_getTransactionByHash') {
+        return {
+          ok: true,
+          json: async () => ({
+            result: {
+              to: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+              value: '0x0',
+            },
+          }),
+        };
+      }
+      if (body.method === 'eth_chainId') {
+        return {
+          ok: true,
+          json: async () => ({ result: '0x2105' }), // Base Mainnet (chainId 8453)
+        };
+      }
+      return { ok: false };
+    });
+
+    const usdcProof = await payoutVerifier.verifyPayout({
+      bountyId: 'mission-001-usdc',
+      network: 'base',
+      asset: 'USDC',
+      destinationWallet: '0x71c8407c27dab54e627b0a726715f33346e0176b',
+      expectedAmount: '100',
+      txHash: '0x11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff',
+      customRpcEndpoint: 'https://mainnet.base.org',
+    });
+
+    expect(usdcProof.verificationStatus).toBe('CONFIRMED');
+
+    const res = canTransitionBountyStatus('PAYOUT_PENDING', 'PAID', usdcProof);
     expect(res.allowed).toBe(true);
   });
 
