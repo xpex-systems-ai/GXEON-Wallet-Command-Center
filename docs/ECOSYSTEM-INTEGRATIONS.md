@@ -113,6 +113,15 @@ Before enabling any new public integration:
 - Never claim "registered", "approved", "listed", "installed", "customer" or "revenue" without the corresponding independent evidence.
 - No account creation, terms acceptance, payment method, paid API key, marketplace fee, production deployment or campaign activation is implied by this guide.
 
+
+
+## Verified distribution status snapshot (2026-11-25)
+
+- Distribution PR #59 is now **MERGED** into the canonical repository (merge commit `9d5a1fb874b60d4ebb3889d177c8ba40d512bb16`). The old ledger wording that described its assets as branch-only is stale and should be reconciled.
+- Cline marketplace issue #2878 remains **OPEN**. The maintainer-facing checklist still marks the native Cline installation test as not independently completed; do not describe the listing as approved.
+- The distribution ledger records the Official MCP Registry ID and TensorBlock PR #2949 acceptance, but current registry state and current external listing status should be rechecked before using the word "listed" in sales material.
+- Vercel team scope `junior-senas-projects-4226acc3` denied this connection with HTTP 403 pending team authorization. Production project/deployment verification is therefore incomplete until an authorized team member approves the single-use access request.
+
 ## Audit follow-up
 
 The distribution ledger in `docs/GXEON-DISTRIBUTION-2026-10-08.md` remains the source for existing directory submissions and their blockers. Recheck that ledger and current external records before any repeat submission to prevent duplicate listings.
