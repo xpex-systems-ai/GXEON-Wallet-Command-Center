@@ -522,7 +522,7 @@ describe('GXEON-GLOBAL-MACHINE-REVENUE-001 Autonomous Machine-to-Machine Sales T
 
     it('waits for the Base receipt and reconciles an interrupted facilitator call using the original payment', async () => {
       const { confirm, fetch } = mockSettlement({ status: 'pending', lostResponse: true });
-      const request = await paidRequest('gxeon_csv_audit_v1', { csv: 'id,name\n1,GXEON' });
+      const request = await paidRequest('gxeon_json_validate_v1', { payload: { service: 'GXEON' } });
       const pending = await handleX402CapabilityExecution(request);
       expect(pending.statusCode).toBe(503);
       expect(pending.body).toMatchObject({ error: 'SETTLEMENT_PENDING' });
