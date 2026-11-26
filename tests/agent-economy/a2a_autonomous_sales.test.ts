@@ -531,7 +531,7 @@ describe('GXEON-GLOBAL-MACHINE-REVENUE-001 Autonomous Machine-to-Machine Sales T
       confirm();
       const paid = await handleX402CapabilityExecution(request);
       expect(paid.statusCode).toBe(200);
-      expect(paid.body).toMatchObject({ result: { qualityPass: true }, receipt: { txHash, amountUsdc: '0.010000' } });
+      expect(paid.body).toMatchObject({ result: { valid: true, errors: [] }, receipt: { txHash, amountUsdc: '0.010000' } });
       expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/settle'))).toHaveLength(1);
     });
 
