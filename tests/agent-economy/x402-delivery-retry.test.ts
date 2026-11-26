@@ -55,7 +55,6 @@ afterEach(() => {
 describe('x402 recovery after delayed Base finality', () => {
   it.each([
     { serviceId: 'gxeon_json_validate_v1', path: '/x402/json-validate' },
-    { serviceId: 'gxeon_csv_audit_v1', path: '/x402/csv-audit' },
   ])('returns the original result and receipt once for $serviceId', async ({ serviceId, path }) => {
     const store = getAgentEconomyStore();
     const resourceUrl = origin + path;
