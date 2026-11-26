@@ -31,9 +31,15 @@ export const X402_PRICING: Record<string, X402CapabilityPricing> = {
   },
 };
 
+/**
+ * Public x402 launch scope. Keep this registry intentionally limited to the
+ * single audited launch product until its payment -> delivery -> receipt ->
+ * reconciliation path has passed live acceptance testing.
+ * Other capabilities may retain internal pricing, but are not exposed as
+ * x402 resources by this deployment.
+ */
 export const X402_SERVICE_PATHS: Readonly<Record<string, string>> = {
   gxeon_json_validate_v1: '/x402/json-validate',
-  gxeon_csv_audit_v1: '/x402/csv-audit',
 };
 
 export function getX402Price(
