@@ -1,41 +1,30 @@
-# GXEON Paid APIs
+# GXEON Paid API
 
-> Pay-per-request JSON validation and CSV data-quality auditing for software and AI agents.
+> Pay-per-request JSON validation for software and AI agents.
 
-## Canonical endpoints
+## Current x402 launch scope
 
 - JSON Validate: POST https://gxeon-wallet-command-center.vercel.app/x402/json-validate
   - Price: 0.01 USDC per request
   - Network: Base mainnet (CAIP-2: eip155:8453)
   - Service ID: gxeon_json_validate_v1
   - Input: JSON object with payload (any JSON value or raw JSON string) and optional lightweight schema.
-- CSV Audit: POST https://gxeon-wallet-command-center.vercel.app/x402/csv-audit
-  - Price: 0.01 USDC per request
-  - Network: Base mainnet (CAIP-2: eip155:8453)
-  - Service ID: gxeon_csv_audit_v1
-  - Input: JSON object with csv string, optional delimiter and hasHeader.
-  - Output can report qualityPass=false while still being a successfully delivered audit.
+  - Output: valid flag, structured errors, parsed type, byte length, optional object key count, and GXEON receipt.
+
+CSV Audit is in technical recovery after independent paid attempts returned HTTP 503 without a delivered result. It is not currently advertised as an x402 paid route. A separate authenticated Zyla staging origin is documented in openapi.zyla.csv.yaml on the Zyla integration branch; it is not the x402 route and must remain in draft until the Zyla gateway test succeeds.
 
 ## x402 v2 payment flow
 
 1. Send POST with Content-Type: application/json and no payment header.
-2. Receive HTTP 402 and decode the PAYMENT-REQUIRED header from base64 JSON.
+2. Receive HTTP 402 and decode PAYMENT-REQUIRED (base64 JSON).
 3. Sign the exact terms in the challenge using an x402 v2-compatible wallet/client.
-4. Retry the same POST body with PAYMENT-SIGNATURE.
+4. Retry the exact same POST body with PAYMENT-SIGNATURE.
 5. On HTTP 200, retain PAYMENT-RESPONSE, X-402-Receipt, X-402-Settlement and the JSON receipt.
 
-Never create a second payment to recover a pending delivery. For HTTP 503, retry only with the same request body and original PAYMENT-SIGNATURE as instructed by the response. If delivery remains unavailable, contact support with the transaction hash; never share signatures or authorization secrets.
+Never create a second payment to recover a pending delivery. For HTTP 503, honor Retry-After and retry only with the same request body and original PAYMENT-SIGNATURE. If delivery remains unavailable, contact support with the transaction hash. Never share payment signatures or authorization secrets.
 
-## Examples
+## JSON Validate example
 
-### CSV Audit
-```bash
-curl -i https://gxeon-wallet-command-center.vercel.app/x402/csv-audit \
-  -H 'Content-Type: application/json' \
-  --data '{"csv":"id,name\\n1,Ana\\n2,","hasHeader":true}'
-```
-
-### JSON Validate
 ```bash
 curl -i https://gxeon-wallet-command-center.vercel.app/x402/json-validate \
   -H 'Content-Type: application/json' \
@@ -45,10 +34,10 @@ curl -i https://gxeon-wallet-command-center.vercel.app/x402/json-validate \
 ## Machine-readable specification
 
 - OpenAPI 3.1: /openapi.yaml
-- This file: /llms.txt
+- Agent guide: /llms.txt
 
-## Reliability and commercial status
+## Money and reliability semantics
 
-A quote (HTTP 402) is not a completed sale. Count revenue only after on-chain settlement is independently verified and the service returns its result with a receipt. A data-quality finding (for example qualityPass=false) is a valid delivered result; an HTTP 503 after payment is not.
+An HTTP 402 quote is not a completed sale. Count revenue only after on-chain settlement is independently verified and the service returns its result with a GXEON receipt. A validation result with valid=false is still a successful delivery of a negative finding; an HTTP 503 is not.
 
-The public API listing and prices do not guarantee third-party discovery, buyer demand, or revenue. Check live service readiness before enabling paid traffic.
+Public listing and price do not guarantee discovery, buyer demand, or revenue. Do not pay again to recover a pending delivery.
