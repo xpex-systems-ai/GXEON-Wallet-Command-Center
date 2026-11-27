@@ -1,0 +1,287 @@
+openapi: 3.1.0
+info:
+  title: GXEON Paid APIs
+  version: 1.0.0
+  summary: Machine-readable JSON and CSV validation APIs with x402 v2 micropayments.
+  description: |
+    GXEON provides pay-per-request data validation. Requests use HTTP POST with JSON.
+    Unpaid requests receive HTTP 402 with x402 v2 payment requirements in PAYMENT-REQUIRED.
+    After payment, retry the exact same request with PAYMENT-SIGNATURE. A successful
+    delivery returns HTTP 200, the result, and a verifiable GXEON receipt.
+servers:
+  - url: https://gxeon-wallet-command-center.vercel.app
+tags:
+  - name: Validation
+    description: Pay-per-request validation services.
+paths:
+  /x402/json-validate:
+    post:
+      operationId: gxeonJsonValidate
+      tags: [Validation]
+      summary: Validate JSON syntax and an optional lightweight schema.
+      description: Price is 0.01 USDC per request on Base. Send the same body again with PAYMENT-SIGNATURE after receiving the 402 challenge.
+      x-x402:
+        version: 2
+        scheme: exact
+        network: eip155:8453
+        asset: USDC
+        amount: "10000"
+        currency: USDC
+        decimals: 6
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JsonValidateInput'
+            example:
+              payload:
+                ready: true
+              schema:
+                type: object
+                required: [ready]
+                properties:
+                  ready:
+                    type: boolean
+      parameters:
+        - $ref: '#/components/parameters/PaymentSignature'
+      responses:
+        '200':
+          description: Validation result delivered and receipt recorded.
+          headers:
+            PAYMENT-RESPONSE:
+              schema: { type: string }
+              description: Base64-encoded x402 v2 settlement response.
+            X-402-Receipt:
+              schema: { type: string }
+            X-402-Settlement:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JsonValidateSuccess' }
+        '402':
+          description: Payment required. Decode PAYMENT-REQUIRED (base64 JSON) and satisfy its accepts terms.
+          headers:
+            PAYMENT-REQUIRED:
+              schema: { type: string }
+              description: Base64-encoded x402 v2 challenge.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentChallenge' }
+        '400':
+          description: Invalid request body or validation input.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: Payment settlement or result delivery is pending/unavailable. Retry only with the original request and original payment authorization; do not pay again.
+          headers:
+            Retry-After:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetryableError' }
+  /x402/csv-audit:
+    post:
+      operationId: gxeonCsvAudit
+      tags: [Validation]
+      summary: Audit CSV structure and data quality.
+      description: Price is 0.01 USDC per request on Base. A qualityPass=false result is a successfully delivered audit finding, not an API delivery failure.
+      x-x402:
+        version: 2
+        scheme: exact
+        network: eip155:8453
+        asset: USDC
+        amount: "10000"
+        currency: USDC
+        decimals: 6
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CsvAuditInput'
+            example:
+              csv: "id,name\n1,Ana\n2,"
+              hasHeader: true
+      parameters:
+        - $ref: '#/components/parameters/PaymentSignature'
+      responses:
+        '200':
+          description: CSV audit result delivered and receipt recorded. qualityPass may be false when data issues are found.
+          headers:
+            PAYMENT-RESPONSE:
+              schema: { type: string }
+            X-402-Receipt:
+              schema: { type: string }
+            X-402-Settlement:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CsvAuditSuccess' }
+        '402':
+          description: Payment required. Decode PAYMENT-REQUIRED (base64 JSON) and satisfy its accepts terms.
+          headers:
+            PAYMENT-REQUIRED:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentChallenge' }
+        '400':
+          description: Invalid request body or CSV input.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: Payment settlement or result delivery is pending/unavailable. Retry only with the original request and original payment authorization; do not pay again.
+          headers:
+            Retry-After:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetryableError' }
+components:
+  parameters:
+    PaymentSignature:
+      name: PAYMENT-SIGNATURE
+      in: header
+      required: false
+      description: x402 v2 payment payload returned by the buyer wallet. Omit on the first request to receive the 402 challenge.
+      schema: { type: string }
+  schemas:
+    JsonValidateInput:
+      type: object
+      additionalProperties: false
+      required: [payload]
+      properties:
+        payload:
+          description: JSON value or JSON text to validate.
+        rawJson:
+          type: string
+          description: Alternative raw JSON text field.
+        schema:
+          type: object
+          properties:
+            type: { type: string }
+            required:
+              type: array
+              items: { type: string }
+            properties:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  type: { type: string }
+    CsvAuditInput:
+      type: object
+      additionalProperties: false
+      required: [csv]
+      properties:
+        csv: { type: string, minLength: 1, maxLength: 512000 }
+        delimiter:
+          type: string
+          enum: [",", ";", "\t", "|"]
+          default: ","
+        hasHeader: { type: boolean, default: true }
+    JsonValidateSuccess:
+      type: object
+      required: [status, serviceId, result, receipt]
+      properties:
+        status: { const: SUCCESS }
+        serviceId: { const: gxeon_json_validate_v1 }
+        result:
+          type: object
+          required: [valid, errors, details]
+          properties:
+            valid: { type: boolean }
+            errors: { type: array, items: { type: string } }
+            details:
+              type: object
+              properties:
+                parsedType: { type: string }
+                byteLength: { type: integer }
+                keyCount: { type: integer }
+        receipt: { $ref: '#/components/schemas/Receipt' }
+    CsvAuditSuccess:
+      type: object
+      required: [status, serviceId, result, receipt]
+      properties:
+        status: { const: SUCCESS }
+        serviceId: { const: gxeon_csv_audit_v1 }
+        result:
+          type: object
+          required: [qualityPass, summary, results]
+          properties:
+            qualityPass: { type: boolean }
+            summary:
+              type: object
+              properties:
+                total: { type: integer }
+                healthy: { type: integer }
+                failed: { type: integer }
+            results:
+              type: array
+              items:
+                type: object
+                properties:
+                  rowCount: { type: integer }
+                  dataRowCount: { type: integer }
+                  columnCount: { type: integer }
+                  headers: { type: array, items: { type: string } }
+                  delimiter: { type: string }
+                  hasHeader: { type: boolean }
+                  unevenRows: { type: array, items: { type: object } }
+                  duplicateHeaders: { type: array, items: { type: string } }
+                  duplicateRows: { type: array, items: { type: object } }
+                  blankRows: { type: array, items: { type: integer } }
+                  emptyCells: { type: integer }
+        receipt: { $ref: '#/components/schemas/Receipt' }
+    Receipt:
+      type: object
+      required: [receiptId, serviceId, amountUsdc, network, txHash, resultHash, evidenceHash]
+      properties:
+        receiptId: { type: string }
+        serviceId: { type: string }
+        amountUsdc: { type: string }
+        network: { const: eip155:8453 }
+        txHash: { type: string }
+        settlementId: { type: string }
+        resultHash: { type: string }
+        evidenceHash: { type: string }
+        createdAt: { type: string, format: date-time }
+    PaymentChallenge:
+      type: object
+      required: [x402Version, status, accepts, serviceId]
+      properties:
+        x402Version: { const: 2 }
+        status: { const: 402 }
+        title: { type: string }
+        error: { type: string }
+        serviceId: { type: string }
+        accepts:
+          type: array
+          items:
+            type: object
+            properties:
+              scheme: { const: exact }
+              network: { const: eip155:8453 }
+              asset: { type: string }
+              amount: { type: string }
+              payTo: { type: string }
+              maxTimeoutSeconds: { type: integer }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
+    RetryableError:
+      type: object
+      properties:
+        error: { type: string, enum: [SETTLEMENT_PENDING, DELIVERY_UNAVAILABLE, PAYMENT_OR_DELIVERY_UNAVAILABLE] }
+        message: { type: string }
+        retry:
+          type: object
+          properties:
+            method: { const: POST }
+            reuseRequestBody: { const: true }
+            reusePaymentSignature: { const: true }
