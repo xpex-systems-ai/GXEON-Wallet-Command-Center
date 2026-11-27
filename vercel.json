@@ -80,6 +80,10 @@
     },
 
     {
+      "source": "/api/zyla-csv-audit",
+      "destination": "/api/v1/services?view=zyla-csv-audit"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },
