@@ -152,7 +152,9 @@ components:
     JsonValidateInput:
       type: object
       additionalProperties: false
-      required: [payload]
+      anyOf:
+        - required: [payload]
+        - required: [rawJson]
       properties:
         payload:
           description: JSON value or JSON text to validate.
