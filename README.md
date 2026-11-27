@@ -137,3 +137,17 @@ Paid execution is a **separate** authenticated MCP/REST process, using a buyer-i
 For safety boundaries and exact MCP handshake, see [the Agent Marketplace integration guide](docs/AGENT_MARKETPLACE.md). For [OpenAI Agents SDK/API, LangChain/LangGraph, CrewAI and official Python MCP SDK](docs/FRAMEWORK_INTEGRATIONS.md), see the discovery-only examples in [`examples/frameworks/`](examples/frameworks/).
 
 **Money truth:** Service availability, public listings and checkout creation do not prove external purchases, credit settlement, fulfillment, or withdrawable funds.
+
+---
+
+## GXEON STARTER — storefront discoverability (settlement review pending)
+
+> ⚠️ **Do not promote unattended prepaid fulfillment yet.** The GXEON Stripe LIVE webhook is currently **disabled**, so automatic credit delivery has NOT been certified. The existing link is for operator review until the signing secret, genuine event, account-bound credit grant, replay and refund tests are independently verified, then the right endpoint is deliberately enabled.
+
+[![Indexed on TensorBlock MCP Index](https://mcp-index.tensorblock.co/v1/servers/github-xpex-systems-ai-gxeon-wallet-command-center-b8a311f5/badge.svg)](https://www.tensorblock.co/mcp/servers/github-xpex-systems-ai-gxeon-wallet-command-center-b8a311f5)
+
+**[Inspect GXEON STARTER pack selection (R$ 20.00; payment not yet cleared for unattended fulfillment)](https://gxeon-wallet-command-center.vercel.app/credits?pack=pack_100)**  ·  [Full buyer guide and evidence requirements](docs/GXEON-STARTER-COMMERCE.md)
+
+Our public MCP supports discovery only. First-time buyers initiate checkout without an existing API key by supplying the pack and their name; account creation and issuance of a buyer API key follow the first-purchase onboarding flow. Subsequent top-ups require authentication using that buyer-issued key. Every checkout requires the buyer's explicit approval. Credits become spendable only after verified settlement and an account-bound, idempotent credit grant. Indexing, link clicks, checkout creation, and product listings are **not** proof of a completed sale.
+
+**Verified source:** the live `/v1/billing/topup` catalog currently lists `pack_100` at 2,000 BRL cents. Confirm pricing at checkout. The TensorBlock community merged our index entry via [PR #2949](https://github.com/TensorBlock/awesome-mcp-servers/pull/2949); the profile still needs maintainer claiming and richer metadata before it should be advertised as fully verified.
