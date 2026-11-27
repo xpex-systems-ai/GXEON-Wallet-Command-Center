@@ -89,6 +89,17 @@ describe('Credit purchase onboarding', () => {
     }
   });
 
+  it('fails closed for an unattended production top-up until webhook release is enabled', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VITEST', '');
+    vi.stubEnv('GXEON_PREPAID_CHECKOUT_ENABLED', '');
+    const res = response();
+    await topup({ method: 'POST', headers: {}, body: { packId: 'pack_100', name: 'Unattended Buyer' } }, res);
+    expect(res.statusCode).toBe(503);
+    expect(res.body.error.code).toBe('PAYMENT_RAIL_UNAVAILABLE');
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
   it('creates a R$0.99 PICO checkout without granting credits early', async () => {
     const res = response();
     await topup({ method: 'POST', headers: {}, body: { packId: 'pack_2', name: 'Pico Buyer' } }, res);
@@ -171,6 +182,30 @@ describe('Credit purchase onboarding', () => {
 });
 
 describe('Signed credit payment fulfillment', () => {
+  it('acknowledges unrelated Stripe merchant product checkouts without retrying or granting GXEON credits', async () => {
+    const store = getAgentEconomyStore();
+    await store.saveAccount(seed);
+    const payments = paymentStore();
+    const recordEventSpy = vi.spyOn(payments, 'recordEventIfAbsent');
+    const service = new VercelStripeService({ store: payments, webhookSecret: testSecret });
+
+    for (const [id, productId, amount, currency] of [
+      ['evt_plugin_factory', 'xpex_plugin_factory', 49700, 'brl'],
+      ['evt_other_usd', 'another_app_service', 1000, 'usd'],
+    ] as const) {
+      const result = await deliver(service, event(id, 'checkout.session.completed', {
+        currency, amount_total: amount, metadata: {
+          service_id: productId, account_id: seed.accountId,
+        },
+      }));
+      expect(result.status).toBe('UNHANDLED_EVENT');
+      expect(result.processed).toBe(true);
+    }
+    expect((await store.getAccount(seed.accountId))?.creditBalance).toBe(0);
+    expect(await store.getLedgerEntries(seed.accountId)).toHaveLength(0);
+    expect(recordEventSpy).toHaveBeenCalledTimes(2);
+  });
+
   it('reverses partial then full refunds once, even when credits have already been spent', async () => {
     const store = getAgentEconomyStore();
     await store.saveAccount(seed);
