@@ -1,0 +1,43 @@
+# GXEON Paid API
+
+> Pay-per-request JSON validation for software and AI agents.
+
+## Current x402 launch scope
+
+- JSON Validate: POST https://gxeon-wallet-command-center.vercel.app/x402/json-validate
+  - Price: 0.01 USDC per request
+  - Network: Base mainnet (CAIP-2: eip155:8453)
+  - Service ID: gxeon_json_validate_v1
+  - Input: JSON object with payload (any JSON value or raw JSON string) and optional lightweight schema.
+  - Output: valid flag, structured errors, parsed type, byte length, optional object key count, and GXEON receipt.
+
+CSV Audit is in technical recovery after independent paid attempts returned HTTP 503 without a delivered result. It is not currently advertised as an x402 paid route. A separate authenticated Zyla staging origin is documented in openapi.zyla.csv.yaml on the Zyla integration branch; it is not the x402 route and must remain in draft until the Zyla gateway test succeeds.
+
+## x402 v2 payment flow
+
+1. Send POST with Content-Type: application/json and no payment header.
+2. Receive HTTP 402 and decode PAYMENT-REQUIRED (base64 JSON).
+3. Sign the exact terms in the challenge using an x402 v2-compatible wallet/client.
+4. Retry the exact same POST body with PAYMENT-SIGNATURE.
+5. On HTTP 200, retain PAYMENT-RESPONSE, X-402-Receipt, X-402-Settlement and the JSON receipt.
+
+Never create a second payment to recover a pending delivery. For HTTP 503, honor Retry-After and retry only with the same request body and original PAYMENT-SIGNATURE. If delivery remains unavailable, contact support with the transaction hash. Never share payment signatures or authorization secrets.
+
+## JSON Validate example
+
+```bash
+curl -i https://gxeon-wallet-command-center.vercel.app/x402/json-validate \
+  -H 'Content-Type: application/json' \
+  --data '{"payload":{"ready":true},"schema":{"type":"object","required":["ready"],"properties":{"ready":{"type":"boolean"}}}}'
+```
+
+## Machine-readable specification
+
+- OpenAPI 3.1: /openapi.yaml
+- Agent guide: /llms.txt
+
+## Money and reliability semantics
+
+An HTTP 402 quote is not a completed sale. Count revenue only after on-chain settlement is independently verified and the service returns its result with a GXEON receipt. A validation result with valid=false is still a successful delivery of a negative finding; an HTTP 503 is not.
+
+Public listing and price do not guarantee discovery, buyer demand, or revenue. Do not pay again to recover a pending delivery.
