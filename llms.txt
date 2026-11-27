@@ -1,0 +1,54 @@
+# GXEON Paid APIs
+
+> Pay-per-request JSON validation and CSV data-quality auditing for software and AI agents.
+
+## Canonical endpoints
+
+- JSON Validate: POST https://gxeon-wallet-command-center.vercel.app/x402/json-validate
+  - Price: 0.01 USDC per request
+  - Network: Base mainnet (CAIP-2: eip155:8453)
+  - Service ID: gxeon_json_validate_v1
+  - Input: JSON object with payload (any JSON value or raw JSON string) and optional lightweight schema.
+- CSV Audit: POST https://gxeon-wallet-command-center.vercel.app/x402/csv-audit
+  - Price: 0.01 USDC per request
+  - Network: Base mainnet (CAIP-2: eip155:8453)
+  - Service ID: gxeon_csv_audit_v1
+  - Input: JSON object with csv string, optional delimiter and hasHeader.
+  - Output can report qualityPass=false while still being a successfully delivered audit.
+
+## x402 v2 payment flow
+
+1. Send POST with Content-Type: application/json and no payment header.
+2. Receive HTTP 402 and decode the PAYMENT-REQUIRED header from base64 JSON.
+3. Sign the exact terms in the challenge using an x402 v2-compatible wallet/client.
+4. Retry the same POST body with PAYMENT-SIGNATURE.
+5. On HTTP 200, retain PAYMENT-RESPONSE, X-402-Receipt, X-402-Settlement and the JSON receipt.
+
+Never create a second payment to recover a pending delivery. For HTTP 503, retry only with the same request body and original PAYMENT-SIGNATURE as instructed by the response. If delivery remains unavailable, contact support with the transaction hash; never share signatures or authorization secrets.
+
+## Examples
+
+### CSV Audit
+```bash
+curl -i https://gxeon-wallet-command-center.vercel.app/x402/csv-audit \
+  -H 'Content-Type: application/json' \
+  --data '{"csv":"id,name\\n1,Ana\\n2,","hasHeader":true}'
+```
+
+### JSON Validate
+```bash
+curl -i https://gxeon-wallet-command-center.vercel.app/x402/json-validate \
+  -H 'Content-Type: application/json' \
+  --data '{"payload":{"ready":true},"schema":{"type":"object","required":["ready"],"properties":{"ready":{"type":"boolean"}}}}'
+```
+
+## Machine-readable specification
+
+- OpenAPI 3.1: /openapi.yaml
+- This file: /llms.txt
+
+## Reliability and commercial status
+
+A quote (HTTP 402) is not a completed sale. Count revenue only after on-chain settlement is independently verified and the service returns its result with a receipt. A data-quality finding (for example qualityPass=false) is a valid delivered result; an HTTP 503 after payment is not.
+
+The public API listing and prices do not guarantee third-party discovery, buyer demand, or revenue. Check live service readiness before enabling paid traffic.
