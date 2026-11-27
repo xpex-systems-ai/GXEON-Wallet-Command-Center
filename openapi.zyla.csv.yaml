@@ -1,0 +1,144 @@
+openapi: 3.0.3
+info:
+  title: GXEON CSV Audit API
+  version: 1.0.0
+  description: |
+    Authenticated CSV structure and data-quality auditing endpoint for the Zyla API Hub staging integration.
+    This origin uses an X-Origin-Key header configured in Zyla Access Control.
+    It is separate from the x402 payment route: Zyla manages its own subscription billing and provider payout.
+servers:
+  - url: https://gxeon-wallet-command-center-2skdpngre-xpex-neural.vercel.app
+    description: Vercel preview for feat/zyla-csv-origin (staging only)
+security:
+  - OriginKey: []
+paths:
+  /api/zyla-csv-audit:
+    post:
+      operationId: auditCsv
+      summary: Audit CSV structure and data quality
+      description: |
+        Accepts synthetic or authorized CSV data and returns structural findings.
+        A qualityPass=false response is a successfully delivered audit containing findings, not an HTTP delivery failure.
+        Maximum CSV input is 512,000 characters. Only POST is supported.
+      tags: [CSV Audit]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CsvAuditInput'
+            example:
+              csv: "id,email\n1,alpha@example.com\n2,beta@example.com\n"
+              delimiter: ","
+              hasHeader: true
+      responses:
+        '200':
+          description: CSV audit completed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsvAuditResult'
+              example:
+                qualityPass: true
+                summary: { total: 1, healthy: 1, failed: 0 }
+                results:
+                  - rowCount: 3
+                    dataRowCount: 2
+                    columnCount: 2
+                    headers: [id, email]
+                    delimiter: ","
+                    hasHeader: true
+                    unevenRows: []
+                    duplicateHeaders: []
+                    duplicateRows: []
+                    blankRows: []
+                    emptyCells: 0
+        '400':
+          description: Invalid request or malformed CSV.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid X-Origin-Key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '405':
+          description: Only POST is supported.
+          headers:
+            Allow:
+              schema: { type: string, example: POST }
+        '503':
+          description: Staging origin is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    OriginKey:
+      type: apiKey
+      in: header
+      name: X-Origin-Key
+      description: Configure the matching staging credential in Zyla Access Control. Never place the secret in this specification.
+  schemas:
+    CsvAuditInput:
+      type: object
+      additionalProperties: false
+      required: [csv]
+      properties:
+        csv:
+          type: string
+          minLength: 1
+          maxLength: 512000
+          description: CSV content to audit.
+        delimiter:
+          type: string
+          enum: [",", ";", "\t", "|"]
+          default: ","
+        hasHeader:
+          type: boolean
+          default: true
+    CsvAuditResult:
+      type: object
+      required: [qualityPass, summary, results]
+      properties:
+        qualityPass: { type: boolean }
+        summary:
+          type: object
+          properties:
+            total: { type: integer }
+            healthy: { type: integer }
+            failed: { type: integer }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              rowCount: { type: integer }
+              dataRowCount: { type: integer }
+              columnCount: { type: integer }
+              headers:
+                type: array
+                items: { type: string }
+              delimiter: { type: string }
+              hasHeader: { type: boolean }
+              unevenRows:
+                type: array
+                items: { type: object }
+              duplicateHeaders:
+                type: array
+                items: { type: string }
+              duplicateRows:
+                type: array
+                items: { type: object }
+              blankRows:
+                type: array
+                items: { type: integer }
+              emptyCells: { type: integer }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
